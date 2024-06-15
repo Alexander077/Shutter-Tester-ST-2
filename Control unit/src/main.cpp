@@ -4,6 +4,7 @@
 #include <EEPROM.h>
 #include "utils.h"
 #include "AlexButton.h"
+#include "AlexEncoder.h"
 #include <InterpolationLib.h>
 
 // #define SHUTTER_TESTER_DEBUG
@@ -378,7 +379,7 @@ ISR(TIMER2_A)
 
 void setup()
 {
-	// Serial.begin(115200);
+	Serial.begin(115200);
 
 	#ifdef SHUTTER_TESTER_DEBUG
 	Serial.begin(115200);
@@ -451,6 +452,8 @@ void setup()
 	//don't react while showing startup screen
 	Timer2.setFrequency(USER_INPUT_POLLING_FREQ_HZ);
 	Timer2.enableISR(CHANNEL_A);
+
+	AlexEncoder::init(2, 3);
 }
 
 // long counter = 0;
@@ -1051,20 +1054,4 @@ void loop()
 	}
 }
 
-// const byte bufSize = 60;
-// byte buf[bufSize];
 
-/* 				for (uint8_t i = 0; i < 255; i++)
-				{
-					Serial.println(adcBuf[i]);
-					// Serial.print(", ");
-					// Serial.println();
-				}
-
-				delay(50);
- */
-
-// char res[CHAR_BUF_SIZE];
-
-// sprintf(res, "%d", sensor0Readings);
-// display.drawStr(57, SCREEN_TOP_MARGIN_PX, res);
