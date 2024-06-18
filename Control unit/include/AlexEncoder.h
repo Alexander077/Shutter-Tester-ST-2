@@ -49,10 +49,10 @@ void AlexEncoder::updateEncoder()
       AlexEncoder::currentDir = true;
     }
 
-    Serial.print("Direction: ");
-    Serial.print(AlexEncoder::currentDir);
-    Serial.print(" | Counter: ");
-    Serial.println(AlexEncoder::counter);
+    // Serial.print("Direction: ");
+    // Serial.print(AlexEncoder::currentDir);
+    // Serial.print(" | Counter: ");
+    // Serial.println(AlexEncoder::counter);
   }
 
   // Remember last CLK state

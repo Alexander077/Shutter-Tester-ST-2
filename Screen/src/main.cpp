@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include <U8g2lib.h>
 #include "credits.h"
 
 #define TFT_CS 5     
@@ -7,8 +8,39 @@
 #define TFT_DC 12    
 // #define TFT_MOSI 10 
 // #define TFT_SCK 8   
-// #define TFT_MISO -1 
+// #define TFT_MISO -1
 
+#define DISPLAY_I2C_ADDRESS 4
+
+#define MAIN_MENU_ITEMS_COUNT 4
+
+enum class MainMenuItems
+{
+  MEASURE,
+  CHECK_LIGHT,
+  MEASURMENT_HISTORY,
+  CREDITS,
+};
+
+struct Rect
+{
+  uint16_t x;
+  uint16_t y;
+  uint16_t width;
+  uint16_t height;
+};
+
+const char *MainMenuItemsStr[] =
+    {
+        "Measure",
+        "Check Light",
+        "View Last Measures",
+        "Credits"};
+
+const char *GetMenuItemName(MainMenuItems menuItem)
+{
+  return MainMenuItemsStr[(uint8_t)menuItem];
+}
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -21,38 +53,84 @@ Arduino_GFX *gfx = new Arduino_ST7735(
     0 /* col offset 2 */, 0 /* row offset 2 */,
     false /* BGR */);
 
-String s = "";
+char inputCmdStr[100] = "m:1\0";
 
-// function that executes whenever data is received from master
-// this function is registered as an event, see setup()
+void substring(const char *source, char *destination, int start, int length)
+{
+  strncpy(destination, source + start, length);
+  destination[length] = '\0'; 
+}
+
 void receiveEvent(int howMany)
 {
-  s.clear();
+  inputCmdStr[0] = '\0';
 
-  while (1 < Wire.available()) // loop through all but the last
+  while (Wire.available()) // loop through all but the last
   {
     char c = Wire.read(); // receive byte as a character
-    s.concat(c);
-    // Serial.print(c);      // print the character
+    char tmpBuf[2] = "\0";
+    tmpBuf[0] = c;
+    strcat(inputCmdStr, tmpBuf);
   }
-  int x = Wire.read(); // receive byte as an integer
-  // Serial.println(x);   // print the integer
 }
+
+Rect getStringRect(const char *str)
+{
+  // Variables to hold the bounding box dimensions
+  int16_t x1, y1;
+  uint16_t w, h;
+
+  // Get the bounds of the text
+  gfx->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
+
+  Rect r;
+  r.x = x1;
+  r.y = y1;
+  r.width = w;
+  r.height = h;
+  return r;
+}
+
+Rect drawStringCentered(const char *str, uint16_t y)
+{
+  // // Variables to hold the bounding box dimensions
+  // int16_t x1, y1;
+  // uint16_t w, h;
+
+  // // Get the bounds of the text
+  // gfx->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
+  Rect r = getStringRect(str);
+
+  // Calculate the position to center the text on the screen
+  int16_t x = (gfx->width() - r.width) / 2;
+  // int16_t y = (gfx->height() - h) / 2;
+
+  // Draw the text at the calculated position
+  gfx->setCursor(x, y);
+  gfx->print(str);
+
+  // Optional: Draw the bounding box around the text for visualization
+  gfx->drawRect(x, y, r.width, r.height, RED);
+  return r;
+}
+
+
 
 void setup(void)
 {
-  Wire.begin(4);                // join i2c bus with address #4
+  Serial.begin(115200);
+
+  Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
   Wire.onReceive(receiveEvent); // register event
 
   gfx->begin();
   gfx->fillScreen(BLACK);
 
   gfx->setTextColor(WHITE);
-  gfx->setTextSize(1, 1, 5);
+  gfx->setFont(u8g2_font_6x13_tf);
+  gfx->setTextSize(1);
 
- 
-
-  // gfx->setCursor(10, 30);
+   // gfx->setCursor(10, 30);
   // gfx->println("+ ILI9488 SPI TFT");
 
   // gfx->setCursor(10, 50);
@@ -94,11 +172,61 @@ void setup(void)
 
 void loop()
 {
-  gfx->setCursor(10, 10);
-  gfx->fillScreen(BLACK);
-  // gfx->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
-  gfx->println(s);
-  delay(500);
+  char prevMode = '\0';
+
+  while (true)
+  {
+    // gfx->setCursor(10, 110);
+    // gfx->println(inputCmdStr);
+    Serial.println(inputCmdStr); // print the character
+
+    switch (inputCmdStr[0])
+    {
+      case 'm':
+      {
+        static Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
+
+        if (prevMode != inputCmdStr[0])
+        {
+          gfx->fillScreen(BLACK);
+
+          for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 13)
+          {
+            menuItemsRects[i] = drawStringCentered(GetMenuItemName((MainMenuItems)i), y);
+          }
+          prevMode = inputCmdStr[0];
+        }
+
+        static int8_t selectedMenuItemIndex = 0;
+        char selectedMenuItemIndexStrBuf[5] = "\0\0\0\0";
+        substring(inputCmdStr, selectedMenuItemIndexStrBuf, 2, 3);
+        sscanf(selectedMenuItemIndexStrBuf, "%d", &selectedMenuItemIndex);
+        static int8_t prevSelectedMenuItemIndex = -1;
+
+        if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+        {
+          // Serial.println(selectedMenuItemIndex);
+          prevSelectedMenuItemIndex = selectedMenuItemIndex;
+          gfx->setCursor(10, 10);
+          gfx->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
+          // gfx->print(selectedMenuItemIndex);
+          // gfx->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+        }
+        
+        break;
+      }
+      
+      default:
+        break;
+    }
+  }
+  
+
+  // gfx->setCursor(10, 10);
+  // gfx->fillScreen(BLACK);
+  // // gfx->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+  // gfx->println(inputCmdStr);
+  // delay(50);
 
   // gfx->setTextColor(WHITE);
   // gfx->setTextSize(2, 2, 2);

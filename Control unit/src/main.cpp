@@ -1,16 +1,17 @@
 #include <Arduino.h>
 #include <GyverTimers.h>
-#include <U8g2lib.h>
+// #include <U8g2lib.h>
 #include <EEPROM.h>
 #include "utils.h"
 #include "AlexButton.h"
 #include "AlexEncoder.h"
+#include "DisplayManager.h"
 #include <InterpolationLib.h>
 
 // #define SHUTTER_TESTER_DEBUG
 
-#define BUTTON_PIN 3
-#define TEST_PIN 4
+#define BUTTON_PIN 4
+#define TEST_PIN 5
 #define SHUTTER_OPEN_LEVEL 70
 #define SHUTTER_CLOSED_LEVEL 70
 #define BUTTON_DEBOUNCE_TIME_MS 100
@@ -41,6 +42,16 @@ enum class AppState
 	// FAST_MEASURED
 };
 
+#define MAIN_MENU_ITEMS_COUNT 4
+
+enum class MainMenuItems
+{
+	MEASURE,
+	CHECK_LIGHT,
+	MEASURMENT_HISTORY,
+	CREDITS,
+};
+
 enum class ADCPrescaler
 {
 	ADC_PRESCALER_128 = 128,
@@ -69,12 +80,13 @@ bool appModeChanged = false;
 // U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C display(U8G2_R0 /* , 5, 6 */);
 // U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI(rotation, cs, dc [, reset]) [page buffer, size = 128 bytes]
 
-U8G2_SSD1306_128X64_NONAME_1_HW_I2C display(U8G2_R0 /* , 5, 6 */);
+// U8G2_SSD1306_128X64_NONAME_1_HW_I2C display(U8G2_R0 /* , 5, 6 */);
 // U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI display(U8G2_R0, 8, 9, 10);
 
 AppState appState = AppState::START;
 // Button key(BUTTON_PIN, INPUT_PULLUP);
 AlexButton button(BUTTON_PIN);
+DisplayManager displayManager;
 // ButtonState buttonState = RELEASED;
 // bool buttonReleased = false;
 // bool testBitState = false;
@@ -119,11 +131,11 @@ const double timeCorrectionVals[INTRPOLATION_POINTS_CPUNT] = {120, 70, 35, -30, 
 
 #define startADCconversion() (ADCSRA |= (1 << ADSC));
 
-void drawStringHCentered(const char *strToDraw, byte y)
-{
-	byte width = display.getStrWidth(strToDraw);
-	display.drawStr(SCREEN_WIDTH / 2.0 - width / 2.0, y, strToDraw);
-}
+// void drawStringHCentered(const char *strToDraw, byte y)
+// {
+// 	byte width = display.getStrWidth(strToDraw);
+// 	display.drawStr(SCREEN_WIDTH / 2.0 - width / 2.0, y, strToDraw);
+// }
 
 void setADCprescaler(ADCPrescaler prescaler)
 {
@@ -377,6 +389,15 @@ ISR(TIMER2_A)
 	button.tick();
 }
 
+void drawMainMenu()
+{
+	while (!button.isClicked())
+	{
+		uint16_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
+		displayManager.drawMainMenu(curMenuItem);
+	}
+}
+
 void setup()
 {
 	Serial.begin(115200);
@@ -401,43 +422,44 @@ void setup()
 	enableADCinterrupt();
 	startADCconversion(); // start first ADC conversion
 
-	display.begin();
-	display.setFont(u8g2_font_6x13_tf /*  u8g2_font_ncenB14_tr */);
+	// display.begin();
+	// display.setFont(u8g2_font_6x13_tf /*  u8g2_font_ncenB14_tr */);
 
 	// pinMode(buttonPin, INPUT_PULLUP);
 	pinMode(TEST_PIN, OUTPUT);
 
 	bool isVersionTextVisible = button.isDown();
 
-	display.firstPage();
-	do
-	{
-		char buf[CHAR_BUF_SIZE];
-		drawStringHCentered("Shutter Tester", SCREEN_TOP_MARGIN_PX + (isVersionTextVisible ? 0 : 10));
-		drawStringHCentered("ST-1", SCREEN_TOP_MARGIN_PX + (isVersionTextVisible ? 13 : 30));
+	// display.firstPage();
+	// do
+	// {
+	// 	char buf[CHAR_BUF_SIZE];
+	// 	drawStringHCentered("Shutter Tester", SCREEN_TOP_MARGIN_PX + (isVersionTextVisible ? 0 : 10));
+	// 	drawStringHCentered("ST-1", SCREEN_TOP_MARGIN_PX + (isVersionTextVisible ? 13 : 30));
 
-		if (isVersionTextVisible)
-		{
-			String line = String("HW ver: ") + HW_VERSION;
-			line.toCharArray(buf, CHAR_BUF_SIZE);
+	// 	if (isVersionTextVisible)
+	// 	{
+	// 		String line = String("HW ver: ") + HW_VERSION;
+	// 		line.toCharArray(buf, CHAR_BUF_SIZE);
 
-			drawStringHCentered(buf, SCREEN_TOP_MARGIN_PX + 30);
-			line = String("SW ver: ") + SW_VERSION;
-			line.toCharArray(buf, CHAR_BUF_SIZE);
-			drawStringHCentered(buf, SCREEN_TOP_MARGIN_PX + 43);
-		}
+	// 		drawStringHCentered(buf, SCREEN_TOP_MARGIN_PX + 30);
+	// 		line = String("SW ver: ") + SW_VERSION;
+	// 		line.toCharArray(buf, CHAR_BUF_SIZE);
+	// 		drawStringHCentered(buf, SCREEN_TOP_MARGIN_PX + 43);
+	// 	}
 
-		// display.drawBox(1, 1, 128, 64);
-		// delay(5000);
-	} while (display.nextPage());
+	// 	// display.drawBox(1, 1, 128, 64);
+	// 	// delay(5000);
+	// } while (display.nextPage());
 
-	delay(SPLASH_SCREEN_VISIBLE_TIME_MS);
+
+	// delay(SPLASH_SCREEN_VISIBLE_TIME_MS);
 
 	// wait for user to release the button
 	while (button.isDown()){} 
 	
 	// display.clearBuffer();
-	display.clear();
+	// display.clear();
 	// display.clearDisplay();
 
 	// Serial.println("Setup done");
@@ -454,26 +476,29 @@ void setup()
 	Timer2.enableISR(CHANNEL_A);
 
 	AlexEncoder::init(2, 3);
+	displayManager.Init();
 }
 
 // long counter = 0;
 
 void loop()
 {
+	drawMainMenu();
+
 	switch (appState)
 	{
 		case AppState::START:
 		{
 			if (!appModeChanged)
 			{
-				display.firstPage();
-				do
-				{
-					drawStringHCentered("Press the button", SCREEN_TOP_MARGIN_PX);
-					drawStringHCentered("to start measuring", SCREEN_TOP_MARGIN_PX + 13);
-					drawStringHCentered("Long press the button", SCREEN_TOP_MARGIN_PX + 30);
-					drawStringHCentered("to check sensors", SCREEN_TOP_MARGIN_PX + 43);
-				} while (display.nextPage());
+				// display.firstPage();
+				// do
+				// {
+				// 	drawStringHCentered("Press the button", SCREEN_TOP_MARGIN_PX);
+				// 	drawStringHCentered("to start measuring", SCREEN_TOP_MARGIN_PX + 13);
+				// 	drawStringHCentered("Long press the button", SCREEN_TOP_MARGIN_PX + 30);
+				// 	drawStringHCentered("to check sensors", SCREEN_TOP_MARGIN_PX + 43);
+				// } while (display.nextPage());
 
 				appModeChanged = true;
 			}
@@ -484,14 +509,14 @@ void loop()
 		{
 			if (!appModeChanged)
 			{
-				display.firstPage();
-				do
-				{
-					drawStringHCentered("--- MEASURING ---", SCREEN_TOP_MARGIN_PX);
-					drawStringHCentered("Release camera", SCREEN_TOP_MARGIN_PX + 18);
-					drawStringHCentered("shutter", SCREEN_TOP_MARGIN_PX + 30);
-					drawStringHCentered("button - cancel", SCREEN_TOP_MARGIN_PX + 45);
-				} while (display.nextPage());
+				// display.firstPage();
+				// do
+				// {
+				// 	drawStringHCentered("--- MEASURING ---", SCREEN_TOP_MARGIN_PX);
+				// 	drawStringHCentered("Release camera", SCREEN_TOP_MARGIN_PX + 18);
+				// 	drawStringHCentered("shutter", SCREEN_TOP_MARGIN_PX + 30);
+				// 	drawStringHCentered("button - cancel", SCREEN_TOP_MARGIN_PX + 45);
+				// } while (display.nextPage());
 
 				appModeChanged = true;
 				setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
@@ -620,26 +645,26 @@ void loop()
 
 				char res[CHAR_BUF_SIZE];
 
-				display.firstPage();
-				do
-				{
-					pinResTitleStr.toCharArray(res, CHAR_BUF_SIZE);
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(res);
-					Serial.print(": ");
-					#endif
-					drawStringHCentered(res, SCREEN_TOP_MARGIN_PX);
-					pinResStrTime1.toCharArray(res, CHAR_BUF_SIZE);
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(res);
-					Serial.print(", max: ");
-					Serial.println(pinMaxSignalValue);
-					#endif
-					drawStringHCentered(res, SCREEN_TOP_MARGIN_PX + 15);
-					pinResStrTime2.toCharArray(res, CHAR_BUF_SIZE);
-					drawStringHCentered(res, SCREEN_TOP_MARGIN_PX + 30);
-					drawStringHCentered("button - next", SCREEN_TOP_MARGIN_PX + 45);
-				} while (display.nextPage());
+				// display.firstPage();
+				// do
+				// {
+				// 	pinResTitleStr.toCharArray(res, CHAR_BUF_SIZE);
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(res);
+				// 	Serial.print(": ");
+				// 	#endif
+				// 	drawStringHCentered(res, SCREEN_TOP_MARGIN_PX);
+				// 	pinResStrTime1.toCharArray(res, CHAR_BUF_SIZE);
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(res);
+				// 	Serial.print(", max: ");
+				// 	Serial.println(pinMaxSignalValue);
+				// 	#endif
+				// 	drawStringHCentered(res, SCREEN_TOP_MARGIN_PX + 15);
+				// 	pinResStrTime2.toCharArray(res, CHAR_BUF_SIZE);
+				// 	drawStringHCentered(res, SCREEN_TOP_MARGIN_PX + 30);
+				// 	drawStringHCentered("button - next", SCREEN_TOP_MARGIN_PX + 45);
+				// } while (display.nextPage());
 
 				appModeChanged = true;
 			}
@@ -707,116 +732,116 @@ void loop()
 		{
 			if (sensorCheckCounter == SENSOR_CHECK_COUNTER_SCREEN_UPDATE_VALUE);
 			{
-				display.firstPage();
-				do
-				{
-					display.drawStr(2, SCREEN_TOP_MARGIN_PX, "Sensor 1: ");
+				// display.firstPage();
+				// do
+				// {
+				// 	display.drawStr(2, SCREEN_TOP_MARGIN_PX, "Sensor 1: ");
 
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print("Sensor 1: ");
-					#endif
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print("Sensor 1: ");
+				// 	#endif
 
-					if (sensor0Max < MIN_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX, "Too dim");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too dim");
-						#endif
-					}
-					else if (sensor0Max > MAX_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX, "Too bright");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too bright");
-						#endif
-					}
-					else
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX, "OK");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("OK");
-						#endif
-					}
+				// 	if (sensor0Max < MIN_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX, "Too dim");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too dim");
+				// 		#endif
+				// 	}
+				// 	else if (sensor0Max > MAX_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX, "Too bright");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too bright");
+				// 		#endif
+				// 	}
+				// 	else
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX, "OK");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("OK");
+				// 		#endif
+				// 	}
 
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(" (");
-					Serial.print(sensor0Readings);
-					Serial.print(")");
-					#endif
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(" (");
+				// 	Serial.print(sensor0Readings);
+				// 	Serial.print(")");
+				// 	#endif
 
-					display.drawStr(2, SCREEN_TOP_MARGIN_PX + 15, "Sensor 2: ");
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(", Sensor 2: ");
-					#endif
+				// 	display.drawStr(2, SCREEN_TOP_MARGIN_PX + 15, "Sensor 2: ");
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(", Sensor 2: ");
+				// 	#endif
 
-					if (sensor1Max < MIN_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "Too dim");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too dim");
-						#endif
-					}
-					else if (sensor1Max > MAX_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "Too bright");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too bright");
-						#endif
-					}
-					else
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "OK");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("OK");
-						#endif
-					}
+				// 	if (sensor1Max < MIN_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "Too dim");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too dim");
+				// 		#endif
+				// 	}
+				// 	else if (sensor1Max > MAX_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "Too bright");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too bright");
+				// 		#endif
+				// 	}
+				// 	else
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 15, "OK");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("OK");
+				// 		#endif
+				// 	}
 
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(" (");
-					Serial.print(sensor1Readings);
-					Serial.print(")");
-					#endif
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(" (");
+				// 	Serial.print(sensor1Readings);
+				// 	Serial.print(")");
+				// 	#endif
 
-					display.drawStr(2, SCREEN_TOP_MARGIN_PX + 30, "Sensor 3: ");
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(", Sensor 3: ");
-					#endif
+				// 	display.drawStr(2, SCREEN_TOP_MARGIN_PX + 30, "Sensor 3: ");
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(", Sensor 3: ");
+				// 	#endif
 
-					if (sensor2Max < MIN_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "Too dim");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too dim");
-						#endif
-					}
-					else if (sensor2Max > MAX_SIGNAL_LEVEL)
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "Too bright");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("Too bright");
-						#endif
-					}
-					else
-					{
-						display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "OK");
-						#ifdef SHUTTER_TESTER_DEBUG
-						Serial.print("OK");
-						#endif
-					}
+				// 	if (sensor2Max < MIN_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "Too dim");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too dim");
+				// 		#endif
+				// 	}
+				// 	else if (sensor2Max > MAX_SIGNAL_LEVEL)
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "Too bright");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("Too bright");
+				// 		#endif
+				// 	}
+				// 	else
+				// 	{
+				// 		display.drawStr(57, SCREEN_TOP_MARGIN_PX + 30, "OK");
+				// 		#ifdef SHUTTER_TESTER_DEBUG
+				// 		Serial.print("OK");
+				// 		#endif
+				// 	}
 
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.print(" (");
-					Serial.print(sensor2Readings);
-					Serial.print(")");
-					#endif
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.print(" (");
+				// 	Serial.print(sensor2Readings);
+				// 	Serial.print(")");
+				// 	#endif
 
-					#ifdef SHUTTER_TESTER_DEBUG
-					Serial.println();
-					#endif
+				// 	#ifdef SHUTTER_TESTER_DEBUG
+				// 	Serial.println();
+				// 	#endif
 
-					display.drawStr(30, SCREEN_TOP_MARGIN_PX + 45, "button - next");
+				// 	display.drawStr(30, SCREEN_TOP_MARGIN_PX + 45, "button - next");
 
-				} while (display.nextPage());
+				// } while (display.nextPage());
 
 				sensor0Max = 0;
 				sensor1Max = 0;
@@ -843,71 +868,71 @@ void loop()
 				// static byte prevPwmCheckCounter = pwmCheckCounter;
 				// Serial.println(pwmCheckCounter);
 
-				display.firstPage();
+				// display.firstPage();
 
-				do
-				{
-					drawStringHCentered("Light quality:", SCREEN_TOP_MARGIN_PX);
-					#define SECOND_ROW_Y 15
+				// do
+				// {
+				// 	drawStringHCentered("Light quality:", SCREEN_TOP_MARGIN_PX);
+				// 	#define SECOND_ROW_Y 15
 
-					float signalLevel = 0;
+				// 	float signalLevel = 0;
 
-					if (sensor1Max > MIN_SIGNAL_LEVEL)
-					{
-						signalLevel = ((float)(sensor1Max - MIN_SIGNAL_LEVEL)) /
-								((float)(MAX_SIGNAL_LEVEL - MIN_SIGNAL_LEVEL)) * 100.0;
+				// 	if (sensor1Max > MIN_SIGNAL_LEVEL)
+				// 	{
+				// 		signalLevel = ((float)(sensor1Max - MIN_SIGNAL_LEVEL)) /
+				// 				((float)(MAX_SIGNAL_LEVEL - MIN_SIGNAL_LEVEL)) * 100.0;
 
-						if (signalLevel > 100)
-						{
-							signalLevel = 100;
-						}
-					}
+				// 		if (signalLevel > 100)
+				// 		{
+				// 			signalLevel = 100;
+				// 		}
+				// 	}
 
-					char res[CHAR_BUF_SIZE];
-					String signalLevelStr = String(signalLevel, 0);
-					signalLevelStr.toCharArray(res, CHAR_BUF_SIZE);
+				// 	char res[CHAR_BUF_SIZE];
+				// 	String signalLevelStr = String(signalLevel, 0);
+				// 	signalLevelStr.toCharArray(res, CHAR_BUF_SIZE);
 
-					if (sensor1Max >= MIN_SIGNAL_LEVEL/*  && sensor1Max <= MAX_SIGNAL_LEVEL */)
-					{
-						// if (abs(pwmCheckCounter - prevPwmCheckCounter) > 3)
-						// {
-						// 	drawStringHCentered("Bad light", SCREEN_TOP_MARGIN_PX + 20);
-						// }
-						// else
-						// {
-						// 	drawStringHCentered("OK", SCREEN_TOP_MARGIN_PX + 20);
-						// }
+				// 	if (sensor1Max >= MIN_SIGNAL_LEVEL/*  && sensor1Max <= MAX_SIGNAL_LEVEL */)
+				// 	{
+				// 		// if (abs(pwmCheckCounter - prevPwmCheckCounter) > 3)
+				// 		// {
+				// 		// 	drawStringHCentered("Bad light", SCREEN_TOP_MARGIN_PX + 20);
+				// 		// }
+				// 		// else
+				// 		// {
+				// 		// 	drawStringHCentered("OK", SCREEN_TOP_MARGIN_PX + 20);
+				// 		// }
 
-						if (!isLightQualGood)
-						{
-							drawStringHCentered("Bad light", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
-						}
-						else
-						{
-							drawStringHCentered("OK", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
-						}
+				// 		if (!isLightQualGood)
+				// 		{
+				// 			drawStringHCentered("Bad light", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
+				// 		}
+				// 		else
+				// 		{
+				// 			drawStringHCentered("OK", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
+				// 		}
 
-					}
-					else
-					{
-						if (sensor1Max < MIN_SIGNAL_LEVEL)
-						{
-							drawStringHCentered("Light is too dim", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
-						}
+				// 	}
+				// 	else
+				// 	{
+				// 		if (sensor1Max < MIN_SIGNAL_LEVEL)
+				// 		{
+				// 			drawStringHCentered("Light is too dim", SCREEN_TOP_MARGIN_PX + SECOND_ROW_Y);
+				// 		}
 
-						// if (sensor1Max > MAX_SIGNAL_LEVEL)
-						// {
-						// 	drawStringHCentered("Light is too bright", SCREEN_TOP_MARGIN_PX + 20);
-						// }
-					}
+				// 		// if (sensor1Max > MAX_SIGNAL_LEVEL)
+				// 		// {
+				// 		// 	drawStringHCentered("Light is too bright", SCREEN_TOP_MARGIN_PX + 20);
+				// 		// }
+				// 	}
 
 
-					display.drawStr(15, SCREEN_TOP_MARGIN_PX + 30, "Signal level:");
-					display.drawStr(97, SCREEN_TOP_MARGIN_PX + 30, res);
+				// 	display.drawStr(15, SCREEN_TOP_MARGIN_PX + 30, "Signal level:");
+				// 	display.drawStr(97, SCREEN_TOP_MARGIN_PX + 30, res);
 
-					drawStringHCentered("button - main screen", SCREEN_TOP_MARGIN_PX + 45);
+				// 	drawStringHCentered("button - main screen", SCREEN_TOP_MARGIN_PX + 45);
 
-				} while (display.nextPage());
+				// } while (display.nextPage());
 
 				// prevPwmCheckCounter = pwmCheckCounter;
 				isLightQualGood = true;
@@ -1053,5 +1078,3 @@ void loop()
 		pinResultIndex = 0;
 	}
 }
-
-
