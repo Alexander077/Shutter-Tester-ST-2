@@ -37,7 +37,7 @@ const char *MainMenuItemsStr[] =
         "View Last Measures",
         "Credits"};
 
-const char *GetMenuItemName(MainMenuItems menuItem)
+const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
   return MainMenuItemsStr[(uint8_t)menuItem];
 }
@@ -46,7 +46,7 @@ const char *GetMenuItemName(MainMenuItems menuItem)
 Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
 
 /* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
-Arduino_GFX *gfx = new Arduino_ST7735(
+Arduino_GFX *display = new Arduino_ST7735(
     bus, TFT_RESET, 3 /* rotation */, false /* IPS */,
     128 /* width */, 160 /* height */,
     0 /* col offset 1 */, 0 /* row offset 1 */,
@@ -81,7 +81,7 @@ Rect getStringRect(const char *str)
   uint16_t w, h;
 
   // Get the bounds of the text
-  gfx->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
+  display->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
 
   Rect r;
   r.x = x1;
@@ -98,20 +98,28 @@ Rect drawStringCentered(const char *str, uint16_t y)
   // uint16_t w, h;
 
   // // Get the bounds of the text
-  // gfx->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
+  // display->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
   Rect r = getStringRect(str);
 
   // Calculate the position to center the text on the screen
-  int16_t x = (gfx->width() - r.width) / 2;
-  // int16_t y = (gfx->height() - h) / 2;
+  int16_t x = (display->width() - r.width) / 2;
+  // int16_t y = (display->height() - h) / 2;
 
   // Draw the text at the calculated position
-  gfx->setCursor(x, y);
-  gfx->print(str);
+  display->setCursor(x, y);
+  display->print(str);
 
   // Optional: Draw the bounding box around the text for visualization
-  gfx->drawRect(x, y, r.width, r.height, RED);
+  // display->drawRect(x, y, r.width, r.height, RED);
   return r;
+}
+
+Rect drawStringCentered(String str, uint16_t y)
+{
+  #define CHAR_BUF_SIZE 50
+  char buf[CHAR_BUF_SIZE];
+  str.toCharArray(buf, CHAR_BUF_SIZE );
+  return drawStringCentered(buf, y);
 }
 
 
@@ -123,32 +131,32 @@ void setup(void)
   Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
   Wire.onReceive(receiveEvent); // register event
 
-  gfx->begin();
-  gfx->fillScreen(BLACK);
+  display->begin();
+  display->fillScreen(BLACK);
 
-  gfx->setTextColor(WHITE);
-  gfx->setFont(u8g2_font_6x13_tf);
-  gfx->setTextSize(1);
+  display->setTextColor(WHITE);
+  display->setFont(u8g2_font_6x13_tf);
+  display->setTextSize(1);
 
-   // gfx->setCursor(10, 30);
-  // gfx->println("+ ILI9488 SPI TFT");
+   // display->setCursor(10, 30);
+  // display->println("+ ILI9488 SPI TFT");
 
-  // gfx->setCursor(10, 50);
-  // gfx->println("using Arduino_GFX Library");
+  // display->setCursor(10, 50);
+  // display->println("using Arduino_GFX Library");
 
-  // int w = gfx->width();
-  // int h = gfx->height();
+  // int w = display->width();
+  // int h = display->height();
 
-  // gfx->setCursor(10, 70);
-  // gfx->printf("%i x %d", w, h);
-  // gfx->drawRect(0, 0, w, h, WHITE);
+  // display->setCursor(10, 70);
+  // display->printf("%i x %d", w, h);
+  // display->drawRect(0, 0, w, h, WHITE);
 
   // delay(3000);
 
   // for (int i = 0; i < w; i++)
   // {
   //   int d = (int)(255 * i / w);
-  //   gfx->drawLine(i, 0, i, h, RGB565(d, 0, 0));
+  //   display->drawLine(i, 0, i, h, RGB565(d, 0, 0));
   //   // delay(10);
   // }
   // delay(3000);
@@ -156,7 +164,7 @@ void setup(void)
   // for (int i = 0; i < w; i++)
   // {
   //   int d = (int)(255 * i / w);
-  //   gfx->drawLine(w - i, 0, w - i, h, RGB565(0, d, 0));
+  //   display->drawLine(w - i, 0, w - i, h, RGB565(0, d, 0));
   //   // delay(10);
   // }
   // delay(3000);
@@ -164,7 +172,7 @@ void setup(void)
   // for (int i = 0; i < w; i++)
   // {
   //   int d = (int)(255 * i / w);
-  //   gfx->drawLine(i, 0, i, h, RGB565(0, 0, d));
+  //   display->drawLine(i, 0, i, h, RGB565(0, 0, d));
   //   // delay(10);
   // }
   // delay(3000);
@@ -176,9 +184,7 @@ void loop()
 
   while (true)
   {
-    // gfx->setCursor(10, 110);
-    // gfx->println(inputCmdStr);
-    Serial.println(inputCmdStr); // print the character
+    // Serial.println(inputCmdStr); // print the character
 
     switch (inputCmdStr[0])
     {
@@ -188,11 +194,11 @@ void loop()
 
         if (prevMode != inputCmdStr[0])
         {
-          gfx->fillScreen(BLACK);
+          display->fillScreen(BLACK);
 
           for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 13)
           {
-            menuItemsRects[i] = drawStringCentered(GetMenuItemName((MainMenuItems)i), y);
+            menuItemsRects[i] = drawStringCentered(GetMenuItemTitle((MainMenuItems)i), y);
           }
           prevMode = inputCmdStr[0];
         }
@@ -201,16 +207,41 @@ void loop()
         char selectedMenuItemIndexStrBuf[5] = "\0\0\0\0";
         substring(inputCmdStr, selectedMenuItemIndexStrBuf, 2, 3);
         sscanf(selectedMenuItemIndexStrBuf, "%d", &selectedMenuItemIndex);
+        // Serial.println(selectedMenuItemIndex);
         static int8_t prevSelectedMenuItemIndex = -1;
 
         if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
         {
+          Serial.print(prevSelectedMenuItemIndex);
+          Serial.print(":");
+          Serial.println(selectedMenuItemIndex);
+        }
+
+
+        if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+        {
           // Serial.println(selectedMenuItemIndex);
+
+          // Serial.println(selectedMenuItemIndex);
+
+          if (prevSelectedMenuItemIndex != -1)
+          {
+            Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
+            display->fillRect(rOld.x, rOld.y - rOld.height, rOld.width, rOld.height, BLACK);
+          }
+
+          String newSelMenuItem = ">" + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + "<";
+          Rect rNew = menuItemsRects[selectedMenuItemIndex];
+          Serial.println(rNew.y);
+          display->fillRect(rNew.x, rNew.y - rNew.height, rNew.width, rNew.height, BLACK);
+
+          menuItemsRects[selectedMenuItemIndex] = drawStringCentered(newSelMenuItem, rNew.y);
           prevSelectedMenuItemIndex = selectedMenuItemIndex;
-          gfx->setCursor(10, 10);
-          gfx->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
-          // gfx->print(selectedMenuItemIndex);
-          // gfx->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+          // Serial.println(newSelMenuItem);
+          // display->setCursor(10, 10);
+          // display->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
+          // display->print(selectedMenuItemIndex);
+          // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
         }
         
         break;
@@ -222,27 +253,27 @@ void loop()
   }
   
 
-  // gfx->setCursor(10, 10);
-  // gfx->fillScreen(BLACK);
-  // // gfx->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
-  // gfx->println(inputCmdStr);
+  // display->setCursor(10, 10);
+  // display->fillScreen(BLACK);
+  // // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+  // display->println(inputCmdStr);
   // delay(50);
 
-  // gfx->setTextColor(WHITE);
-  // gfx->setTextSize(2, 2, 2);
+  // display->setTextColor(WHITE);
+  // display->setTextSize(2, 2, 2);
 
-  // gfx->fillScreen(RED);
-  // gfx->setCursor(100, 100);
-  // gfx->printf("RED");
+  // display->fillScreen(RED);
+  // display->setCursor(100, 100);
+  // display->printf("RED");
   // delay(2000);
 
-  // gfx->fillScreen(GREEN);
-  // gfx->setCursor(100, 100);
-  // gfx->printf("GREEN");
+  // display->fillScreen(GREEN);
+  // display->setCursor(100, 100);
+  // display->printf("GREEN");
   // delay(2000);
 
-  // gfx->fillScreen(BLUE);
-  // gfx->setCursor(100, 100);
-  // gfx->printf("BLUE");
+  // display->fillScreen(BLUE);
+  // display->setCursor(100, 100);
+  // display->printf("BLUE");
   // delay(2000);
 }
