@@ -2,6 +2,7 @@
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 #include "credits.h"
+#include "utils.h"
 
 #define TFT_CS 5     
 #define TFT_RESET 13 
@@ -24,10 +25,10 @@ enum class MainMenuItems
 
 struct Rect
 {
-  uint16_t x;
-  uint16_t y;
-  uint16_t width;
-  uint16_t height;
+  int16_t x;
+  int16_t y;
+  int16_t width;
+  int16_t height;
 };
 
 const char *MainMenuItemsStr[] =
@@ -53,35 +54,33 @@ Arduino_GFX *display = new Arduino_ST7735(
     0 /* col offset 2 */, 0 /* row offset 2 */,
     false /* BGR */);
 
-char inputCmdStr[100] = "m:1\0";
+String inputCmdStr = "m:1";
 
-void substring(const char *source, char *destination, int start, int length)
-{
-  strncpy(destination, source + start, length);
-  destination[length] = '\0'; 
-}
 
 void receiveEvent(int howMany)
 {
-  inputCmdStr[0] = '\0';
+  char inputCmdStrBuf[100];
+  inputCmdStrBuf[0] = '\0';
 
-  while (Wire.available()) // loop through all but the last
+  while (Wire.available()) 
   {
     char c = Wire.read(); // receive byte as a character
     char tmpBuf[2] = "\0";
     tmpBuf[0] = c;
-    strcat(inputCmdStr, tmpBuf);
+    strcat(inputCmdStrBuf, tmpBuf);
   }
+
+  inputCmdStr = String(inputCmdStrBuf);
 }
 
-Rect getStringRect(const char *str)
+Rect getStringRect(const char *str, int16_t x, int16_t y)
 {
   // Variables to hold the bounding box dimensions
   int16_t x1, y1;
   uint16_t w, h;
 
   // Get the bounds of the text
-  display->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
+  display->getTextBounds(str, x, y, &x1, &y1, &w, &h);
 
   Rect r;
   r.x = x1;
@@ -97,20 +96,28 @@ Rect drawStringCentered(const char *str, uint16_t y)
   // int16_t x1, y1;
   // uint16_t w, h;
 
-  // // Get the bounds of the text
-  // display->getTextBounds(str, 0, 0, &x1, &y1, &w, &h);
-  Rect r = getStringRect(str);
+  Rect r = getStringRect(str, 0, y);
+  // Serial.println(r.y);
 
   // Calculate the position to center the text on the screen
   int16_t x = (display->width() - r.width) / 2;
   // int16_t y = (display->height() - h) / 2;
+  r.x = x;
 
   // Draw the text at the calculated position
   display->setCursor(x, y);
   display->print(str);
 
+  // Serial.print(r.x);
+  // Serial.print("|");
+  // Serial.print(r.y);
+  // Serial.print("|");
+  // Serial.print(r.width);
+  // Serial.print("|");
+  // Serial.println(r.height);
+
   // Optional: Draw the bounding box around the text for visualization
-  // display->drawRect(x, y, r.width, r.height, RED);
+  // display->drawRect(x, y - r.height, r.width, r.height, RED);
   return r;
 }
 
@@ -181,6 +188,8 @@ void setup(void)
 void loop()
 {
   char prevMode = '\0';
+  Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
+  int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
 
   while (true)
   {
@@ -190,25 +199,27 @@ void loop()
     {
       case 'm':
       {
-        static Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
 
         if (prevMode != inputCmdStr[0])
         {
           display->fillScreen(BLACK);
 
-          for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 13)
+          for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
           {
             menuItemsRects[i] = drawStringCentered(GetMenuItemTitle((MainMenuItems)i), y);
+            menuItemsY[i] = y;
           }
           prevMode = inputCmdStr[0];
         }
 
         static int8_t selectedMenuItemIndex = 0;
-        char selectedMenuItemIndexStrBuf[5] = "\0\0\0\0";
-        substring(inputCmdStr, selectedMenuItemIndexStrBuf, 2, 3);
-        sscanf(selectedMenuItemIndexStrBuf, "%d", &selectedMenuItemIndex);
-        // Serial.println(selectedMenuItemIndex);
         static int8_t prevSelectedMenuItemIndex = -1;
+        String selIndex = inputCmdStr.substring(2);
+        selectedMenuItemIndex = selIndex.toInt();
+        // char selectedMenuItemIndexStrBuf[5] = "\0\0\0\0";
+        // substring(inputCmdStr, selectedMenuItemIndexStrBuf, 2, 3);
+        // sscanf(selectedMenuItemIndexStrBuf, "%d", &selectedMenuItemIndex);
+        // Serial.println(selectedMenuItemIndex);
 
         if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
         {
@@ -221,21 +232,26 @@ void loop()
         if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
         {
           // Serial.println(selectedMenuItemIndex);
+          // Serial.print(prevSelectedMenuItemIndex);
+          // Serial.print(":");
+          // Serial.println(selectedMenuItemIndex);
 
           // Serial.println(selectedMenuItemIndex);
 
           if (prevSelectedMenuItemIndex != -1)
           {
             Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
-            display->fillRect(rOld.x, rOld.y - rOld.height, rOld.width, rOld.height, BLACK);
+            display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
+            menuItemsRects[prevSelectedMenuItemIndex] =
+                drawStringCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
           }
 
-          String newSelMenuItem = ">" + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + "<";
+          String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + " <-";
           Rect rNew = menuItemsRects[selectedMenuItemIndex];
-          Serial.println(rNew.y);
-          display->fillRect(rNew.x, rNew.y - rNew.height, rNew.width, rNew.height, BLACK);
+          // Serial.println(rNew.y);
+          display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
 
-          menuItemsRects[selectedMenuItemIndex] = drawStringCentered(newSelMenuItem, rNew.y);
+          menuItemsRects[selectedMenuItemIndex] = drawStringCentered(newSelMenuItem, menuItemsY[selectedMenuItemIndex]);
           prevSelectedMenuItemIndex = selectedMenuItemIndex;
           // Serial.println(newSelMenuItem);
           // display->setCursor(10, 10);
