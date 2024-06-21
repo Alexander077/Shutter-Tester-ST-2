@@ -23,6 +23,14 @@ enum class MainMenuItems
   CREDITS,
 };
 
+enum class Screens
+{
+  MAIN_MENU = 'm',
+  MEASURING = 'n',
+  MEASURED = 'd',
+  CREDITS = 'c',
+};
+
 struct Rect
 {
   int16_t x;
@@ -55,7 +63,8 @@ Arduino_GFX *display = new Arduino_ST7735(
     false /* BGR */);
 
 String inputCmdStr = "m:1";
-
+char curScreen = '\0';
+char prevMode = '\0';
 
 void receiveEvent(int howMany)
 {
@@ -90,7 +99,7 @@ Rect getStringRect(const char *str, int16_t x, int16_t y)
   return r;
 }
 
-Rect drawStringCentered(const char *str, uint16_t y)
+Rect drawStringHCentered(const char *str, uint16_t y)
 {
   // // Variables to hold the bounding box dimensions
   // int16_t x1, y1;
@@ -121,15 +130,124 @@ Rect drawStringCentered(const char *str, uint16_t y)
   return r;
 }
 
-Rect drawStringCentered(String str, uint16_t y)
+Rect drawStringHCentered(String str, uint16_t y)
 {
   #define CHAR_BUF_SIZE 50
   char buf[CHAR_BUF_SIZE];
   str.toCharArray(buf, CHAR_BUF_SIZE );
-  return drawStringCentered(buf, y);
+  return drawStringHCentered(buf, y);
 }
 
+char getCurScreen()
+{
+  return inputCmdStr[0];
+}
 
+void drawMainMenu()
+{
+  Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
+  int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
+
+  // if (prevMode != inputCmdStr[0])
+  // {
+    display->fillScreen(BLACK);
+
+    for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
+    {
+      menuItemsRects[i] = drawStringHCentered(GetMenuItemTitle((MainMenuItems)i), y);
+      menuItemsY[i] = y;
+    }
+    // prevMode = inputCmdStr[0];
+  // }
+
+  int8_t selectedMenuItemIndex = 0;
+  int8_t prevSelectedMenuItemIndex = -1;
+
+  while ((Screens)getCurScreen() == Screens::MAIN_MENU)
+  {
+    String selIndex = inputCmdStr.substring(2);
+    selectedMenuItemIndex = selIndex.toInt();
+
+    // if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+    // {
+    //   Serial.print(prevSelectedMenuItemIndex);
+    //   Serial.print(":");
+    //   Serial.println(selectedMenuItemIndex);
+    // }
+
+    if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+    {
+      // Serial.println(selectedMenuItemIndex);
+      // Serial.print(prevSelectedMenuItemIndex);
+      // Serial.print(":");
+      // Serial.println(selectedMenuItemIndex);
+
+      // Serial.println(selectedMenuItemIndex);
+
+      if (prevSelectedMenuItemIndex != -1)
+      {
+        Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
+        display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
+        menuItemsRects[prevSelectedMenuItemIndex] =
+            drawStringHCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
+      }
+
+      String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + " <-";
+      Rect rNew = menuItemsRects[selectedMenuItemIndex];
+      // Serial.println(rNew.y);
+      display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
+
+      menuItemsRects[selectedMenuItemIndex] = drawStringHCentered(newSelMenuItem, menuItemsY[selectedMenuItemIndex]);
+      prevSelectedMenuItemIndex = selectedMenuItemIndex;
+      // Serial.println(newSelMenuItem);
+      // display->setCursor(10, 10);
+      // display->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
+      // display->print(selectedMenuItemIndex);
+      // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+    }
+  }
+}
+
+void drawCreditsScreen()
+{
+  display->fillScreen(BLACK);
+
+  while ((Screens)getCurScreen() == Screens::CREDITS)
+  {
+    // display->setFont();
+    display->setCursor(0, 13);
+    display->print(Credits::CREDITS_HEADER);
+  }
+}
+
+void drawMeasuringScreen()
+{
+  display->fillScreen(BLACK);
+
+  while ((Screens)getCurScreen() == Screens::MEASURING)
+  {
+    // display->setFont();
+    display->setTextSize(2);
+    drawStringHCentered("MEASURING", 40);
+    display->setTextSize(1);
+    drawStringHCentered("Release camera shutter", 60);
+    // display->setCursor(0, 13);
+  }
+}
+
+void drawMeasuredScreen()
+{
+  display->fillScreen(BLACK);
+
+  while ((Screens)getCurScreen() == Screens::MEASURED)
+  {
+    // display->setFont();
+    display->setTextSize(2);
+    drawStringHCentered("MEASURING", 40);
+    display->setTextSize(1);
+    // display->setCursor(0, 13);
+  }
+}
 
 void setup(void)
 {
@@ -143,153 +261,42 @@ void setup(void)
 
   display->setTextColor(WHITE);
   display->setFont(u8g2_font_6x13_tf);
-  display->setTextSize(1);
-
-   // display->setCursor(10, 30);
-  // display->println("+ ILI9488 SPI TFT");
-
-  // display->setCursor(10, 50);
-  // display->println("using Arduino_GFX Library");
-
-  // int w = display->width();
-  // int h = display->height();
-
-  // display->setCursor(10, 70);
-  // display->printf("%i x %d", w, h);
-  // display->drawRect(0, 0, w, h, WHITE);
-
-  // delay(3000);
-
-  // for (int i = 0; i < w; i++)
-  // {
-  //   int d = (int)(255 * i / w);
-  //   display->drawLine(i, 0, i, h, RGB565(d, 0, 0));
-  //   // delay(10);
-  // }
-  // delay(3000);
-
-  // for (int i = 0; i < w; i++)
-  // {
-  //   int d = (int)(255 * i / w);
-  //   display->drawLine(w - i, 0, w - i, h, RGB565(0, d, 0));
-  //   // delay(10);
-  // }
-  // delay(3000);
-
-  // for (int i = 0; i < w; i++)
-  // {
-  //   int d = (int)(255 * i / w);
-  //   display->drawLine(i, 0, i, h, RGB565(0, 0, d));
-  //   // delay(10);
-  // }
-  // delay(3000);
+  // display->setTextSize(1,1,10);
 }
 
 void loop()
 {
-  char prevMode = '\0';
-  Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
-  int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
 
   while (true)
   {
+    curScreen = getCurScreen();
     // Serial.println(inputCmdStr); // print the character
 
-    switch (inputCmdStr[0])
+    switch ((Screens)curScreen)
     {
-      case 'm':
+      case Screens::MAIN_MENU:
       {
-
-        if (prevMode != inputCmdStr[0])
-        {
-          display->fillScreen(BLACK);
-
-          for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
-          {
-            menuItemsRects[i] = drawStringCentered(GetMenuItemTitle((MainMenuItems)i), y);
-            menuItemsY[i] = y;
-          }
-          prevMode = inputCmdStr[0];
-        }
-
-        static int8_t selectedMenuItemIndex = 0;
-        static int8_t prevSelectedMenuItemIndex = -1;
-        String selIndex = inputCmdStr.substring(2);
-        selectedMenuItemIndex = selIndex.toInt();
-        // char selectedMenuItemIndexStrBuf[5] = "\0\0\0\0";
-        // substring(inputCmdStr, selectedMenuItemIndexStrBuf, 2, 3);
-        // sscanf(selectedMenuItemIndexStrBuf, "%d", &selectedMenuItemIndex);
-        // Serial.println(selectedMenuItemIndex);
-
-        if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
-        {
-          Serial.print(prevSelectedMenuItemIndex);
-          Serial.print(":");
-          Serial.println(selectedMenuItemIndex);
-        }
-
-
-        if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
-        {
-          // Serial.println(selectedMenuItemIndex);
-          // Serial.print(prevSelectedMenuItemIndex);
-          // Serial.print(":");
-          // Serial.println(selectedMenuItemIndex);
-
-          // Serial.println(selectedMenuItemIndex);
-
-          if (prevSelectedMenuItemIndex != -1)
-          {
-            Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
-            display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
-            menuItemsRects[prevSelectedMenuItemIndex] =
-                drawStringCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
-          }
-
-          String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + " <-";
-          Rect rNew = menuItemsRects[selectedMenuItemIndex];
-          // Serial.println(rNew.y);
-          display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
-
-          menuItemsRects[selectedMenuItemIndex] = drawStringCentered(newSelMenuItem, menuItemsY[selectedMenuItemIndex]);
-          prevSelectedMenuItemIndex = selectedMenuItemIndex;
-          // Serial.println(newSelMenuItem);
-          // display->setCursor(10, 10);
-          // display->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
-          // display->print(selectedMenuItemIndex);
-          // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
-        }
-        
+        drawMainMenu();
         break;
       }
-      
+      case Screens::MEASURING:
+      {
+        drawMeasuringScreen();
+        break;
+      }
+      case Screens::MEASURED:
+      {
+        drawMeasuredScreen();
+        break;
+      }
+      case Screens::CREDITS:
+      {
+        drawCreditsScreen();
+        break;
+      }
+
       default:
         break;
     }
   }
-  
-
-  // display->setCursor(10, 10);
-  // display->fillScreen(BLACK);
-  // // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
-  // display->println(inputCmdStr);
-  // delay(50);
-
-  // display->setTextColor(WHITE);
-  // display->setTextSize(2, 2, 2);
-
-  // display->fillScreen(RED);
-  // display->setCursor(100, 100);
-  // display->printf("RED");
-  // delay(2000);
-
-  // display->fillScreen(GREEN);
-  // display->setCursor(100, 100);
-  // display->printf("GREEN");
-  // delay(2000);
-
-  // display->fillScreen(BLUE);
-  // display->setCursor(100, 100);
-  // display->printf("BLUE");
-  // delay(2000);
 }

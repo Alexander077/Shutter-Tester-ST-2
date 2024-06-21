@@ -7,22 +7,22 @@ class AlexEncoder
 private:
   static uint8_t _pinA;
   static uint8_t _pinB;
-  static int currentStateA;
-  static int lastStateA;
+  static uint8_t currentStateA;
+  static uint8_t lastStateA;
 
   static void updateEncoder();
 
 public:
   static bool currentDir;
-  static int counter;
+  static int16_t counter;
   static void init(uint8_t, uint8_t);
 };
 
 uint8_t  AlexEncoder::_pinA = 0;
 uint8_t  AlexEncoder::_pinB = 0;
-int  AlexEncoder::counter = 0;
-int  AlexEncoder::currentStateA = 0;
-int  AlexEncoder::lastStateA = 0;
+int16_t  AlexEncoder::counter = 0;
+uint8_t AlexEncoder::currentStateA = 0;
+uint8_t AlexEncoder::lastStateA = 0;
 bool  AlexEncoder::currentDir = true;
 
 void AlexEncoder::updateEncoder()

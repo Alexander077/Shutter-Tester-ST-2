@@ -31,9 +31,9 @@
 #define HW_VERSION "1.0"
 #define SW_VERSION "1.0"
 
-enum class AppState
+enum class AdcISRFlow
 {
-	START,
+	NONE,
 	MEASURING,
 	MEASURED,
 	SENSOR_READINGS_CHECK,
@@ -52,16 +52,6 @@ enum class MainMenuItems
 	CREDITS,
 };
 
-enum class ADCPrescaler
-{
-	ADC_PRESCALER_128 = 128,
-	ADC_PRESCALER_64 = 64,
-	ADC_PRESCALER_32 = 32,
-	ADC_PRESCALER_16 = 16,
-	ADC_PRESCALER_8 = 8,
-	ADC_PRESCALER_4 = 4,
-	ADC_PRESCALER_2 = 2
-};
 
 unsigned long numSamples = 0;
 unsigned long t, t0;
@@ -76,20 +66,11 @@ byte val = 0;
 // volatile int pin1val = -1;
 // volatile int pin2val = -1;
 bool appModeChanged = false;
-// U8G2_SSD1306_128X64_ALT0_F_HW_I2C display(U8G2_R0 /* , 5, 6 */);
-// U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C display(U8G2_R0 /* , 5, 6 */);
-// U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI(rotation, cs, dc [, reset]) [page buffer, size = 128 bytes]
 
-// U8G2_SSD1306_128X64_NONAME_1_HW_I2C display(U8G2_R0 /* , 5, 6 */);
-// U8G2_SSD1306_128X64_NONAME_1_4W_HW_SPI display(U8G2_R0, 8, 9, 10);
-
-AppState appState = AppState::START;
-// Button key(BUTTON_PIN, INPUT_PULLUP);
+AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 AlexButton button(BUTTON_PIN);
 DisplayManager displayManager;
-// ButtonState buttonState = RELEASED;
-// bool buttonReleased = false;
-// bool testBitState = false;
+
 byte curADCpinNumber = 0;
 // bool skipAdcInterrupt = true;
 volatile byte sensor0Readings = 0;
@@ -115,95 +96,14 @@ uint16_t sensorCheckCounter = 0;
 const double adcVals[INTRPOLATION_POINTS_CPUNT] = {96, 112, 130, 160, 193, 235, 250};
 const double timeCorrectionVals[INTRPOLATION_POINTS_CPUNT] = {120, 70, 35, -30, -70, -90, -110};
 
-/* void enableADCinterrupt()
-{
-	setBit(ADCSRA, ADIE);
-} */
-
-#define enableADCinterrupt() (setBit(ADCSRA, ADIE))
-
-/* void disableADCinterrupt()
-{
-	clearBit(ADCSRA, ADIE);
-} */
-
-#define disableADCinterrupt() (clearBit(ADCSRA, ADIE))
-
-#define startADCconversion() (ADCSRA |= (1 << ADSC));
-
-// void drawStringHCentered(const char *strToDraw, byte y)
-// {
-// 	byte width = display.getStrWidth(strToDraw);
-// 	display.drawStr(SCREEN_WIDTH / 2.0 - width / 2.0, y, strToDraw);
-// }
-
-void setADCprescaler(ADCPrescaler prescaler)
-{
-	// sampling rate is [ADC clock] / [prescaler] / [conversion clock cycles]
-	// for Arduino Uno ADC clock is 16 MHz and a conversion takes 13 clock cycles
-	switch (prescaler)
-	{
-	case ADCPrescaler::ADC_PRESCALER_2: // 2 prescaler for 615,2 KHz sampling rate
-		setBit(ADCSRA, ADPS0);
-		clearBit(ADCSRA, ADPS1);
-		clearBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_4: // 4 prescaler for 307,6 KHz  sampling rate
-		clearBit(ADCSRA, ADPS0);
-		setBit(ADCSRA, ADPS1);
-		clearBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_8: // 8 prescaler for 153.8 KHz  sampling rate
-		setBit(ADCSRA, ADPS0);
-		setBit(ADCSRA, ADPS1);
-		clearBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_16: // 16 prescaler for 76.9 KHz  sampling rate
-		clearBit(ADCSRA, ADPS0);
-		clearBit(ADCSRA, ADPS1);
-		setBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_32: // 32 prescaler for 38.5 KHz  sampling rate
-		setBit(ADCSRA, ADPS0);
-		clearBit(ADCSRA, ADPS1);
-		setBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_64: // 64 prescaler for 19.25 KHz  sampling rate
-		clearBit(ADCSRA, ADPS0);
-		setBit(ADCSRA, ADPS1);
-		setBit(ADCSRA, ADPS2);
-		break;
-	case ADCPrescaler::ADC_PRESCALER_128: // 128 prescaler for 9,625 KHz sampling rate
-		setBit(ADCSRA, ADPS0);
-		setBit(ADCSRA, ADPS1);
-		setBit(ADCSRA, ADPS2);
-		break;
-	default:
-		break;
-	}
-}
-
-void setADCautoTriggerEnabled(bool isEnabled)
-{
-	if (isEnabled)
-	{
-		setBit(ADCSRA, ADATE);
-	}
-	else
-	{
-		clearBit(ADCSRA, ADATE);
-	}
-}
-
-#define setADCInputPin(adcPinIndex) (ADMUX = (ADMUX & 0b11110000) | (adcPinIndex))
 
 ISR(ADC_vect)
 {
 	val = ADCH; // read 8 bit value from ADC
 
-	switch (appState)
+	switch (adcISRFlow)
 	{
-		case AppState::MEASURING:
+		case AdcISRFlow::MEASURING:
 		{
 			static byte measuredADCpinNum = 0;
 			measuredADCpinNum = curADCpinNumber;
@@ -274,9 +174,10 @@ ISR(ADC_vect)
 			}
 
 			digitalWriteFast(TEST_PIN, !digitalReadFast(TEST_PIN));
+			startADCconversion();
 			break;
 		}
-		case AppState::SENSOR_READINGS_CHECK:
+		case AdcISRFlow::SENSOR_READINGS_CHECK:
 		{
 			static byte measuredADCpinNum = 0;
 			measuredADCpinNum = curADCpinNumber;
@@ -325,7 +226,7 @@ ISR(ADC_vect)
 
 			break;
 		}
-		case AppState::PWM_LIGHT_CHECK:
+		case AdcISRFlow::PWM_LIGHT_CHECK:
 		{
 			if (val > sensor1Max)
 			{
@@ -377,9 +278,9 @@ ISR(ADC_vect)
 			break;
 	}
 
-	digitalWriteFast(TEST_PIN, !digitalReadFast(TEST_PIN));
+	// digitalWriteFast(TEST_PIN, !digitalReadFast(TEST_PIN));
 
-	startADCconversion();
+	// startADCconversion();
 }
 
 ISR(TIMER2_A)
@@ -389,14 +290,103 @@ ISR(TIMER2_A)
 	button.tick();
 }
 
-void drawMainMenu()
+void drawMeasuringScreen()
 {
-	while (!button.isClicked())
+	pin0shutterOpenStartTime = -1;
+	pin0shutterOpenEndTime = -1;
+	pin1shutterOpenStartTime = -1;
+	pin1shutterOpenEndTime = -1;
+	pin2shutterOpenStartTime = -1;
+	pin2shutterOpenEndTime = -1;
+	sensor0Max = 0;
+	sensor1Max = 0;
+	sensor2Max = 0;
+
+	adcISRFlow = AdcISRFlow::MEASURING;
+	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+	startADCconversion(); // start first ADC conversion
+	displayManager.drawMeasuringScreen();
+
+	while (true)
 	{
-		uint16_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
-		displayManager.drawMainMenu(curMenuItem);
+		// int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
+
+		if (button.isClicked())
+		{
+			adcISRFlow = AdcISRFlow::NONE;
+			// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
+			return;
+		}
+		else if (adcISRFlow == AdcISRFlow::MEASURING &&
+				((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
+				 (pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1) ||
+				 (pin2shutterOpenStartTime != -1 && pin2shutterOpenEndTime != -1))) // Check if at least one sensor has data
+		{
+			delay(500); // wait for other sensors to get data
+			pinResultIndex = 0;
+			adcISRFlow = AdcISRFlow::MEASURED;
+			return;
+		}
 	}
 }
+
+void drawMeasuredScreen()
+{
+	displayManager.drawMeasuredScreen();
+
+	while (true)
+	{
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
+}
+
+void drawCreditsScreen()
+{
+	while (true)
+	{
+		int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
+		displayManager.drawCreditsScreen();
+
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
+}
+
+void drawMainMenu()
+{
+	while (true)
+	{
+		int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
+		displayManager.drawMainMenu(curMenuItem);
+
+		if (button.isClicked())
+		{
+			switch ((MainMenuItems)curMenuItem)
+			{
+				case MainMenuItems::MEASURE:
+				{
+					drawMeasuringScreen();
+					break;
+				}
+				case MainMenuItems::CREDITS:
+				{
+					drawCreditsScreen();
+					break;
+				}
+
+			default:
+				break;
+			}
+		}
+	}
+}
+
+
 
 void setup()
 {
@@ -415,12 +405,13 @@ void setup()
 	ADMUX |= (1 << REFS0); // set reference voltage
 	ADMUX |= (1 << ADLAR); // left align ADC value to 8 bits from ADCH register
 
-	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
+	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 
 	setADCautoTriggerEnabled(false);
 	ADCSRA |= (1 << ADEN); // enable ADC
 	enableADCinterrupt();
-	startADCconversion(); // start first ADC conversion
+	// startADCconversion(); // start first ADC conversion
 
 	// display.begin();
 	// display.setFont(u8g2_font_6x13_tf /*  u8g2_font_ncenB14_tr */);
@@ -485,9 +476,9 @@ void loop()
 {
 	drawMainMenu();
 
-	switch (appState)
+	switch (adcISRFlow)
 	{
-		case AppState::START:
+		case AdcISRFlow::NONE:
 		{
 			if (!appModeChanged)
 			{
@@ -505,7 +496,7 @@ void loop()
 
 			break;
 		}
-		case AppState::MEASURING:
+		case AdcISRFlow::MEASURING:
 		{
 			if (!appModeChanged)
 			{
@@ -524,7 +515,7 @@ void loop()
 
 			break;
 		}
-		/* case AppState::FAST_MEASURING:
+		/* case AdcISRFlow::FAST_MEASURING:
 		{
 			if (!appModeChanged)
 			{
@@ -545,7 +536,7 @@ void loop()
 
 			break;
 		} */
-		case AppState::MEASURED:
+		case AdcISRFlow::MEASURED:
 		{
 			if (!appModeChanged)
 			{
@@ -671,7 +662,7 @@ void loop()
 
 			break;
 		}
-		/* case AppState::FAST_MEASURED:
+		/* case AdcISRFlow::FAST_MEASURED:
 		{
 			if (!appModeChanged)
 			{
@@ -728,7 +719,7 @@ void loop()
 
 			break;
 		} */
-		case AppState::SENSOR_READINGS_CHECK:
+		case AdcISRFlow::SENSOR_READINGS_CHECK:
 		{
 			if (sensorCheckCounter == SENSOR_CHECK_COUNTER_SCREEN_UPDATE_VALUE);
 			{
@@ -851,7 +842,7 @@ void loop()
 			}
 				break;
 		}
-		case AppState::PWM_LIGHT_CHECK:
+		case AdcISRFlow::PWM_LIGHT_CHECK:
 		{
 			if (!appModeChanged)
 			{
@@ -959,31 +950,31 @@ void loop()
 
 	if (button.isClicked())
 	{
-		switch (appState)
+		switch (adcISRFlow)
 		{
-			case AppState::START:
+			case AdcISRFlow::NONE:
 			{
 				appModeChanged = false;
-				appState = AppState::MEASURING;
+				adcISRFlow = AdcISRFlow::MEASURING;
 				break;
 			}
-			case AppState::MEASURING:
+			case AdcISRFlow::MEASURING:
 			{
 				setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
-				appState = AppState::START;
+				adcISRFlow = AdcISRFlow::NONE;
 				appModeChanged = false;
 				break;
 			}
-			// case AppState::FAST_MEASURING:
+			// case AdcISRFlow::FAST_MEASURING:
 			// {
 			// 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 			// 	setADCautoTriggerEnabled(false);
 			// 	startADCconversion();
-			// 	appState = AppState::START;
+			// 	adcISRFlow = AdcISRFlow::NONE;
 			// 	appModeChanged = false;
 			// 	break;
 			// }
-			case AppState::MEASURED:
+			case AdcISRFlow::MEASURED:
 			{
 				if (pinResultIndex > -1 && pinResultIndex < 2)
 				{
@@ -992,7 +983,7 @@ void loop()
 				}
 				else
 				{
-					appState = AppState::START;
+					adcISRFlow = AdcISRFlow::NONE;
 					appModeChanged = false;
 					setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 					pin0shutterOpenStartTime = -1;
@@ -1007,9 +998,9 @@ void loop()
 				}
 				break;
 			}
-			// case AppState::FAST_MEASURED:
+			// case AdcISRFlow::FAST_MEASURED:
 			// {
-			// 	appState = AppState::START;
+			// 	adcISRFlow = AdcISRFlow::NONE;
 			// 	appModeChanged = false;
 			// 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 			// 	pin1shutterOpenStartTime = -1;
@@ -1021,19 +1012,19 @@ void loop()
 			// 	startADCconversion();
 			// 	break;
 			// }
-			case AppState::SENSOR_READINGS_CHECK:
+			case AdcISRFlow::SENSOR_READINGS_CHECK:
 			{
 				disableADCinterrupt();
-				appState = AppState::PWM_LIGHT_CHECK;
+				adcISRFlow = AdcISRFlow::PWM_LIGHT_CHECK;
 				appModeChanged = false;
 				break;
 			}
-			case AppState::PWM_LIGHT_CHECK:
+			case AdcISRFlow::PWM_LIGHT_CHECK:
 			{
 				setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 				setADCautoTriggerEnabled(false);
 				delay(50);
-				appState = AppState::START;
+				adcISRFlow = AdcISRFlow::NONE;
 				appModeChanged = false;
 				startADCconversion();
 				break;
@@ -1045,18 +1036,18 @@ void loop()
 
 	if (button.isHolded())
 	{
-		switch (appState)
+		switch (adcISRFlow)
 		{
-			case AppState::START:
+			case AdcISRFlow::NONE:
 			{
-				appState = AppState::SENSOR_READINGS_CHECK;
+				adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
 				setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
 				// appModeChanged = false;
 				break;
 			}
-			// case AppState::MEASURING:
+			// case AdcISRFlow::MEASURING:
 			// {
-			// 	appState = AppState::FAST_MEASURING;
+			// 	adcISRFlow = AdcISRFlow::FAST_MEASURING;
 			// 	delay(50);// wait a bit so ADC interrupt will switch to new mode and it won't change new ADC pin setting
 			// 	setADCInputPin(2);
 			// 	appModeChanged = false;
@@ -1067,13 +1058,13 @@ void loop()
 		}
 	}
 
-	if (appState == AppState::MEASURING &&
+	if (adcISRFlow == AdcISRFlow::MEASURING &&
 		 ((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
 		 (pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1) ||
 		 (pin2shutterOpenStartTime != -1 && pin2shutterOpenEndTime != -1)))//Check if at least one sensor has data
 	{
 		delay(500);//wait for other sensors to get data
-		appState = AppState::MEASURED;
+		adcISRFlow = AdcISRFlow::MEASURED;
 		appModeChanged = false;
 		pinResultIndex = 0;
 	}
