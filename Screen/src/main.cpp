@@ -29,6 +29,7 @@ enum class Screens
   MEASURING = 'n',
   MEASURED = 'd',
   CREDITS = 'c',
+  TEST = 't',
 };
 
 struct Rect
@@ -242,9 +243,7 @@ void drawMeasuredScreen()
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
     // display->setFont();
-    display->setTextSize(2);
-    drawStringHCentered("MEASURING", 40);
-    display->setTextSize(1);
+    drawStringHCentered("Sensor 1 results", 20);
     // display->setCursor(0, 13);
   }
 }

@@ -4,7 +4,7 @@
 #include <EEPROM.h>
 #include "utils.h"
 #include "AlexButton.h"
-#include "AlexEncoder.h"
+#include "../../include/AlexEncoder.h"
 #include "DisplayManager.h"
 #include <InterpolationLib.h>
 
@@ -26,7 +26,10 @@
 #define MIN_SIGNAL_LEVEL 95
 #define MAX_SIGNAL_LEVEL 245
 
-#define VERTICAL_HOLE_DISTANCE_MM 8.416
+#define VERTICAL_HOLE_DISTANCE_MM 8.42
+#define HORISONTAL_HOLE_DISTANCE_MM 12.57
+
+#define MM_IN_M 1000
 
 #define HW_VERSION "1.0"
 #define SW_VERSION "1.0"
@@ -290,6 +293,58 @@ ISR(TIMER2_A)
 	button.tick();
 }
 
+
+void drawMeasuredScreen()
+{
+	/*
+		Shutter result screen
+			shutter time im us/ms (e.g. 1.55 ms)
+			shutter speed in fraction of a sec. (e.g. 1/750 sec)
+			Distance from closest shutter speeds in stops (1/2 stop from 1/500 and )
+			Distance from closest shutter speeds graphically
+			Slit size in mm (e.g. 1.5mm)
+
+		Total result screen
+			first curtain travel time
+			second curtain travel time
+			1 to 2 sensor first curtain speed in m/s
+			2 to 3 sensor first curtain speed in m/s
+			1 to 2 sensor second curtain speed in m/s
+			2 to 3 sensor second curtain speed in m/s
+
+			exposure unevannes text or graphical
+	 */
+
+	Serial.print(pin0shutterOpenStartTime);
+	Serial.print(":");
+	Serial.println(pin0shutterOpenEndTime);
+
+	Serial.print(pin1shutterOpenStartTime);
+	Serial.print(":");
+	Serial.println(pin1shutterOpenEndTime);
+
+	Serial.print(pin2shutterOpenStartTime);
+	Serial.print(":");
+	Serial.println(pin2shutterOpenEndTime);
+
+	double snsor0To1FirstCurtainSpeed = 1;
+	double firstCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
+	double firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor0toSensor1TravelTime;
+	double firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * 1000000.0;
+	double firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / 1000.0;
+	Serial.println(firstCurtainSpeedInMPerS);
+
+	displayManager.drawMeasuredScreen();
+
+	while (true)
+	{
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
+}
+
 void drawMeasuringScreen()
 {
 	pin0shutterOpenStartTime = -1;
@@ -318,26 +373,14 @@ void drawMeasuringScreen()
 			return;
 		}
 		else if (adcISRFlow == AdcISRFlow::MEASURING &&
-				((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
-				 (pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1) ||
-				 (pin2shutterOpenStartTime != -1 && pin2shutterOpenEndTime != -1))) // Check if at least one sensor has data
+						 ((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
+							(pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1) ||
+							(pin2shutterOpenStartTime != -1 && pin2shutterOpenEndTime != -1))) // Check if at least one sensor has data
 		{
 			delay(500); // wait for other sensors to get data
 			pinResultIndex = 0;
 			adcISRFlow = AdcISRFlow::MEASURED;
-			return;
-		}
-	}
-}
-
-void drawMeasuredScreen()
-{
-	displayManager.drawMeasuredScreen();
-
-	while (true)
-	{
-		if (button.isClicked())
-		{
+			drawMeasuredScreen();
 			return;
 		}
 	}
@@ -386,7 +429,18 @@ void drawMainMenu()
 	}
 }
 
+void sendRawEncoder()
+{
+	while (true)
+	{
+		displayManager.sendRawEncoder(AlexEncoder::counter);
 
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
+}
 
 void setup()
 {

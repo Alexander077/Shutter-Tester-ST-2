@@ -9,6 +9,7 @@ enum class Screens
   MEASURING = 'n',
   MEASURED = 'd',
   CREDITS = 'c',
+  TEST = 't',
 };
 
 class DisplayManager
@@ -18,6 +19,7 @@ private:
   char buf[20];
   void sendBuf()
   {
+    Serial.println(buf);
     Wire.beginTransmission(displayI2CAddress); // transmit to device #4
     Wire.write(buf);
     Wire.endTransmission(); // stop transmitting
@@ -36,7 +38,6 @@ public:
     char numBuf[10];
     snprintf(numBuf, sizeof(numBuf), "%d", activeModuItemIndex);
     strcat(buf, numBuf);
-    Serial.println(buf);
 
     sendBuf();
   }
@@ -49,7 +50,7 @@ public:
     char numBuf[10];
     // snprintf(numBuf, sizeof(numBuf), "%d", activeModuItemIndex);
     // strcat(buf, numBuf);
-    Serial.println(buf);
+    // Serial.println(buf);
 
     sendBuf();
   }
@@ -62,7 +63,7 @@ public:
     char numBuf[10];
     // snprintf(numBuf, sizeof(numBuf), "%d", activeModuItemIndex);
     // strcat(buf, numBuf);
-    Serial.println(buf);
+    // Serial.println(buf);
 
     sendBuf();
   }
@@ -75,7 +76,19 @@ public:
     char numBuf[10];
     // snprintf(numBuf, sizeof(numBuf), "%d", activeModuItemIndex);
     // strcat(buf, numBuf);
-    Serial.println(buf);
+    // Serial.println(buf);
+
+    sendBuf();
+  }
+
+  void sendRawEncoder(int16_t encoderVal)
+  {
+    buf[0] = '\0';
+    char bufScreenName[3] = {(char)Screens::TEST, ':', '\0'};
+    strcat(buf, bufScreenName);
+    char numBuf[10];
+    snprintf(numBuf, sizeof(numBuf), "%d", encoderVal);
+    strcat(buf, numBuf);
 
     sendBuf();
   }

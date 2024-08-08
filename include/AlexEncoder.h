@@ -70,7 +70,7 @@ void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
 
   AlexEncoder::lastStateA = digitalRead(AlexEncoder::_pinA);
 
-  attachInterrupt(0, AlexEncoder::updateEncoder, CHANGE);
-  attachInterrupt(1, AlexEncoder::updateEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinA), AlexEncoder::updateEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinB), AlexEncoder::updateEncoder, CHANGE);
 }
 
