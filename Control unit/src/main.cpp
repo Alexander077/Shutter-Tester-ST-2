@@ -30,6 +30,7 @@
 #define HORISONTAL_HOLE_DISTANCE_MM 12.57
 
 #define MM_IN_M 1000
+#define US_IN_SECOND 1000000
 
 #define HW_VERSION "1.0"
 #define SW_VERSION "1.0"
@@ -315,25 +316,60 @@ void drawMeasuredScreen()
 			exposure unevannes text or graphical
 	 */
 
-	Serial.print(pin0shutterOpenStartTime);
-	Serial.print(":");
-	Serial.println(pin0shutterOpenEndTime);
+		Serial.print(pin0shutterOpenStartTime);
+		Serial.print(":");
+		Serial.println(pin0shutterOpenEndTime);
 
-	Serial.print(pin1shutterOpenStartTime);
-	Serial.print(":");
-	Serial.println(pin1shutterOpenEndTime);
+		Serial.print(pin1shutterOpenStartTime);
+		Serial.print(":");
+		Serial.println(pin1shutterOpenEndTime);
 
-	Serial.print(pin2shutterOpenStartTime);
-	Serial.print(":");
-	Serial.println(pin2shutterOpenEndTime);
+		Serial.print(pin2shutterOpenStartTime);
+		Serial.print(":");
+		Serial.println(pin2shutterOpenEndTime);
 
-	double snsor0To1FirstCurtainSpeed = 1;
-	double firstCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
-	double firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor0toSensor1TravelTime;
-	double firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * 1000000.0;
-	double firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / 1000.0;
-	Serial.println(firstCurtainSpeedInMPerS);
+	bool horisontalShutterMovement = false;
 
+	if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && horisontalShutterMovement) // left to right curtans movement
+	{
+	}
+	else if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && !horisontalShutterMovement) // top to bottom curtans movement
+	{
+		double pinTimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
+
+
+		double firstCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
+		double firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor0toSensor1TravelTime;
+		double firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double) US_IN_SECOND;
+		double firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double) MM_IN_M;
+		Serial.println("Curtain 1 span A speed: " + String(firstCurtainSpeedInMPerS) + "m/s");
+
+		double 
+
+		double spanAslitSizeInMm = 
+
+
+		double firstCurtainSensor1toSensor2TravelTime = (double)(pin2shutterOpenStartTime - pin1shutterOpenStartTime);
+		firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime;
+		firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double)US_IN_SECOND;
+		firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
+		Serial.println("Curtain 1 span B speed: " + String(firstCurtainSpeedInMPerS) + "m/s");
+	}
+	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && horisontalShutterMovement) // right to left curtans movement
+	{
+		/* code */
+	}
+	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && !horisontalShutterMovement) // bottom to top curtans movement
+	{
+		/* code */
+	}
+	else
+	{
+		// unknown curtans movement dirction, probably a leaf shutter
+	}
+	
+
+	
 	displayManager.drawMeasuredScreen();
 
 	while (true)

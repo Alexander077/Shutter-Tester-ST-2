@@ -19,7 +19,7 @@ private:
   char buf[20];
   void sendBuf()
   {
-    Serial.println(buf);
+    // Serial.println(buf);
     Wire.beginTransmission(displayI2CAddress); // transmit to device #4
     Wire.write(buf);
     Wire.endTransmission(); // stop transmitting
