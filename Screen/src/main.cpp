@@ -4,16 +4,16 @@
 #include "credits.h"
 #include "utils.h"
 
-#define TFT_CS 5     
-#define TFT_RESET 13 
-#define TFT_DC 12    
-// #define TFT_MOSI 10 
-// #define TFT_SCK 8   
-// #define TFT_MISO -1
+#define DISPLAY_CS 18
+#define DISPLAY_RESET 16
+#define DISPLAY_DC 21
 
 #define DISPLAY_I2C_ADDRESS 4
 
 #define MAIN_MENU_ITEMS_COUNT 4
+
+#define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
+#define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 
 enum class MainMenuItems
 {
@@ -27,7 +27,7 @@ enum class Screens
 {
   MAIN_MENU = 'm',
   MEASURING = 'n',
-  MEASURED = 'd',
+  MEASURED = 'r',
   CREDITS = 'c',
   TEST = 't',
 };
@@ -47,17 +47,44 @@ const char *MainMenuItemsStr[] =
         "View Last Measures",
         "Credits"};
 
+#define SENSOR_RESULT_GRAPH_IMAGE_WIDTH 151
+#define SENSOR_RESULT_GRAPH_IMAGE_HEIGHT 12
+const uint8_t SensorResultGraphImagBits[] = {
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x38, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7c, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+    0xff, 0xff, 0xff, 0x7f, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x7c, 0x0e,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x38, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x10, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x04, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x10, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x04, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x10, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10};
+
+#define SHUTTR_SPEEDS_COUNT 14
+const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
+
 const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
   return MainMenuItemsStr[(uint8_t)menuItem];
 }
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
-Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
+// Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
+Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, DISPLAY_CS, SCK, MOSI);
 
 /* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
 Arduino_GFX *display = new Arduino_ST7735(
-    bus, TFT_RESET, 3 /* rotation */, false /* IPS */,
+    bus, DISPLAY_RESET, 3 /* rotation */, false /* IPS */,
     128 /* width */, 160 /* height */,
     0 /* col offset 1 */, 0 /* row offset 1 */,
     0 /* col offset 2 */, 0 /* row offset 2 */,
@@ -149,17 +176,13 @@ void drawMainMenu()
   Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
   int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
 
-  // if (prevMode != inputCmdStr[0])
-  // {
-    display->fillScreen(BLACK);
+  display->fillScreen(BLACK);
 
-    for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
-    {
-      menuItemsRects[i] = drawStringHCentered(GetMenuItemTitle((MainMenuItems)i), y);
-      menuItemsY[i] = y;
-    }
-    // prevMode = inputCmdStr[0];
-  // }
+  for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
+  {
+    menuItemsRects[i] = drawStringHCentered(GetMenuItemTitle((MainMenuItems)i), y);
+    menuItemsY[i] = y;
+  }
 
   int8_t selectedMenuItemIndex = 0;
   int8_t prevSelectedMenuItemIndex = -1;
@@ -236,15 +259,76 @@ void drawMeasuringScreen()
   }
 }
 
+void drawNavBar(int8_t activePageIndex)
+{
+  int16_t navBarLeftMargin = 40;
+  display->drawLine(navBarLeftMargin, 120, 120, 120, WHITE);
+
+  for (int8_t i = 0, margin = 0; i < 5; i++, margin += 20)
+  {
+    display->fillCircle(navBarLeftMargin + margin, 120, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
+  }
+}
+
 void drawMeasuredScreen()
 {
-  display->fillScreen(BLACK);
+  int8_t prevPageIndex = -1;
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
-    // display->setFont();
-    drawStringHCentered("Sensor 1 results", 20);
-    // display->setCursor(0, 13);
+    int8_t resultPageIndex = inputCmdStr.substring(2, 3).toInt();
+    double resultPageParam = inputCmdStr.substring(4).toDouble();
+
+    if (resultPageIndex >= 0 && resultPageIndex <= 2 && prevPageIndex != resultPageIndex)
+    {
+      display->fillScreen(BLACK);
+      // display->fillRect(0,0, display->width(), 115,BLACK);
+
+      double sensorTime = resultPageParam;
+      drawStringHCentered("Sensor " + String(resultPageIndex + 1) + " summary", 15);
+      display->setCursor(5, 35);
+      display->printf("Time: %.2f ms", sensorTime);
+      display->setCursor(5, 50);
+      double shutterSpeed = 1000.0 / sensorTime;
+      String speedLabel = "Speed: ";
+      String speedLabelValue = "1/" + String(shutterSpeed, 1) + " s";
+      display->print(speedLabel + speedLabelValue);
+      uint16_t speedA = -1;
+      uint16_t speedB = -1;
+
+      for (size_t i = 0; i < SHUTTR_SPEEDS_COUNT; i++)
+      {
+        if (shutterSpeeds[i] <= shutterSpeed)
+        {
+          speedA = shutterSpeeds[i - 1];
+          speedB = shutterSpeeds[i];
+          break;
+        }
+      }
+
+      display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
+      display->setCursor(5, 105);
+      display->printf("1/%d", speedA);
+      String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
+      Rect speedBRect = getStringRect(speedBstr.c_str(), 0, 0);
+      display->setCursor(160 - speedBRect.width - 5, 105);
+      display->printf(speedBstr.c_str());
+
+      double resultPercents = (sensorTime / (1000.0 / speedA)) - 1;
+      double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
+
+      int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
+      int16_t circleY = 83;
+      display->fillCircle(circleX, circleY, 3, GREEN);
+
+      Rect speedLabelRect = getStringRect(speedLabelValue.c_str(), 0, 0);
+      display->drawLine(circleX, circleY, 5 + speedLabelRect.width + 40, 52, GREEN);
+      display->drawLine(5 + speedLabelRect.width + 40, 52, 45, 52, GREEN);
+
+      prevPageIndex = resultPageIndex;
+
+      drawNavBar(resultPageIndex);
+    }
   }
 }
 
