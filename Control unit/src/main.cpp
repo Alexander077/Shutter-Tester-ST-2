@@ -26,7 +26,8 @@
 #define MIN_SIGNAL_LEVEL 95
 #define MAX_SIGNAL_LEVEL 245
 
-#define VERTICAL_HOLE_DISTANCE_MM 8.05
+#define FRAME_WINDOW_HEIGHT_35MM_SYSTEM_MM 24
+#define VERTICAL_HOLE_DISTANCE_MM 8.1
 #define HORISONTAL_HOLE_DISTANCE_MM 12.57
 
 #define MM_IN_M 1000
@@ -318,6 +319,10 @@ void drawMeasuredScreen()
 			2 to 3 sensor first curtain speed in m/s
 			1 to 2 sensor second curtain speed in m/s
 			2 to 3 sensor second curtain speed in m/s
+			1-st curtain avg speed in m/s
+			2-st curtain avg speed in m/s
+			1-st curtain total travel time in ms
+			2-st curtain total travel time in ms
 
 			exposure unevannes text or graphical
 	 */
@@ -326,15 +331,57 @@ void drawMeasuredScreen()
 	Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
 	Serial.println(String("Sensor 2 timecodes: ") + pin2shutterOpenStartTime + "|" + pin2shutterOpenEndTime);
 
-	double sensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
-	double sensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
-	double sensor2TimeTaken = pin2shutterOpenEndTime - pin2shutterOpenStartTime;
-	double sensor0CorrctedTime = getCorrectedSensorValue(sensor0TimeTaken, sensor0Max);
-	double sensor1CorrctedTime = getCorrectedSensorValue(sensor1TimeTaken, sensor1Max);
-	double sensor2CorrctedTime = getCorrectedSensorValue(sensor2TimeTaken, sensor2Max);
-	Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrctedTime / 1000.0) + " ms");
-	Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrctedTime / 1000.0) + " ms");
-	Serial.println(String("Sensor 2 time taken: ") + (sensor2CorrctedTime / 1000.0) + " ms");
+	double rawSensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
+	double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
+	double rawSensor2TimeTaken = pin2shutterOpenEndTime - pin2shutterOpenStartTime;
+	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);
+	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max);
+	double sensor2CorrectedTime = getCorrectedSensorValue(rawSensor2TimeTaken, sensor2Max);
+	Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
+	Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
+	Serial.println(String("Sensor 2 time taken: ") + (sensor2CorrectedTime / 1000.0) + " ms");
+	// double sensor0Speed = 1 / (sensor0CorrectedTime / US_IN_SECOND);
+	// double sensor1Speed = 1 / (sensor1CorrectedTime / US_IN_SECOND);
+	// double sensor2Speed = 1 / (sensor2CorrectedTime / US_IN_SECOND);
+
+	sensor0CorrectedTime = 1.34;
+	sensor1CorrectedTime = 1.38;
+	sensor2CorrectedTime = 1.45;
+
+	int16_t startEncoderVal = AlexEncoder::counter;
+
+	while (true)
+	{
+		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+		Serial.println(resultPageIndex);
+
+		switch (resultPageIndex)
+		{
+			case 0:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor0CorrectedTime, 2));
+				break;
+			}
+			case 1:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor1CorrectedTime, 2));
+				break;
+			}
+			case 2:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor2CorrectedTime, 2));
+				break;
+			}
+			
+			default:
+				break;
+		}
+
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
 
 	// String pinResTitleStr = "Sensor " + String(pinResultIndex + 1);
 	// String pinResStrTime1 = "";
@@ -391,36 +438,55 @@ void drawMeasuredScreen()
 		double firstCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
 		double firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor0toSensor1TravelTime;
 		double firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double) US_IN_SECOND;
-		double firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double) MM_IN_M;
-		Serial.println("Curtain 1 span A speed: " + String(firstCurtainSpeedInMPerS) + " m/s");
-
-		double secondCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
-		double secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor0toSensor1TravelTime;
-		double secondCurtainSpeedInMmPerS = secondCurtainSpeedMmPerUs * (double)US_IN_SECOND;
-		double secondCurtainSpeedInMPerS = secondCurtainSpeedInMmPerS / (double)MM_IN_M;
-		Serial.println("Curtain 2 span A speed: " + String(secondCurtainSpeedInMPerS) + " m/s");
-
-		double spanASlitSizeInMmByFirstCurtain = firstCurtainSpeedMmPerUs * sensor1CorrctedTime;
-		Serial.println("Slit width at span A by 1-st curtain: " + String(spanASlitSizeInMmByFirstCurtain) + " mm");
-
-		double spanASlitSizeInMmBySecondCurtain = secondCurtainSpeedMmPerUs * sensor1CorrctedTime;
-		Serial.println("Slit width at span A by 2-nd curtain: " + String(spanASlitSizeInMmBySecondCurtain) + " mm");
+		double firstCurtainSpanASpeedInMPerS = firstCurtainSpeedInMmPerS / (double) MM_IN_M;
+		Serial.println("Curtain 1 span A speed: " + String(firstCurtainSpanASpeedInMPerS) + " m/s");
 
 		double firstCurtainSensor1toSensor2TravelTime = (double)(pin2shutterOpenStartTime - pin1shutterOpenStartTime);
 		firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime;
 		firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double)US_IN_SECOND;
-		firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
-		Serial.println("Curtain 1 span B speed: " + String(firstCurtainSpeedInMPerS) + " m/s");
+		double firstCurtainSpanBSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
+		Serial.println("Curtain 1 span B speed: " + String(firstCurtainSpanBSpeedInMPerS) + " m/s");
 
-		double secondCurtainSensor1toSensor2TravelTime = (double)(pin2shutterOpenEndTime - pin1shutterOpenEndTime);
-		secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime;
-		secondCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double)US_IN_SECOND;
-		secondCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
-		Serial.println("Curtain 2 span B speed: " + String(firstCurtainSpeedInMPerS) + " m/s");
+		double firstCurtainAvgSpeed = (firstCurtainSpanASpeedInMPerS + firstCurtainSpanBSpeedInMPerS) / 2.0;
+		Serial.println("Curtain 1 avg speed: " + String(firstCurtainAvgSpeed) + " m/s");
+
+		Serial.println("Curtain 1 total travel time: " + String(0.024 / (firstCurtainAvgSpeed / 1000.0)) + " ms");
+
+		// double secondCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
+		// double secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor0toSensor1TravelTime;
+		// double secondCurtainSpeedInMmPerS = secondCurtainSpeedMmPerUs * (double)US_IN_SECOND;
+		// double secondCurtainSpeedInMPerS = secondCurtainSpeedInMmPerS / (double)MM_IN_M;
+		// Serial.println("Curtain 2 span A speed: " + String(secondCurtainSpeedInMPerS) + " m/s");
+
+		// // Serial.println("Curtain 2 avg speed: " + String((firstCurtainSpeedInMPerS + secondCurtainSpeedInMPerS) / 2.0) + " m/s");
+
+		// double secondCurtainSensor1toSensor2TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
+		// secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor1toSensor2TravelTime;
+		// secondCurtainSpeedInMmPerS = secondCurtainSpeedMmPerUs * (double)US_IN_SECOND;
+		// secondCurtainSpeedInMPerS = secondCurtainSpeedInMmPerS / (double)MM_IN_M;
+		// Serial.println("Curtain 2 span B speed: " + String(secondCurtainSpeedInMPerS) + " m/s");
+
+		// double spanASlitSizeInMmByFirstCurtain = firstCurtainSpeedMmPerUs * sensor1CorrctedTime;
+		// Serial.println("Slit width at span A by 1-st curtain: " + String(spanASlitSizeInMmByFirstCurtain) + " mm");
+
+		// double spanASlitSizeInMmBySecondCurtain = secondCurtainSpeedMmPerUs * sensor1CorrctedTime;
+		// Serial.println("Slit width at span A by 2-nd curtain: " + String(spanASlitSizeInMmBySecondCurtain) + " mm");
+
+		// double firstCurtainSensor1toSensor2TravelTime = (double)(pin2shutterOpenStartTime - pin1shutterOpenStartTime);
+		// firstCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime;
+		// firstCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double)US_IN_SECOND;
+		// firstCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
+		// Serial.println("Curtain 1 span B speed: " + String(firstCurtainSpeedInMPerS) + " m/s");
+
+		// double secondCurtainSensor1toSensor2TravelTime = (double)(pin2shutterOpenEndTime - pin1shutterOpenEndTime);
+		// secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime;
+		// secondCurtainSpeedInMmPerS = firstCurtainSpeedMmPerUs * (double)US_IN_SECOND;
+		// secondCurtainSpeedInMPerS = firstCurtainSpeedInMmPerS / (double)MM_IN_M;
+		// Serial.println("Curtain 2 span B speed: " + String(firstCurtainSpeedInMPerS) + " m/s");
 	}
 	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && horisontalShutterMovement) // right to left curtans movement
 	{
-		/* code */
+		
 	}
 	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && !horisontalShutterMovement) // bottom to top curtans movement
 	{
@@ -429,18 +495,6 @@ void drawMeasuredScreen()
 	else
 	{
 		// unknown curtans movement dirction, probably a leaf shutter
-	}
-	
-
-	
-	displayManager.drawMeasuredScreen();
-
-	while (true)
-	{
-		if (button.isClicked())
-		{
-			return;
-		}
 	}
 }
 
@@ -627,6 +681,8 @@ void setup()
 
 void loop()
 {
+	delay(1000);
+	drawMeasuredScreen();
 	drawMainMenu();
 
 	switch (adcISRFlow)
