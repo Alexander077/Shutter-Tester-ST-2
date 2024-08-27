@@ -57,6 +57,12 @@ enum class MainMenuItems
 	CREDITS,
 };
 
+struct MeasuredResult
+{
+	/* data */
+};
+
+
 
 unsigned long numSamples = 0;
 unsigned long t, t0;
@@ -370,7 +376,13 @@ void drawMeasuredScreen()
 			case 2:
 			{
 				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor2CorrectedTime, 2));
+
+			case 3:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor2CorrectedTime, 2));
 				break;
+			}
+			break;
 			}
 			
 			default:
@@ -451,6 +463,9 @@ void drawMeasuredScreen()
 		Serial.println("Curtain 1 avg speed: " + String(firstCurtainAvgSpeed) + " m/s");
 
 		Serial.println("Curtain 1 total travel time: " + String(0.024 / (firstCurtainAvgSpeed / 1000.0)) + " ms");
+
+		sprintf();
+		String s = "asdasdas";
 
 		// double secondCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
 		// double secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor0toSensor1TravelTime;
