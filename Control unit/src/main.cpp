@@ -2,11 +2,12 @@
 #include <GyverTimers.h>
 // #include <U8g2lib.h>
 #include <EEPROM.h>
+#include <InterpolationLib.h>
 #include "utils.h"
 #include "AlexButton.h"
 #include "../../include/AlexEncoder.h"
 #include "DisplayManager.h"
-#include <InterpolationLib.h>
+#include "MeasuredResult.h"
 
 // #define SHUTTER_TESTER_DEBUG
 
@@ -56,13 +57,6 @@ enum class MainMenuItems
 	MEASURMENT_HISTORY,
 	CREDITS,
 };
-
-struct MeasuredResult
-{
-	/* data */
-};
-
-
 
 unsigned long numSamples = 0;
 unsigned long t, t0;
@@ -333,9 +327,9 @@ void drawMeasuredScreen()
 			exposure unevannes text or graphical
 	 */
 
-	Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
-	Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
-	Serial.println(String("Sensor 2 timecodes: ") + pin2shutterOpenStartTime + "|" + pin2shutterOpenEndTime);
+	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
+	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
+	// Serial.println(String("Sensor 2 timecodes: ") + pin2shutterOpenStartTime + "|" + pin2shutterOpenEndTime);
 
 	double rawSensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
 	double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
@@ -343,9 +337,9 @@ void drawMeasuredScreen()
 	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);
 	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max);
 	double sensor2CorrectedTime = getCorrectedSensorValue(rawSensor2TimeTaken, sensor2Max);
-	Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
-	Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
-	Serial.println(String("Sensor 2 time taken: ") + (sensor2CorrectedTime / 1000.0) + " ms");
+	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
+	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
+	// Serial.println(String("Sensor 2 time taken: ") + (sensor2CorrectedTime / 1000.0) + " ms");
 	// double sensor0Speed = 1 / (sensor0CorrectedTime / US_IN_SECOND);
 	// double sensor1Speed = 1 / (sensor1CorrectedTime / US_IN_SECOND);
 	// double sensor2Speed = 1 / (sensor2CorrectedTime / US_IN_SECOND);
@@ -356,30 +350,44 @@ void drawMeasuredScreen()
 
 	int16_t startEncoderVal = AlexEncoder::counter;
 
+	MeasuredResult res;
+	res.sensor0Time = sensor0CorrectedTime;
+	res.sensor1Time = sensor1CorrectedTime;
+	res.sensor2Time = sensor2CorrectedTime;
+
+	res.curtain1spanAspeed = 1.22;
+	res.curtain1spanBspeed = 1.23;
+	res.curtain1spanCspeed = 1.24;
+	res.curtain1spanAtime = 1.25;
+	res.curtain1spanBtime = 1.26;
+	res.curtain1spanCtime = 1.27;
+	res.curtain1FrameAvgSpeed = 1.28;
+	res.curtain1TotalTime = 1.29;
+
 	while (true)
 	{
 		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
-		Serial.println(resultPageIndex);
+		// Serial.println(resultPageIndex);
 
 		switch (resultPageIndex)
 		{
 			case 0:
 			{
-				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor0CorrectedTime, 2));
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
 				break;
 			}
 			case 1:
 			{
-				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor1CorrectedTime, 2));
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
 				break;
 			}
 			case 2:
 			{
-				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor2CorrectedTime, 2));
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
 
 			case 3:
 			{
-				displayManager.drawMeasuredScreen(resultPageIndex, String(sensor2CorrectedTime, 2));
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
 				break;
 			}
 			break;
@@ -464,8 +472,6 @@ void drawMeasuredScreen()
 
 		Serial.println("Curtain 1 total travel time: " + String(0.024 / (firstCurtainAvgSpeed / 1000.0)) + " ms");
 
-		sprintf();
-		String s = "asdasdas";
 
 		// double secondCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
 		// double secondCurtainSpeedMmPerUs = VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor0toSensor1TravelTime;
@@ -698,6 +704,7 @@ void loop()
 {
 	delay(1000);
 	drawMeasuredScreen();
+	return;
 	drawMainMenu();
 
 	switch (adcISRFlow)

@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
+#include <mString.h>
 #include "credits.h"
 #include "utils.h"
 #include "images.h"
@@ -68,24 +69,71 @@ Arduino_GFX *display = new Arduino_ST7735(
     0 /* col offset 2 */, 0 /* row offset 2 */,
     false /* BGR */);
 
-String inputCmdStr = "m:1";
+mString<300> inputCmdStr;
+char *inputDataArray[20];
 char curScreen = '\0';
 char prevMode = '\0';
+bool dataReady = false;
+volatile bool dataProcessed = true;
 
 void receiveEvent(int howMany)
 {
-  char inputCmdStrBuf[100];
-  inputCmdStrBuf[0] = '\0';
+  if (!dataProcessed)
+  {
+    return;
+  }
+  
+  Serial.println(howMany);
+  
+  mString<33> tmpBuf;
 
   while (Wire.available()) 
   {
-    char c = Wire.read(); // receive byte as a character
-    char tmpBuf[2] = "\0";
-    tmpBuf[0] = c;
-    strcat(inputCmdStrBuf, tmpBuf);
+    tmpBuf += (char)Wire.read();
   }
 
-  inputCmdStr = String(inputCmdStrBuf);
+  if (tmpBuf.startsWith("StArT"))
+  {
+    inputCmdStr.clear();
+    Serial.println("Message start");
+    return;
+  }
+
+  if (tmpBuf.startsWith("EnD"))
+  {
+    uint16_t resStrLength = tmpBuf.toInt(3);
+    Serial.print("Message end. Contents: '");
+    Serial.print(inputCmdStr.c_str());
+    Serial.println("'");
+
+    if (resStrLength != inputCmdStr.length())
+    {
+      Serial.println("Bad message");
+      inputCmdStr.clear();
+      dataProcessed = true;
+    }
+    else
+    {
+      dataProcessed = false;
+    }
+
+    return;
+  }
+
+  inputCmdStr.add(tmpBuf.c_str());
+}
+
+void parseInputData(){
+  uint16_t splitCount = inputCmdStr.split(inputDataArray, ':');
+
+  Serial.println("Parsed data");
+
+  for (size_t i = 0; i < splitCount; i++)
+  {
+    Serial.println(inputDataArray[i]);
+  }
+
+  Serial.println("Parsed data end");
 }
 
 Rect getStringRect(const char *str, int16_t x, int16_t y)
@@ -146,7 +194,7 @@ Rect drawStringHCentered(String str, uint16_t y)
 
 char getCurScreen()
 {
-  return inputCmdStr[0];
+  return inputDataArray[0][0];
 }
 
 void drawMainMenu()
@@ -167,8 +215,11 @@ void drawMainMenu()
 
   while ((Screens)getCurScreen() == Screens::MAIN_MENU)
   {
-    String selIndex = inputCmdStr.substring(2);
-    selectedMenuItemIndex = selIndex.toInt();
+    char tmpBuf[5];
+    mString<5> tmpStr;
+    tmpStr = tmpBuf;
+    inputCmdStr.substring(2, inputCmdStr.length() - 1, tmpBuf);
+    selectedMenuItemIndex = tmpStr.toInt();
 
     // if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
     // {
@@ -250,12 +301,19 @@ void drawNavBar(int8_t activePageIndex)
 
 void drawMeasuredScreen()
 {
+  // display->setFont();
+  // display->setCursor(5, 4);
+  // display->print("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam volutpat dui at vestibulum maximus. Praesent ac erat pretium, sagittis diam aliquet, mollis orci. Aliquam vel mollis mauris. Praesent rutrum lorem in purus euismod, nec tempus felis rhoncus. Donec id iaculis nisl, in eleifend tellus. Phasellus scelerisque diam eu convallis laoreet. Pellentesque viverra semper massa sed tempor. Donec metus libero, sagittis quis eros non, malesuada vulputate nisl.");
+  // return;
+
   int8_t prevPageIndex = -1;
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
-    int8_t resultPageIndex = inputCmdStr.substring(2, 3).toInt();
-    double resultPageParam = inputCmdStr.substring(4).toDouble();
+
+    int8_t resultPageIndex = 2; // inputCmdStr.substring(2, 3).toInt();
+    // double resultPageParam = inputCmdStr.substring(4).toDouble();
+    double resultPageParam = 1.22;
 
     if (resultPageIndex >= 0 && resultPageIndex <= 2 && prevPageIndex != resultPageIndex)
     {
@@ -364,9 +422,24 @@ void setup(void)
 
 void loop()
 {
+  // while (true)
+  // {
+  //   if (!dataProcessed)
+  //   {
+  //     // delay(500);
+  //     parseInputData();
+  //     inputCmdStr.clear();
+  //     dataProcessed = true;
+  //   }
+  // }
 
   while (true)
   {
+    if (dataProcessed)
+    {
+      continue;//if not new data available - skip the iteration
+    }
+
     curScreen = getCurScreen();
     // Serial.println(inputCmdStr); // print the character
 
