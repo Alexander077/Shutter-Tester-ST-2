@@ -368,6 +368,7 @@ void drawMeasuredScreen()
 	{
 		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
 		// Serial.println(resultPageIndex);
+		// delay(500);
 
 		switch (resultPageIndex)
 		{

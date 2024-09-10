@@ -2,6 +2,7 @@
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 #include <mString.h>
+// #include <SafeString.h>
 #include "credits.h"
 #include "utils.h"
 #include "images.h"
@@ -70,20 +71,20 @@ Arduino_GFX *display = new Arduino_ST7735(
     false /* BGR */);
 
 mString<300> inputCmdStr;
-char *inputDataArray[20];
+char inputDataArray[20][20];
 char curScreen = '\0';
 char prevMode = '\0';
 bool dataReady = false;
-volatile bool dataProcessed = true;
+bool dataProcessed = true;
 
 void receiveEvent(int howMany)
 {
+  Serial.println(howMany);
+  
   if (!dataProcessed)
   {
     return;
   }
-  
-  Serial.println(howMany);
   
   mString<33> tmpBuf;
 
@@ -124,16 +125,49 @@ void receiveEvent(int howMany)
 }
 
 void parseInputData(){
-  uint16_t splitCount = inputCmdStr.split(inputDataArray, ':');
+  // uint16_t splitCount = inputCmdStr.split(inputDataArray, ':');
+  char* buf = inputCmdStr.buf;
+  uint16_t strLength = strlen(buf);
 
-  Serial.println("Parsed data");
-
-  for (size_t i = 0; i < splitCount; i++)
+  if (strLength > 0)
   {
-    Serial.println(inputDataArray[i]);
-  }
+    Serial.println("Parsed data");
+    uint16_t dataArrIndex = 0;
+    int16_t startIndex = -1;
 
-  Serial.println("Parsed data end");
+    for (size_t i = 0; i < strLength; i++)
+    {
+      if (buf[i] == ':' && i != strLength - 1 && i > 0)//do not process delimeter on first and last indeces.
+      {
+        if (startIndex == -1)
+        {
+          strncpy(inputDataArray[dataArrIndex], &buf[0], i);
+        }
+        else 
+        {
+          strncpy(inputDataArray[dataArrIndex], &buf[startIndex + 1], i - startIndex - 1);
+        }
+
+        startIndex = i;
+        dataArrIndex++;
+      }
+    }
+
+    if (startIndex != -1)
+    {
+      strcpy(inputDataArray[dataArrIndex], &buf[startIndex + 1]);
+    }
+
+    if (dataArrIndex > 0)
+    {
+      for (size_t i = 0; i <= dataArrIndex; i++)
+      {
+        Serial.println(inputDataArray[i]);
+      }
+    }
+
+    Serial.println("Parsed data end");
+  }
 }
 
 Rect getStringRect(const char *str, int16_t x, int16_t y)
@@ -310,17 +344,19 @@ void drawMeasuredScreen()
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
+    mString<20> bufStr;
 
-    int8_t resultPageIndex = 2; // inputCmdStr.substring(2, 3).toInt();
-    // double resultPageParam = inputCmdStr.substring(4).toDouble();
-    double resultPageParam = 1.22;
+    bufStr.add(inputDataArray[1]);
+    int8_t resultPageIndex = bufStr.toInt();
 
     if (resultPageIndex >= 0 && resultPageIndex <= 2 && prevPageIndex != resultPageIndex)
     {
       display->fillScreen(BLACK);
       // display->fillRect(0,0, display->width(), 115,BLACK);
+      bufStr.clear();
+      bufStr.add(inputDataArray[2]);
 
-      double sensorTime = resultPageParam;
+      double sensorTime = bufStr.toFloat();
       drawStringHCentered("Sensor " + String(resultPageIndex + 1) + " summary", 15);
       display->setCursor(5, 35);
       display->printf("Time: %.2f ms", sensorTime);
@@ -422,26 +458,21 @@ void setup(void)
 
 void loop()
 {
-  // while (true)
-  // {
-  //   if (!dataProcessed)
-  //   {
-  //     // delay(500);
-  //     parseInputData();
-  //     inputCmdStr.clear();
-  //     dataProcessed = true;
-  //   }
-  // }
+  Serial.println("Starting main loop");
 
   while (true)
   {
     if (dataProcessed)
     {
+      Serial.println("No new data. Skipping");
+      // delay(100);
       continue;//if not new data available - skip the iteration
     }
 
+
+    parseInputData();
     curScreen = getCurScreen();
-    // Serial.println(inputCmdStr); // print the character
+    // curScreen = 'k';
 
     switch ((Screens)curScreen)
     {
@@ -469,5 +500,8 @@ void loop()
       default:
         break;
     }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
   }
 }

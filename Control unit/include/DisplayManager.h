@@ -142,28 +142,40 @@ public:
     mainBuf.clear();
     mainBuf += (char)Screens::MEASURED;
     mainBuf += ":";
-    // mainBuf += ":";
-
-    
 
     char tmpBuf[BUF_SIZE];
 
     snprintf(tmpBuf, sizeof(tmpBuf), "%d:", resultPageIndex);
     mainBuf += tmpBuf;
+
     #define FLOAT_WIDTH 1
 
-    dtostrf(results.sensor0Time, FLOAT_WIDTH, 2, tmpBuf);
-    mainBuf += tmpBuf;
-    mainBuf += ":";
+   /*  switch (resultPageIndex)
+    {
+      case 0:
+      {
+        dtostrf(results.sensor0Time, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        break;
+      }
+      case 1:
+      {
+        dtostrf(results.sensor1Time, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        break;
+      }
+      case 2:
+      {
+        dtostrf(results.sensor2Time, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        break;
+      }
 
-    dtostrf(results.sensor1Time, FLOAT_WIDTH, 2, tmpBuf);
-    mainBuf += tmpBuf;
-    mainBuf += ":";
+    default:
+      break;
+    } */
 
-    dtostrf(results.sensor2Time, FLOAT_WIDTH, 2, tmpBuf);
-    mainBuf += tmpBuf;
-
-    /* dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, 2,tmpBuf);
+    dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, 2,tmpBuf);
     mainBuf +=  tmpBuf;
     mainBuf +=  ":";
     dtostrf(results.curtain1spanBspeed, FLOAT_WIDTH, 2,tmpBuf);
@@ -188,7 +200,7 @@ public:
     mainBuf += tmpBuf;
     mainBuf += ":";
     dtostrf(results.curtain1TotalTime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf; */
+    mainBuf +=  tmpBuf;
     // mainBuf +=  ":";
 
     // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanAspeed);
