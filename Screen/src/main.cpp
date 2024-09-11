@@ -32,6 +32,7 @@ enum class Screens
   MEASURING = 'n',
   MEASURED = 'r',
   CREDITS = 'c',
+  CURTAN_MOVEMENT_SELECTION = 'd',
   TEST = 't',
 };
 
@@ -447,31 +448,55 @@ void drawMeasuredScreen()
       drawNavBar(resultPageIndex);
     }
 
-    //1-st curtain speeds and timings
-    if (resultPageIndex == 4 && prevPageIndex != resultPageIndex)
+    //1-st or 2-nd curtain speeds and timings
+    if ((resultPageIndex == 4 || resultPageIndex == 5) && prevPageIndex != resultPageIndex)
     {
-      display->fillScreen(BLACK);
-      drawStringHCentered("1-st curtain summary", 15);
+      mString<30> curtainNumber;
 
-      display->setCursor(0, 25);
+      if (resultPageIndex == 4)
+      {
+        curtainNumber += "1st";
+      }
+
+      if (resultPageIndex == 5)
+      {
+        curtainNumber += "2nd";
+      }
+
+      curtainNumber += " curtain summary";
+
+      display->fillScreen(BLACK);
+      drawStringHCentered(curtainNumber, 15);
+      const uint8_t lineSpacing = 11;
+      uint8_t curPos = 22;
+
       display->setFont();
+      display->setCursor(0, curPos);
+      curPos += lineSpacing;
 
       display->printf(" Span A speed: %1.2f m/s", getInputParamsArrayFloat(2));
-      display->setCursor(0, 35);
+      display->setCursor(0, curPos);
       display->printf(" Span B speed: %1.2f m/s", getInputParamsArrayFloat(3));
-      display->setCursor(0, 45);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf(" Span C speed: %1.2f m/s", getInputParamsArrayFloat(4));
-      display->setCursor(0, 55);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf("  Span A time: %1.2f ms", getInputParamsArrayFloat(5));
-      display->setCursor(0, 65);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf("  Span B time: %1.2f ms", getInputParamsArrayFloat(6));
-      display->setCursor(0, 75);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf("  Span C time: %1.2f ms", getInputParamsArrayFloat(7));
-      display->setCursor(0, 85);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf("    Avg speed: %1.2f m/s", getInputParamsArrayFloat(8));
-      display->setCursor(0, 95);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->printf("  Travel time: %1.2f ms", getInputParamsArrayFloat(9));
-      display->setCursor(0, 105);
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
       display->setFont(u8g2_font_6x13_tf);
 
       prevPageIndex = resultPageIndex;
@@ -483,6 +508,8 @@ void drawMeasuredScreen()
     while (dataProcessed){}//wait for new data from main unit
     parseInputData();
   }
+
+  
 }
 
 void setup(void)

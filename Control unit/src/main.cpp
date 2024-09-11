@@ -48,7 +48,15 @@ enum class AdcISRFlow
 	// FAST_MEASURED
 };
 
+enum class ShutterMovement
+{
+	HORISONTAL,
+	VERTICAL,
+	LEAF,
+};
+
 #define MAIN_MENU_ITEMS_COUNT 4
+#define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 2
 
 enum class MainMenuItems
 {
@@ -59,7 +67,6 @@ enum class MainMenuItems
 };
 
 unsigned long numSamples = 0;
-unsigned long t, t0;
 volatile long pin0shutterOpenStartTime = -1,
 				  pin0shutterOpenEndTime = -1,
 				  pin1shutterOpenStartTime = -1,
@@ -101,6 +108,7 @@ uint16_t sensorCheckCounter = 0;
 const double adcVals[INTRPOLATION_POINTS_CPUNT] = {96, 112, 130, 160, 193, 235, 250};
 const double timeCorrectionVals[INTRPOLATION_POINTS_CPUNT] = {120, 70, 35, -30, -70, -90, -110};
 
+ShutterMovement shutterMovement = ShutterMovement::HORISONTAL;
 
 ISR(ADC_vect)
 {
@@ -364,6 +372,15 @@ void drawMeasuredScreen()
 	res.curtain1FrameAvgSpeed = 1.28;
 	res.curtain1TotalTime = 1.29;
 
+	res.curtain2spanAspeed = 1.32;
+	res.curtain2spanBspeed = 1.33;
+	res.curtain2spanCspeed = 1.34;
+	res.curtain2spanAtime = 1.35;
+	res.curtain2spanBtime = 1.36;
+	res.curtain2spanCtime = 1.37;
+	res.curtain2FrameAvgSpeed = 1.38;
+	res.curtain2TotalTime = 1.39;
+
 	while (true)
 	{
 		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
@@ -393,6 +410,11 @@ void drawMeasuredScreen()
 				break;
 			}
 			case 4:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
+				break;
+			}
+			case 5:
 			{
 				displayManager.drawMeasuredScreen(resultPageIndex, res);
 				break;
@@ -565,6 +587,22 @@ void drawMeasuringScreen()
 	}
 }
 
+void drawCurtainMovementSelectionScreen()
+{
+	while (true)
+	{
+		uint8_t curMenuItem = abs(AlexEncoder::counter) % CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT;
+		displayManager.drawCurtainMovementSelectionScreen(curMenuItem);
+
+		if (button.isClicked())
+		{
+			shutterMovement = (ShutterMovement)curMenuItem;
+			drawMeasuringScreen();
+			return;
+		}
+	}
+}
+
 void drawCreditsScreen()
 {
 	while (true)
@@ -703,11 +741,10 @@ void setup()
 	displayManager.Init();
 }
 
-// long counter = 0;
 
 void loop()
 {
-	delay(1000);
+	delay(500);
 	drawMeasuredScreen();
 	return;
 	drawMainMenu();

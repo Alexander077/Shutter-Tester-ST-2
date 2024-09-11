@@ -15,6 +15,7 @@ enum class Screens
   MEASURING = 'n',
   MEASURED = 'r',
   CREDITS = 'c',
+  CURTAN_MOVEMENT_SELECTION = 'd',
   TEST = 't',
 };
 
@@ -26,13 +27,6 @@ private:
 
   void sendBuf()
   {
-    // Serial.println("Enter sendBuf");
-
-    bool isDataReceivedByScreenController = false;
-    bool isDataProcessed = false;
-
-    // while (!isDataReceivedByScreenController)
-    // {
       Wire.beginTransmission(displayControllerI2CAddress);
       Wire.write("StArT");
       Wire.endTransmission();
@@ -45,7 +39,6 @@ private:
       // Serial.println(mainBuf.c_str());
 
       uint16_t startIndex = 0;
-      // uint16_t endIndex = TMP_BUF_SIZE - 1;
       do
       {
         // mainBuf.substring(startIndex, endIndex, tmpBuf);
@@ -70,22 +63,6 @@ private:
 
       Serial.println("Data sent");
       // delay(500); // Wait for display controller to receive the data
-
-      // Wire.requestFrom(displayControllerI2CAddress, 1); // Request read confirmation from display controller
-      // while (Wire.available() < 1){} // Wait for display controller to reply
-      // isDataReceivedByScreenController = Wire.read();
-    // }
-
-    // Serial.println("Data received by display");
-
-    // delay(50); // Wait for display controller to process the data
-
-    // while (!isDataProcessed)
-    // {
-    //   Wire.requestFrom(displayControllerI2CAddress, 1); // Request 1 byte from slave
-    //   while (Wire.available() < 1){} // Wait for display controller to reply
-    //   isDataProcessed = Wire.read();
-    // }
   }
 
 public:
@@ -122,6 +99,16 @@ public:
     sendBuf();
   }
 
+  void drawCurtainMovementSelectionScreen(uint8_t curSelectedMenuIndex)
+  {
+    mainBuf.clear();
+    mainBuf += (char)Screens::CURTAN_MOVEMENT_SELECTION;
+    mainBuf += ":";
+    mainBuf.add(curSelectedMenuIndex);
+
+    sendBuf();
+  }
+
   /* void drawMeasuredScreen(int8_t resultPageIndex, const char * param)
   {
     mainBuf[0] = '\0';
@@ -145,8 +132,9 @@ public:
 
     char tmpBuf[BUF_SIZE];
 
-    snprintf(tmpBuf, sizeof(tmpBuf), "%d:", resultPageIndex);
+    snprintf(tmpBuf, sizeof(tmpBuf), "%d", resultPageIndex);
     mainBuf += tmpBuf;
+    mainBuf += resultPageIndex != 3 ? ":" : "";
 
     #define FLOAT_WIDTH 1
 
@@ -201,32 +189,37 @@ public:
         mainBuf +=  tmpBuf;
         break;
       }
+      case 5:
+      {
+        dtostrf(results.curtain2spanAspeed, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2spanBspeed, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2spanCspeed, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2spanAtime, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2spanBtime, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2spanCtime, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2FrameAvgSpeed, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain2TotalTime, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        break;
+      }
 
     default:
       break;
     }
-
-    
-    // mainBuf +=  ":";
-
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanAspeed);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanBspeed);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanCspeed);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanAtime);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanBtime);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanCtime);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2TotalTime);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2FrameAvgSpeed);
-    // strcat(mainBuf, tmpBuf);
-    // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2TotalTime);
-    // strcat(mainBuf, tmpBuf);
 
     sendBuf();
   }
