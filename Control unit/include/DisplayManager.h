@@ -150,7 +150,7 @@ public:
 
     #define FLOAT_WIDTH 1
 
-   /*  switch (resultPageIndex)
+    switch (resultPageIndex)
     {
       case 0:
       {
@@ -170,37 +170,43 @@ public:
         mainBuf += tmpBuf;
         break;
       }
+      case 3://spans layout screen
+      {
+        break;
+      }
+      case 4:
+      {
+        dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1spanBspeed, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1spanCspeed, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1spanAtime, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1spanBtime, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1spanCtime, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        mainBuf +=  ":";
+        dtostrf(results.curtain1FrameAvgSpeed, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.curtain1TotalTime, FLOAT_WIDTH, 2,tmpBuf);
+        mainBuf +=  tmpBuf;
+        break;
+      }
 
     default:
       break;
-    } */
+    }
 
-    dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1spanBspeed, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1spanCspeed, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1spanAtime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1spanBtime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1spanCtime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1TotalTime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
-    mainBuf +=  ":";
-    dtostrf(results.curtain1FrameAvgSpeed, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf += tmpBuf;
-    mainBuf += ":";
-    dtostrf(results.curtain1TotalTime, FLOAT_WIDTH, 2,tmpBuf);
-    mainBuf +=  tmpBuf;
+    
     // mainBuf +=  ":";
 
     // sprintf(tmpBuf, "%*.3f:", BUF_SIZE - 1, results.curtain2spanAspeed);

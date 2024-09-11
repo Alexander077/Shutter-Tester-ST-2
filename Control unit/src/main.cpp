@@ -385,15 +385,19 @@ void drawMeasuredScreen()
 			case 2:
 			{
 				displayManager.drawMeasuredScreen(resultPageIndex, res);
-
+				break;
+			}
 			case 3:
 			{
 				displayManager.drawMeasuredScreen(resultPageIndex, res);
 				break;
 			}
-			break;
+			case 4:
+			{
+				displayManager.drawMeasuredScreen(resultPageIndex, res);
+				break;
 			}
-			
+
 			default:
 				break;
 		}

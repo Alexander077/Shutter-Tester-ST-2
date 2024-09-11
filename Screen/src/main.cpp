@@ -73,13 +73,13 @@ Arduino_GFX *display = new Arduino_ST7735(
 mString<300> inputCmdStr;
 char inputDataArray[20][20];
 char curScreen = '\0';
-char prevMode = '\0';
-bool dataReady = false;
-bool dataProcessed = true;
+// char prevMode = '\0';
+// bool dataReady = false;
+volatile bool dataProcessed = true;
 
-void receiveEvent(int howMany)
+void i2cReceiveEvent(int howMany)
 {
-  Serial.println(howMany);
+  // Serial.println(howMany);
   
   if (!dataProcessed)
   {
@@ -333,6 +333,13 @@ void drawNavBar(int8_t activePageIndex)
   }
 }
 
+double getInputParamsArrayFloat(uint8_t index)
+{
+  mString<20> bufStr;
+  bufStr.add(inputDataArray[index]);
+  return bufStr.toFloat();
+}
+
 void drawMeasuredScreen()
 {
   // display->setFont();
@@ -344,11 +351,12 @@ void drawMeasuredScreen()
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
+    Serial.println("Drawing measured screen");
     mString<20> bufStr;
-
     bufStr.add(inputDataArray[1]);
     int8_t resultPageIndex = bufStr.toInt();
 
+    //result by sensor, shutter speed
     if (resultPageIndex >= 0 && resultPageIndex <= 2 && prevPageIndex != resultPageIndex)
     {
       display->fillScreen(BLACK);
@@ -401,9 +409,9 @@ void drawMeasuredScreen()
       drawNavBar(resultPageIndex);
     }
 
+    //Spans layout screen
     if (resultPageIndex == 3 && prevPageIndex != resultPageIndex)
     {
-
       display->fillScreen(BLACK);
       drawStringHCentered("Spans definition", 15);
       int8_t imageX = 4;
@@ -438,6 +446,42 @@ void drawMeasuredScreen()
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);
     }
+
+    //1-st curtain speeds and timings
+    if (resultPageIndex == 4 && prevPageIndex != resultPageIndex)
+    {
+      display->fillScreen(BLACK);
+      drawStringHCentered("1-st curtain summary", 15);
+
+      display->setCursor(0, 25);
+      display->setFont();
+
+      display->printf(" Span A speed: %1.2f m/s", getInputParamsArrayFloat(2));
+      display->setCursor(0, 35);
+      display->printf(" Span B speed: %1.2f m/s", getInputParamsArrayFloat(3));
+      display->setCursor(0, 45);
+      display->printf(" Span C speed: %1.2f m/s", getInputParamsArrayFloat(4));
+      display->setCursor(0, 55);
+      display->printf("  Span A time: %1.2f ms", getInputParamsArrayFloat(5));
+      display->setCursor(0, 65);
+      display->printf("  Span B time: %1.2f ms", getInputParamsArrayFloat(6));
+      display->setCursor(0, 75);
+      display->printf("  Span C time: %1.2f ms", getInputParamsArrayFloat(7));
+      display->setCursor(0, 85);
+      display->printf("    Avg speed: %1.2f m/s", getInputParamsArrayFloat(8));
+      display->setCursor(0, 95);
+      display->printf("  Travel time: %1.2f ms", getInputParamsArrayFloat(9));
+      display->setCursor(0, 105);
+      display->setFont(u8g2_font_6x13_tf);
+
+      prevPageIndex = resultPageIndex;
+      drawNavBar(resultPageIndex);
+    }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){}//wait for new data from main unit
+    parseInputData();
   }
 }
 
@@ -446,7 +490,7 @@ void setup(void)
   Serial.begin(115200);
 
   Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
-  Wire.onReceive(receiveEvent); // register event
+  Wire.onReceive(i2cReceiveEvent); 
 
   display->begin();
   display->fillScreen(BLACK);
@@ -465,14 +509,18 @@ void loop()
     if (dataProcessed)
     {
       Serial.println("No new data. Skipping");
-      // delay(100);
+      // delay(20);
       continue;//if not new data available - skip the iteration
     }
-
+    // else
+    // {
+    //   Wire.onReceive(NULL);
+    //   delay(20);
+    // }
 
     parseInputData();
     curScreen = getCurScreen();
-    // curScreen = 'k';
+    // curScreen = 'r';
 
     switch ((Screens)curScreen)
     {
@@ -502,6 +550,7 @@ void loop()
     }
 
     inputCmdStr.clear();
+    // Wire.onReceive(i2cReceiveEvent);
     dataProcessed = true;
   }
 }
