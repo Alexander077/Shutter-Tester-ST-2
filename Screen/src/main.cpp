@@ -14,6 +14,7 @@
 #define DISPLAY_I2C_ADDRESS 4
 
 #define MAIN_MENU_ITEMS_COUNT 4
+#define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
 
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
@@ -24,6 +25,13 @@ enum class MainMenuItems
   CHECK_LIGHT,
   MEASURMENT_HISTORY,
   CREDITS,
+};
+
+enum class CurtainMovement
+{
+  HORISONTAL,
+  VERTICAL,
+  LEAF,
 };
 
 enum class Screens
@@ -45,11 +53,19 @@ struct Rect
 };
 
 const char *MainMenuItemsStr[] =
-    {
-        "Measure",
-        "Check Light",
-        "View Last Measures",
-        "Credits"};
+{
+  "Measure",
+  "Check Light",
+  "View Last Measures",
+  "Credits"
+};
+
+const char *CurtainMovementItemsStr[] =
+{
+  "Horisontal",
+  "Vertical",
+  "Leaf"
+ };
 
 #define SHUTTR_SPEEDS_COUNT 14
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
@@ -57,6 +73,11 @@ const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30,
 const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
   return MainMenuItemsStr[(uint8_t)menuItem];
+}
+
+const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
+{
+  return CurtainMovementItemsStr[(uint8_t)menuItem];
 }
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
@@ -158,6 +179,11 @@ void parseInputData(){
     {
       strcpy(inputDataArray[dataArrIndex], &buf[startIndex + 1]);
     }
+    else
+    {
+      strcpy(inputDataArray[dataArrIndex], &buf[0]);
+      dataArrIndex++;
+    }
 
     if (dataArrIndex > 0)
     {
@@ -232,6 +258,31 @@ char getCurScreen()
   return inputDataArray[0][0];
 }
 
+double getInputParamsArrayFloat(uint8_t index)
+{
+  mString<20> bufStr;
+  bufStr.add(inputDataArray[index]);
+  return bufStr.toFloat();
+}
+
+int32_t getInputParamsArrayInt(uint8_t index)
+{
+  mString<20> bufStr;
+  bufStr.add(inputDataArray[index]);
+  return bufStr.toInt();
+}
+
+void drawNavBar(int8_t activePageIndex)
+{
+  int16_t navBarLeftMargin = 40;
+  display->drawLine(navBarLeftMargin, 120, 120, 120, WHITE);
+
+  for (int8_t i = 0, margin = 0; i < 5; i++, margin += 20)
+  {
+    display->fillCircle(navBarLeftMargin + margin, 120, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
+  }
+}
+
 void drawMainMenu()
 {
   Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
@@ -250,28 +301,10 @@ void drawMainMenu()
 
   while ((Screens)getCurScreen() == Screens::MAIN_MENU)
   {
-    char tmpBuf[5];
-    mString<5> tmpStr;
-    tmpStr = tmpBuf;
-    inputCmdStr.substring(2, inputCmdStr.length() - 1, tmpBuf);
-    selectedMenuItemIndex = tmpStr.toInt();
-
-    // if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
-    // {
-    //   Serial.print(prevSelectedMenuItemIndex);
-    //   Serial.print(":");
-    //   Serial.println(selectedMenuItemIndex);
-    // }
+    selectedMenuItemIndex = getInputParamsArrayInt(1);
 
     if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
     {
-      // Serial.println(selectedMenuItemIndex);
-      // Serial.print(prevSelectedMenuItemIndex);
-      // Serial.print(":");
-      // Serial.println(selectedMenuItemIndex);
-
-      // Serial.println(selectedMenuItemIndex);
-
       if (prevSelectedMenuItemIndex != -1)
       {
         Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
@@ -282,17 +315,17 @@ void drawMainMenu()
 
       String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)selectedMenuItemIndex)) + " <-";
       Rect rNew = menuItemsRects[selectedMenuItemIndex];
-      // Serial.println(rNew.y);
       display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
 
       menuItemsRects[selectedMenuItemIndex] = drawStringHCentered(newSelMenuItem, menuItemsY[selectedMenuItemIndex]);
       prevSelectedMenuItemIndex = selectedMenuItemIndex;
-      // Serial.println(newSelMenuItem);
-      // display->setCursor(10, 10);
-      // display->drawChar(10, 10, selectedMenuItemIndexStrBuf[0], WHITE, BLACK);
-      // display->print(selectedMenuItemIndex);
-      // display->println(Credits::ADAFRUIT_GFX_LICENSE_HEADER);
+
     }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){}//wait for new data from main unit
+    parseInputData();
   }
 }
 
@@ -314,31 +347,16 @@ void drawMeasuringScreen()
 
   while ((Screens)getCurScreen() == Screens::MEASURING)
   {
-    // display->setFont();
     display->setTextSize(2);
     drawStringHCentered("MEASURING", 40);
     display->setTextSize(1);
     drawStringHCentered("Release camera shutter", 60);
-    // display->setCursor(0, 13);
+    
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){}//wait for new data from main unit
+    parseInputData();
   }
-}
-
-void drawNavBar(int8_t activePageIndex)
-{
-  int16_t navBarLeftMargin = 40;
-  display->drawLine(navBarLeftMargin, 120, 120, 120, WHITE);
-
-  for (int8_t i = 0, margin = 0; i < 5; i++, margin += 20)
-  {
-    display->fillCircle(navBarLeftMargin + margin, 120, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
-  }
-}
-
-double getInputParamsArrayFloat(uint8_t index)
-{
-  mString<20> bufStr;
-  bufStr.add(inputDataArray[index]);
-  return bufStr.toFloat();
 }
 
 void drawMeasuredScreen()
@@ -508,8 +526,52 @@ void drawMeasuredScreen()
     while (dataProcessed){}//wait for new data from main unit
     parseInputData();
   }
+}
 
-  
+void drawCurtainMovementSelectionScreen()
+{
+  display->fillScreen(BLACK);
+
+  uint8_t xMargin = 50;
+  uint8_t yMargin = 55;
+  uint8_t ySpacing = 15;
+  uint8_t arrowXmargin = 15;
+  drawStringHCentered("Select curtain movement", 20);
+
+  for (uint8_t i = 0; i < CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT; i++)
+  {
+    display->setCursor(xMargin, yMargin + (ySpacing * i));
+    display->println(GetCurtainMovementItemTitle((CurtainMovement)i));
+  }
+
+  display->setCursor(xMargin - arrowXmargin, yMargin);
+  display->print("->");
+
+  int8_t selectedMenuItemIndex = 0;
+  int8_t prevSelectedMenuItemIndex = 0;
+
+  while ((Screens)getCurScreen() == Screens::CURTAN_MOVEMENT_SELECTION)
+  {
+    selectedMenuItemIndex = getInputParamsArrayInt(1);
+
+    if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+    {
+      display->setTextColor(BLACK);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+      display->print("->");
+
+      display->setTextColor(WHITE);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * selectedMenuItemIndex));
+      display->print("->");
+
+      prevSelectedMenuItemIndex = selectedMenuItemIndex;
+    }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){}//wait for new data from main unit
+    parseInputData();
+  }
 }
 
 void setup(void)
@@ -533,21 +595,13 @@ void loop()
 
   while (true)
   {
-    if (dataProcessed)
+    while (dataProcessed)//Wait until new data is available
     {
       Serial.println("No new data. Skipping");
-      // delay(20);
-      continue;//if not new data available - skip the iteration
     }
-    // else
-    // {
-    //   Wire.onReceive(NULL);
-    //   delay(20);
-    // }
 
     parseInputData();
     curScreen = getCurScreen();
-    // curScreen = 'r';
 
     switch ((Screens)curScreen)
     {
@@ -571,13 +625,17 @@ void loop()
         drawCreditsScreen();
         break;
       }
+      case Screens::CURTAN_MOVEMENT_SELECTION:
+      {
+        drawCurtainMovementSelectionScreen();
+        break;
+      }
 
       default:
         break;
     }
 
     inputCmdStr.clear();
-    // Wire.onReceive(i2cReceiveEvent);
     dataProcessed = true;
   }
 }

@@ -74,8 +74,8 @@ public:
   void drawMainMenu(uint8_t activeModuItemIndex)
   {
     mainBuf.clear();
-    // char bufScreenName[3] = {(char)Screens::MAIN_MENU, ':', '\0'};
-    mainBuf += (char)Screens::MAIN_MENU + ":";
+    mainBuf += (char)Screens::MAIN_MENU;
+    mainBuf += ':';
     char numBuf[10];
     snprintf(numBuf, sizeof(numBuf), "%d", activeModuItemIndex);
     mainBuf += numBuf;
