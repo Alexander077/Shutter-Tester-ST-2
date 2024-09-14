@@ -109,7 +109,7 @@ uint16_t sensorCheckCounter = 0;
 const double adcVals[INTRPOLATION_POINTS_CPUNT] = {96, 112, 130, 160, 193, 235, 250};
 const double timeCorrectionVals[INTRPOLATION_POINTS_CPUNT] = {120, 70, 35, -30, -70, -90, -110};
 
-CurtainMovement shutterMovement = CurtainMovement::HORISONTAL;
+CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
 
 ISR(ADC_vect)
 {
@@ -344,9 +344,29 @@ void drawMeasuredScreen()
 			exposure unevannes text or graphical
 	 */
 
+	// Sensor 0 timecodes: 56921276|56922708
+	// Sensor 1 timecodes: 56923936|56925452
+	// Sensor 2 timecodes: 56926116|56927644
+	// Sensor 0 max val.: 193
+	// Sensor 1 max val.: 195
+	// Sensor 2 max val.: 184
+	pin0shutterOpenStartTime = 56921276;
+	pin0shutterOpenEndTime = 56922708;
+	pin1shutterOpenStartTime = 56923936;
+	pin1shutterOpenEndTime = 56925452;
+	pin2shutterOpenStartTime = 56926116;
+	pin2shutterOpenEndTime = 56927644;
+	sensor0Max = 193;
+	sensor1Max = 195;
+	sensor2Max = 184;
+	curtainMovement = CurtainMovement::VERTICAL;
+
 	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
 	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
 	// Serial.println(String("Sensor 2 timecodes: ") + pin2shutterOpenStartTime + "|" + pin2shutterOpenEndTime);
+	// Serial.println(String("Sensor 0 max val.: ") + sensor0Max);
+	// Serial.println(String("Sensor 1 max val.: ") + sensor1Max);
+	// Serial.println(String("Sensor 2 max val.: ") + sensor2Max);
 
 	double rawSensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
 	double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
@@ -354,6 +374,7 @@ void drawMeasuredScreen()
 	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);
 	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max);
 	double sensor2CorrectedTime = getCorrectedSensorValue(rawSensor2TimeTaken, sensor2Max);
+
 	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
 	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
 	// Serial.println(String("Sensor 2 time taken: ") + (sensor2CorrectedTime / 1000.0) + " ms");
@@ -365,9 +386,9 @@ void drawMeasuredScreen()
 	int16_t startEncoderVal = AlexEncoder::counter;
 
 	MeasuredResult res;
-	res.sensor0Time = sensor0CorrectedTime;
-	res.sensor1Time = sensor1CorrectedTime;
-	res.sensor2Time = sensor2CorrectedTime;
+	res.sensor0Time = sensor0CorrectedTime / US_IN_MILLISECOND;
+	res.sensor1Time = sensor1CorrectedTime / US_IN_MILLISECOND;
+	res.sensor2Time = sensor2CorrectedTime / US_IN_MILLISECOND;
 
 	res.curtain1FrameAvgSpeed = 1.0;
 	res.curtain2FrameAvgSpeed = 1.0;
@@ -389,10 +410,10 @@ void drawMeasuredScreen()
 	// res.curtain2FrameAvgSpeed = 1.38;
 	// res.curtain2TotalTime = 1.39;
 
-	if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && shutterMovement == CurtainMovement::HORISONTAL) // left to right curtans movement
+	if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && curtainMovement == CurtainMovement::HORISONTAL) // left to right curtans movement
 	{
 	}
-	else if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && shutterMovement == CurtainMovement::VERTICAL) // top to bottom curtans movement
+	else if (pin0shutterOpenStartTime < pin1shutterOpenStartTime && curtainMovement == CurtainMovement::VERTICAL) // top to bottom curtans movement
 	{
 		// First curtain
 		double firstCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
@@ -409,6 +430,9 @@ void drawMeasuredScreen()
 		res.curtain1spanCspeed = getCurtainSpeed(firstCurtainSensor0toSensor2TravelTime, VERTICAL_HOLE_DISTANCE_MM * 2);
 		res.curtain1spanCtime = firstCurtainSensor0toSensor2TravelTime / US_IN_MILLISECOND;
 
+		// speed: 4.94 m/s = 0,00494 m per ms =
+		res.curtain1TotalTime = 0.024 / (res.curtain1spanCspeed / 1000.0);
+
 		// Second curtain
 		double secondCurtainSensor0toSensor1TravelTime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
 		res.curtain2spanAspeed = getCurtainSpeed(secondCurtainSensor0toSensor1TravelTime, VERTICAL_HOLE_DISTANCE_MM);
@@ -424,13 +448,21 @@ void drawMeasuredScreen()
 		res.curtain2spanCspeed = getCurtainSpeed(secondCurtainSensor0toSensor2TravelTime, VERTICAL_HOLE_DISTANCE_MM * 2);
 		res.curtain2spanCtime = secondCurtainSensor0toSensor2TravelTime / US_IN_MILLISECOND;
 
+		res.curtain2TotalTime = 0.024 / (res.curtain2spanCspeed / 1000.0);
+
 		// Slit width
-		res.slitWidth = 0.024 / (res.curtain1spanCspeed / 1000.0);
+		double spanASlitSizeInMmByCurtain1 = (VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor0toSensor1TravelTime) * sensor1CorrectedTime;
+		double spanASlitSizeInMmByCurtain2 = (VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor0toSensor1TravelTime) * sensor1CorrectedTime;
+		res.slitWidthSpanA = (spanASlitSizeInMmByCurtain1 + spanASlitSizeInMmByCurtain2) / 2.0;
+
+		double spanBSlitSizeInMmByCurtain1 = (VERTICAL_HOLE_DISTANCE_MM / firstCurtainSensor1toSensor2TravelTime) * sensor2CorrectedTime;
+		double spanBSlitSizeInMmByCurtain2 = (VERTICAL_HOLE_DISTANCE_MM / secondCurtainSensor1toSensor2TravelTime) * sensor2CorrectedTime;
+		res.slitWidthSpanB = (spanBSlitSizeInMmByCurtain1 + spanBSlitSizeInMmByCurtain2) / 2.0;
 	}
-	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && shutterMovement == CurtainMovement::HORISONTAL) // right to left curtans movement
+	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && curtainMovement == CurtainMovement::HORISONTAL) // right to left curtans movement
 	{
 	}
-	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && shutterMovement == CurtainMovement::VERTICAL) // bottom to top curtans movement
+	else if (pin2shutterOpenStartTime < pin1shutterOpenStartTime && curtainMovement == CurtainMovement::VERTICAL) // bottom to top curtans movement
 	{
 	}
 	else
@@ -548,7 +580,7 @@ void drawCurtainMovementSelectionScreen()
 
 		if (button.isClicked())
 		{
-			shutterMovement = (CurtainMovement)curMenuItem;
+			curtainMovement = (CurtainMovement)curMenuItem;
 			drawMeasuringScreen();
 			return;
 		}
@@ -696,9 +728,9 @@ void setup()
 
 void loop()
 {
-	delay(500);
-	// drawMeasuredScreen();
-	drawMainMenu();
+	// delay(500);
+	drawMeasuredScreen();
+	// drawMainMenu();
 	return;
 
 	switch (adcISRFlow)

@@ -61,7 +61,7 @@ private:
       Wire.write(("EnD" + String(strLength)).c_str());
       Wire.endTransmission(); // stop transmitting
 
-      Serial.println("Data sent");
+      // Serial.println("Data sent");
       // delay(500); // Wait for display controller to receive the data
   }
 
@@ -213,6 +213,15 @@ public:
         mainBuf += tmpBuf;
         mainBuf += ":";
         dtostrf(results.curtain2TotalTime, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        break;
+      }
+      case 6:
+      {
+        dtostrf(results.slitWidthSpanA, FLOAT_WIDTH, 2, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+        dtostrf(results.slitWidthSpanB, FLOAT_WIDTH, 2, tmpBuf);
         mainBuf += tmpBuf;
         break;
       }

@@ -28,5 +28,6 @@ struct MeasuredResult
   double curtain2spanCtime;
   double curtain2TotalTime;
 
-  double slitWidth;
+  double slitWidthSpanA;
+  double slitWidthSpanB;
 };

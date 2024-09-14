@@ -7,9 +7,12 @@
 #include "utils.h"
 #include "images.h"
 
-#define DISPLAY_CS 18
-#define DISPLAY_RESET 16
-#define DISPLAY_DC 21
+// #define DISPLAY_CS 18
+#define DISPLAY_CS 39
+// #define DISPLAY_RESET 16
+#define DISPLAY_RESET 17
+// #define DISPLAY_DC 21
+#define DISPLAY_DC 34
 
 #define DISPLAY_I2C_ADDRESS 4
 
@@ -18,6 +21,10 @@
 
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
+
+#define SPAN_A_COLOR BLUE
+#define SPAN_B_COLOR GREEN
+#define SPAN_C_COLOR YELLOW
 
 enum class MainMenuItems
 {
@@ -274,12 +281,15 @@ int32_t getInputParamsArrayInt(uint8_t index)
 
 void drawNavBar(int8_t activePageIndex)
 {
-  int16_t navBarLeftMargin = 40;
-  display->drawLine(navBarLeftMargin, 120, 120, 120, WHITE);
+  int16_t navBarWidth = 120;
+  int16_t navBarY = 120;
+  int16_t navBarItemsCount = 7;
+  int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
+  display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
 
-  for (int8_t i = 0, margin = 0; i < 5; i++, margin += 20)
+  for (int8_t i = 0, spacing = 0; i < navBarItemsCount; i++, spacing += 20)
   {
-    display->fillCircle(navBarLeftMargin + margin, 120, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
+    display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
   }
 }
 
@@ -361,11 +371,6 @@ void drawMeasuringScreen()
 
 void drawMeasuredScreen()
 {
-  // display->setFont();
-  // display->setCursor(5, 4);
-  // display->print("Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam volutpat dui at vestibulum maximus. Praesent ac erat pretium, sagittis diam aliquet, mollis orci. Aliquam vel mollis mauris. Praesent rutrum lorem in purus euismod, nec tempus felis rhoncus. Donec id iaculis nisl, in eleifend tellus. Phasellus scelerisque diam eu convallis laoreet. Pellentesque viverra semper massa sed tempor. Donec metus libero, sagittis quis eros non, malesuada vulputate nisl.");
-  // return;
-
   int8_t prevPageIndex = -1;
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
@@ -435,9 +440,6 @@ void drawMeasuredScreen()
       drawStringHCentered("Spans definition", 15);
       int8_t imageX = 4;
       int8_t imageY = 23;
-      #define SPAN_A_COLOR BLUE
-      #define SPAN_B_COLOR GREEN
-      #define SPAN_C_COLOR YELLOW
       display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHeightBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
       display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanAbits, SpeedsHintGraphSpanAwidth, SpeedsHintGraphSpanAheight, SPAN_A_COLOR);
       display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBbits, SpeedsHintGraphSpanBwidth, SpeedsHintGraphSpanBheight, SPAN_B_COLOR);
@@ -486,35 +488,59 @@ void drawMeasuredScreen()
       display->fillScreen(BLACK);
       drawStringHCentered(curtainNumber, 15);
       const uint8_t lineSpacing = 11;
-      uint8_t curPos = 22;
+      uint8_t curPos = 27;
 
       display->setFont();
-      display->setCursor(0, curPos);
-      curPos += lineSpacing;
 
-      display->printf(" Span A speed: %1.2f m/s", getInputParamsArrayFloat(2));
       display->setCursor(0, curPos);
-      display->printf(" Span B speed: %1.2f m/s", getInputParamsArrayFloat(3));
+      display->printf("  Span A speed: %1.2f m/s", getInputParamsArrayFloat(2));
+      curPos += lineSpacing; 
+      display->setCursor(0, curPos);
+      display->printf("  Span B speed: %1.2f m/s", getInputParamsArrayFloat(3));
+      curPos += lineSpacing; 
+      display->setCursor(0, curPos);
+      display->printf("  Span C speed: %1.2f m/s", getInputParamsArrayFloat(4));
+      curPos += lineSpacing; 
+      display->setCursor(0, curPos);
+      display->printf("   Span A time: %1.2f ms", getInputParamsArrayFloat(5));
+      curPos += lineSpacing; 
+      display->setCursor(0, curPos);
+      display->printf("   Span B time: %1.2f ms", getInputParamsArrayFloat(6));
+      curPos += lineSpacing; 
+      display->setCursor(0, curPos);
+      display->printf("   Span C time: %1.2f ms", getInputParamsArrayFloat(7));
+      curPos += lineSpacing; 
+      // display->setCursor (0, curPos);
+      // display->printf ("    Avg speed: %1.2f m/s", getInputParamsArrayFloat(8));
+      // curPos += lineSpacing ;
+      display->setCursor(0 , curPos);
+      display->printf("   Travel time: %1.2f ms", getInputParamsArrayFloat(9));
       curPos += lineSpacing;
       display->setCursor(0, curPos);
-      display->printf(" Span C speed: %1.2f m/s", getInputParamsArrayFloat(4));
+      display->setFont(u8g2_font_6x13_tf);
+
+      prevPageIndex = resultPageIndex;
+      drawNavBar(resultPageIndex);
+    }
+
+    if (resultPageIndex == 6 && prevPageIndex != resultPageIndex)
+    {
+      mString<30> title;
+      title += "Estimated slit width";
+
+      display->fillScreen(BLACK);
+      drawStringHCentered(title, 15);
+      const uint8_t lineSpacing = 11;
+      uint8_t curPos = 27;
+
+      display->setFont();
+
+      display->setCursor(0, curPos);
+      display->printf("   Span A: %1.2f mm", getInputParamsArrayFloat(2));
       curPos += lineSpacing;
       display->setCursor(0, curPos);
-      display->printf("  Span A time: %1.2f ms", getInputParamsArrayFloat(5));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("  Span B time: %1.2f ms", getInputParamsArrayFloat(6));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("  Span C time: %1.2f ms", getInputParamsArrayFloat(7));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("    Avg speed: %1.2f m/s", getInputParamsArrayFloat(8));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("  Travel time: %1.2f ms", getInputParamsArrayFloat(9));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
+      display->printf("   Span B: %1.2f mm", getInputParamsArrayFloat(3));
+
       display->setFont(u8g2_font_6x13_tf);
 
       prevPageIndex = resultPageIndex;
