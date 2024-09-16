@@ -18,6 +18,7 @@
 
 #define MAIN_MENU_ITEMS_COUNT 4
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
+#define RESULT_PAGES_COUNT 7
 
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
@@ -283,11 +284,11 @@ void drawNavBar(int8_t activePageIndex)
 {
   int16_t navBarWidth = 120;
   int16_t navBarY = 120;
-  int16_t navBarItemsCount = 7;
+  int16_t navBarItemsCount = RESULT_PAGES_COUNT;
   int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
   display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
 
-  for (int8_t i = 0, spacing = 0; i < navBarItemsCount; i++, spacing += 20)
+  for (int8_t i = 0, spacing = 0; i < navBarItemsCount; i++, spacing += navBarWidth / (navBarItemsCount - 1))
   {
     display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
   }
