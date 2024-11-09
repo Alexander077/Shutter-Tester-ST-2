@@ -5,19 +5,12 @@
 // #include <SafeString.h>
 #include <mString.h>
 #include "MeasuredResult.h"
+#include "CurtainMovementDirection.h"
+#include "../../include/Common.h"
 
 #define MAIN_BUF_SIZE 200
 #define TMP_BUF_SIZE 32
 
-enum class Screens
-{
-  MAIN_MENU = 'm',
-  MEASURING = 'n',
-  MEASURED = 'r',
-  CREDITS = 'c',
-  CURTAN_MOVEMENT_SELECTION = 'd',
-  TEST = 't',
-};
 
 class DisplayManager
 {
@@ -109,6 +102,16 @@ public:
     sendBuf();
   }
 
+  void drawLightCheckScreen(uint8_t lightBrightness)
+  {
+    mainBuf.clear();
+    mainBuf += (char)Screens::LIGHT_CHECK;
+    mainBuf += ":";
+    mainBuf.add(lightBrightness);
+
+    sendBuf();
+  }
+
   /* void drawMeasuredScreen(int8_t resultPageIndex, const char * param)
   {
     mainBuf[0] = '\0';
@@ -123,7 +126,7 @@ public:
     sendBuf();
   } */
 
-  void drawMeasuredScreen(int8_t resultPageIndex, const MeasuredResult results)
+  void drawMeasuredScreen(int8_t resultPageIndex, CurtainMovementDirection curtainMovementDirection, const MeasuredResult results)
   {
     #define BUF_SIZE 40
     mainBuf.clear();
@@ -134,7 +137,7 @@ public:
 
     snprintf(tmpBuf, sizeof(tmpBuf), "%d", resultPageIndex);
     mainBuf += tmpBuf;
-    mainBuf += resultPageIndex != 3 ? ":" : "";
+    mainBuf += /* resultPageIndex != 3 ?  */":"/*  : "" */;
 
     #define FLOAT_WIDTH 1
 
@@ -160,6 +163,7 @@ public:
       }
       case 3://spans layout screen
       {
+        mainBuf += ((uint8_t)curtainMovementDirection);
         break;
       }
       case 4:

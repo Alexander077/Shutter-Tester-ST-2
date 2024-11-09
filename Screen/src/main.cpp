@@ -3,6 +3,7 @@
 #include <U8g2lib.h>
 #include <mString.h>
 // #include <SafeString.h>
+#include "../../include/Common.h"
 #include "credits.h"
 #include "utils.h"
 #include "images.h"
@@ -10,7 +11,7 @@
 // #define DISPLAY_CS 18
 #define DISPLAY_CS 39
 // #define DISPLAY_RESET 16
-#define DISPLAY_RESET 17
+#define DISPLAY_RESET 18
 // #define DISPLAY_DC 21
 #define DISPLAY_DC 34
 
@@ -27,6 +28,10 @@
 #define SPAN_B_COLOR GREEN
 #define SPAN_C_COLOR YELLOW
 
+#define DAC_CH1 17
+#define DAC_CH2 18
+#define DAC_MAX 255
+
 enum class MainMenuItems
 {
   MEASURE,
@@ -40,16 +45,6 @@ enum class CurtainMovement
   HORISONTAL,
   VERTICAL,
   LEAF,
-};
-
-enum class Screens
-{
-  MAIN_MENU = 'm',
-  MEASURING = 'n',
-  MEASURED = 'r',
-  CREDITS = 'c',
-  CURTAN_MOVEMENT_SELECTION = 'd',
-  TEST = 't',
 };
 
 struct Rect
@@ -126,20 +121,20 @@ void i2cReceiveEvent(int howMany)
   if (tmpBuf.startsWith("StArT"))
   {
     inputCmdStr.clear();
-    Serial.println("Message start");
+    // Serial.println("Message start");
     return;
   }
 
   if (tmpBuf.startsWith("EnD"))
   {
     uint16_t resStrLength = tmpBuf.toInt(3);
-    Serial.print("Message end. Contents: '");
-    Serial.print(inputCmdStr.c_str());
-    Serial.println("'");
+    // Serial.print("Message end. Contents: '");
+    // Serial.print(inputCmdStr.c_str());
+    // Serial.println("'");
 
     if (resStrLength != inputCmdStr.length())
     {
-      Serial.println("Bad message");
+      // Serial.println("Bad message");
       inputCmdStr.clear();
       dataProcessed = true;
     }
@@ -161,7 +156,7 @@ void parseInputData(){
 
   if (strLength > 0)
   {
-    Serial.println("Parsed data");
+    // Serial.println("Parsed data");
     uint16_t dataArrIndex = 0;
     int16_t startIndex = -1;
 
@@ -193,15 +188,15 @@ void parseInputData(){
       dataArrIndex++;
     }
 
-    if (dataArrIndex > 0)
-    {
-      for (size_t i = 0; i <= dataArrIndex; i++)
-      {
-        Serial.println(inputDataArray[i]);
-      }
-    }
+    // if (dataArrIndex > 0)
+    // {
+    //   for (size_t i = 0; i <= dataArrIndex; i++)
+    //   {
+    //     Serial.println(inputDataArray[i]);
+    //   }
+    // }
 
-    Serial.println("Parsed data end");
+    // Serial.println("Parsed data end");
   }
 }
 
@@ -439,31 +434,131 @@ void drawMeasuredScreen()
     {
       display->fillScreen(BLACK);
       drawStringHCentered("Spans definition", 15);
+
+      bufStr.clear();
+      bufStr.add(inputDataArray[2]);
+
+      uint8_t spansLayoutScheme = bufStr.toInt();
+
       int8_t imageX = 4;
       int8_t imageY = 23;
-      display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHeightBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
-      display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanAbits, SpeedsHintGraphSpanAwidth, SpeedsHintGraphSpanAheight, SPAN_A_COLOR);
-      display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBbits, SpeedsHintGraphSpanBwidth, SpeedsHintGraphSpanBheight, SPAN_B_COLOR);
-      display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCbits, SpeedsHintGraphSpanCwidth, SpeedsHintGraphSpanCheight, SPAN_C_COLOR);
 
-      display->setCursor(30, 65);
-      // display->setFont();
-      display->print("Span ");
-      display->setTextColor(SPAN_C_COLOR);
-      display->print("C");
-      display->setTextColor(WHITE);
+      if (spansLayoutScheme == 1 || spansLayoutScheme == 2)
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHeightBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
+      }
 
-      display->setCursor(90, 53);
-      display->print("Span ");
-      display->setTextColor(SPAN_A_COLOR);
-      display->print("A");
-      display->setTextColor(WHITE);
+      if (spansLayoutScheme == 3 || spansLayoutScheme == 4)
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
+      }
 
-      display->setCursor(90, 78);
-      display->print("Span ");
-      display->setTextColor(SPAN_B_COLOR);
-      display->print("B");
-      display->setTextColor(WHITE);
+      switch (spansLayoutScheme)
+      {
+      case 1:
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanAUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
+
+        display->setCursor(30, 65);
+        display->print("Span ");
+        display->setTextColor(SPAN_C_COLOR);
+        display->print("C");
+        display->setTextColor(WHITE);
+
+        display->setCursor(90, 53);
+        display->print("Span ");
+        display->setTextColor(SPAN_A_COLOR);
+        display->print("A");
+        display->setTextColor(WHITE);
+
+        display->setCursor(90, 78);
+        display->print("Span ");
+        display->setTextColor(SPAN_B_COLOR);
+        display->print("B");
+        display->setTextColor(WHITE);
+        break;
+      }
+      case 2:
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanADownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBDownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCDownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
+        display->setCursor(30, 65);
+        display->print("Span ");
+        display->setTextColor(SPAN_C_COLOR);
+        display->print("C");
+        display->setTextColor(WHITE);
+
+        display->setCursor(90, 78);
+        display->print("Span ");
+        display->setTextColor(SPAN_A_COLOR);
+        display->print("A");
+        display->setTextColor(WHITE);
+
+        display->setCursor(90, 53);
+        display->print("Span ");
+        display->setTextColor(SPAN_B_COLOR);
+        display->print("B");
+        display->setTextColor(WHITE);
+        break;
+      }
+      case 3:
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanARightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBRightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCRightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
+
+        display->setCursor(63, 87);
+        display->print("Span ");
+        display->setTextColor(SPAN_C_COLOR);
+        display->print("C");
+        display->setTextColor(WHITE);
+
+        display->setCursor(87, 47);
+        display->print("Span ");
+        display->setTextColor(SPAN_A_COLOR);
+        display->print("A");
+        display->setTextColor(WHITE);
+
+        display->setCursor(42, 48);
+        display->print("Span ");
+        display->setTextColor(SPAN_B_COLOR);
+        display->print("B");
+        display->setTextColor(WHITE);
+        break;
+      }
+      case 4:
+      {
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanALeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBLeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
+        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCLeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
+
+        display->setCursor(63, 87);
+        display->print("Span ");
+        display->setTextColor(SPAN_C_COLOR);
+        display->print("C");
+        display->setTextColor(WHITE);
+
+        display->setCursor(42, 48);
+        display->print("Span ");
+        display->setTextColor(SPAN_A_COLOR);
+        display->print("A");
+        display->setTextColor(WHITE);
+
+        display->setCursor(87, 47);
+        display->print("Span ");
+        display->setTextColor(SPAN_B_COLOR);
+        display->print("B");
+        display->setTextColor(WHITE);
+        break;
+      }
+      default:
+        break;
+      }
+
+      
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);
@@ -555,6 +650,46 @@ void drawMeasuredScreen()
   }
 }
 
+void drawLightCheckScreen()
+{
+  display->fillScreen(BLACK);
+  int8_t oldBrightness = -1;
+  drawStringHCentered("Light brightness", 15);
+  const uint8_t thresholdDacValue = 100;
+
+  while ((Screens)getCurScreen() == Screens::LIGHT_CHECK)
+  {
+    int8_t newBrightness = getInputParamsArrayInt(1);
+
+    if (oldBrightness != newBrightness)
+    {
+      uint8_t x = 60;
+      uint8_t y = 75;
+      display->setTextSize(2);
+      display->setCursor(x, y);
+      display->setTextColor(BLACK);
+      display->printf("%i%% ", oldBrightness);//erase
+      display->setCursor(x, y);
+      display->setTextColor(WHITE);
+      display->printf("%i%% ", newBrightness);
+      display->setTextSize(1);
+
+      uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
+      dacWrite(DAC_CH1, dacVal);
+      Serial.println(dacVal);
+
+      oldBrightness = newBrightness;
+    }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){} // wait for new data from main unit
+    parseInputData();
+  }
+
+  dacWrite(DAC_CH1, 0); // turn off the light
+}
+
 void drawCurtainMovementSelectionScreen()
 {
   display->fillScreen(BLACK);
@@ -624,7 +759,7 @@ void loop()
   {
     while (dataProcessed)//Wait until new data is available
     {
-      Serial.println("No new data. Skipping");
+      // Serial.println("No new data. Skipping");
     }
 
     parseInputData();
@@ -645,6 +780,11 @@ void loop()
       case Screens::MEASURED:
       {
         drawMeasuredScreen();
+        break;
+      }
+      case Screens::LIGHT_CHECK:
+      {
+        drawLightCheckScreen();
         break;
       }
       case Screens::CREDITS:

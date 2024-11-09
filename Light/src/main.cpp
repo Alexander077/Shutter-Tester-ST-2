@@ -5,57 +5,57 @@
 
 #define DAC_CH1 17
 
-HardwareSerial serialPort(1); // Use UART1
-Adafruit_INA219 ina219;
-float busvoltage = 0;
-float current_mA = 0;
-float power_mW = 0;
+// HardwareSerial serialPort(1); // Use UART1
+// Adafruit_INA219 ina219;
+// float busvoltage = 0;
+// float current_mA = 0;
+// float power_mW = 0;
 
 void setup() {
   AlexEncoder::init(39, 40);
-  ina219.begin();
+  // ina219.begin();
   Serial.begin(115200);
-  serialPort.begin(115200, SERIAL_8N1, 3, 4); // Baud rate, mode, RX pin, TX pin
+  // serialPort.begin(115200, SERIAL_8N1, 3, 4); // Baud rate, mode, RX pin, TX pin
 }
 
 void loop() {
 
-  if (serialPort.available())
-  {
-    String receivedData = serialPort.readStringUntil('\n');
+  // if (serialPort.available())
+  // {
+  //   String receivedData = serialPort.readStringUntil('\n');
 
-    if (receivedData.compareTo("LAT:START"))
-    {
-      Serial.println("LAT started");
+  //   if (receivedData.compareTo("LAT:START"))
+  //   {
+  //     Serial.println("LAT started");
 
-      uint8_t dacVal = 130;
+  //     uint8_t dacVal = 130;
 
-      while (true)
-      {
-        dacVal += 1;
-        dacWrite(DAC_CH1, dacVal);
+  //     while (true)
+  //     {
+  //       dacVal += 1;
+  //       dacWrite(DAC_CH1, dacVal);
 
-        current_mA = ina219.getCurrent_mA();
-        Serial.print(dacVal);
-        Serial.print(":");
-        Serial.println(current_mA);
-        delay(200);
+  //       current_mA = ina219.getCurrent_mA();
+  //       Serial.print(dacVal);
+  //       Serial.print(":");
+  //       Serial.println(current_mA);
+  //       delay(200);
 
-        if (serialPort.available())
-        {
-          receivedData = serialPort.readStringUntil('\n');
+  //       if (serialPort.available())
+  //       {
+  //         receivedData = serialPort.readStringUntil('\n');
 
-          if (receivedData.compareTo("LAT:STOP"))
-          {
-            Serial.println("LAT stopped");
-            break;
-          }
-        }
-      }
-    }
-  }
+  //         if (receivedData.compareTo("LAT:STOP"))
+  //         {
+  //           Serial.println("LAT stopped");
+  //           break;
+  //         }
+  //       }
+  //     }
+  //   }
+  // }
 
-  return;
+  // return;
 
   int16_t encVal = AlexEncoder::counter;
   uint8_t dacVal = encVal * 1;
@@ -65,16 +65,17 @@ void loop() {
   {
     dacWrite(DAC_CH1, dacVal);
     oldDacVal = dacVal;
+    Serial.printf("DAC: %i\n", dacVal);
   }
 
-  busvoltage = ina219.getBusVoltage_V();
-  current_mA = ina219.getCurrent_mA();
-  power_mW = ina219.getPower_mW();
+  // busvoltage = ina219.getBusVoltage_V();
+  // current_mA = ina219.getCurrent_mA();
+  // power_mW = ina219.getPower_mW();
 
-  Serial.printf("V: %f", busvoltage);
-  Serial.printf(" C: %f", current_mA);
-  Serial.printf(" PWR: %f", power_mW);
-  Serial.printf(" DAC: %d\n", dacVal);
+  // Serial.printf("V: %f", busvoltage);
+  // Serial.printf(" C: %f", current_mA);
+  // Serial.printf(" PWR: %f", power_mW);
+  // Serial.printf(" DAC: %d\n", dacVal);
 
   delay(100);
 }
