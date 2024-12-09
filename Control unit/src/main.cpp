@@ -24,9 +24,6 @@
 #define SCREEN_WIDTH 128
 #define CHAR_BUF_SIZE 30
 
-#define MIN_SIGNAL_LEVEL 95
-#define MAX_SIGNAL_LEVEL 247
-
 #define FRAME_WINDOW_HEIGHT_35MM_SYSTEM_MM 24
 #define FRAME_WINDOW_WIDTH_35MM_SYSTEM_MM 36
 #define VERTICAL_HOLE_DISTANCE_MM 10.6
@@ -41,7 +38,8 @@
 
 #define MAIN_MENU_ITEMS_COUNT 4
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
-#define RESULT_PAGES_COUNT 7
+
+#define SENSOR_TYPE_CODE_PIN A7
 
 #define EEPROM_FIRST_RUN_VAL 22
 #define EEPROM_FIRST_RUN_VAL_INDEX 1023
@@ -75,8 +73,8 @@ enum class MainMenuItems
 
 struct CurtainTimings
 {
-	double curtain1spanAtime;
-	double curtain2spanAtime;
+	double curtain1spanAtime; //In microseconds
+	double curtain2spanAtime; // In microseconds
 };
 
 volatile long pin0shutterOpenStartTime = -1,
@@ -106,6 +104,44 @@ const double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {120, 70, 35, -30, 
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
 
+enum class SensorType
+{
+	SingleSensor,
+	Frame35mm,
+};
+
+struct SensorUnitData
+{
+	SensorType Type;
+	double FrameWidth; // in millimiters
+	double FrameHeight; // in millimiters
+	double HorisontalSensorDistance; // in millimiters
+	double VerticalSensorDistance;	 // in millimiters
+	uint16_t minAdcVal;
+	uint16_t maxAdcVal;
+};
+
+const uint8_t sensorsDataArraySize = 2;
+
+const SensorUnitData sensorsData[sensorsDataArraySize] = {
+		{
+				SensorType::SingleSensor,
+				-1,
+				-1,
+				-1,
+				-1,
+				970,
+				985
+		},
+		{
+				SensorType::Frame35mm,
+				36,
+				24,
+				16.0,
+				10.6,
+				900,
+				940
+		}};
 
 ISR(ADC_vect)
 {
@@ -234,39 +270,24 @@ double getCurtainSpeed(long time, double distance)
 	return curtainSpanASpeedInMPerS;
 }
 
-void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize/* , double sensor1time, double sensor2time */)
+void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
 {
+	double frameSizeInMeters = frameSize / (double)MM_IN_M;
 	// First curtain
 	res.curtain1spanAspeed = getCurtainSpeed(curtainTimings.curtain1spanAtime, sensorDistance);
 	res.curtain1spanAtime = curtainTimings.curtain1spanAtime / US_IN_MILLISECOND;
-	// Serial.println("Curtain 1 span A speed: " + String(firstCurtainSpanASpeedInMPerS) + " m/s");
-
-	res.curtain1TotalTime = frameSize / (res.curtain1spanAspeed / 1000.0);
+	res.curtain1TotalTime = frameSizeInMeters / (res.curtain1spanAspeed / 1000.0);
 
 	// Second curtain
 	res.curtain2spanAspeed = getCurtainSpeed(curtainTimings.curtain2spanAtime, sensorDistance);
 	res.curtain2spanAtime = curtainTimings.curtain2spanAtime / US_IN_MILLISECOND;
-	// Serial.println("Curtain 1 span A speed: " + String(secondCurtainSpanASpeedInMPerS) + " m/s");
+	res.curtain2TotalTime = frameSizeInMeters / (res.curtain2spanAspeed / 1000.0);
 
-	res.curtain2TotalTime = frameSize / (res.curtain2spanAspeed / 1000.0);
-
-	//TODO: check slit width calculation
-	// // Slit width
-	// double spanASlitSizeInMmByCurtain1 = (VERTICAL_HOLE_DISTANCE_MM / curtainTimings.curtain1spanAtime) * sensor1time;
-	// double spanASlitSizeInMmByCurtain2 = (VERTICAL_HOLE_DISTANCE_MM / curtainTimings.curtain2spanAtime) * sensor1time;
-	// // Serial.print("Span A c1: ");
-	// // Serial.println(spanASlitSizeInMmByCurtain1);
-	// // Serial.print("Span A c2: ");
-	// // Serial.println(spanASlitSizeInMmByCurtain2);
-	// res.slitWidthSpanA = (spanASlitSizeInMmByCurtain1 + spanASlitSizeInMmByCurtain2) / 2.0;
-
-	// double spanBSlitSizeInMmByCurtain2 = (VERTICAL_HOLE_DISTANCE_MM / curtainTimings.curtain2spanBtime) * sensor2time;
-	// double spanBSlitSizeInMmByCurtain1 = (VERTICAL_HOLE_DISTANCE_MM / curtainTimings.curtain1spanBtime) * sensor2time;
-	// // Serial.print("Span B c1: ");
-	// // Serial.println(spanBSlitSizeInMmByCurtain1);
-	// // Serial.print("Span B c2: ");
-	// // Serial.println(spanBSlitSizeInMmByCurtain2);
-	// res.slitWidthSpanB = (spanBSlitSizeInMmByCurtain1 + spanBSlitSizeInMmByCurtain2) / 2.0;
+	// Slit width
+	double estSlitSpeed = sensorDistance / ((curtainTimings.curtain1spanAtime + curtainTimings.curtain2spanAtime) / 2.0);//in mm per microsecond
+	res.slitWidthSensor0 = estSlitSpeed * sensor0time;// in mm
+	res.slitWidthSensor1 = estSlitSpeed * sensor1time; // in mm
+	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0; // in mm
 }
 
 void drawMeasuredScreen()
@@ -277,82 +298,77 @@ void drawMeasuredScreen()
 			shutter speed in fraction of a sec. (e.g. 1/750 sec)
 			Distance from closest shutter speeds in stops (1/2 stop from 1/500 and )
 			Distance from closest shutter speeds graphically
-			Slit size in mm (e.g. 1.5mm)
 
 		Total result screen
-			1 to 2 sensor first curtain travel time in m/s
-			1 to 2 sensor second curtain travel time in m/s
+			1 to 2 sensor first curtain travel time in ms
+			1 to 2 sensor second curtain travel time in ms
 
 			1 to 2 sensor first curtain speed in m/s
 			1 to 2 sensor second curtain speed in m/s
 
-			1-st curtain avg speed in m/s
-			2-st curtain avg speed in m/s
-			
-			1-st curtain total travel time in ms
-			2-st curtain total travel time in ms
+			1-st curtain est. total travel time in ms
+			2-st curtain est. total travel time in ms
 
-			exposure unevannes text or graphical
+			Slit size for first and second sensor in mm (e.g. 1.5mm)
 	 */
 
-	// Sensor 0 timecodes: 56921276|56922708
-	// Sensor 1 timecodes: 56923936|56925452
-	// Sensor 0 max val.: 193
-	// Sensor 1 max val.: 195
+	// Sensor 0 timecodes: 16599544|16601460
+	// Sensor 1 timecodes: 16590476|16592600
+	// Sensor 0 max val.: 163
+	// Sensor 1 max val.: 167
+	pin0shutterOpenStartTime = 16599544;
+	pin0shutterOpenEndTime = 16601460;
+	pin1shutterOpenStartTime = 16590476;
+	pin1shutterOpenEndTime = 16592600;
+	sensor0Max = 163;
+	sensor1Max = 167;
+	curtainMovement = CurtainMovement::HORISONTAL;
 
-	// pin0shutterOpenStartTime = 56921276;
-	// pin0shutterOpenEndTime = 56922708;
-	// pin1shutterOpenStartTime = 56923936;
-	// pin1shutterOpenEndTime = 56925452;
-	
-	// sensor0Max = 193;
-	// sensor1Max = 195;
-	// curtainMovement = CurtainMovement::VERTICAL;
-
-	Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
-	Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
+	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
+	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
 	// Serial.println(String("Sensor 0 max val.: ") + sensor0Max);
 	// Serial.println(String("Sensor 1 max val.: ") + sensor1Max);
 
 	double rawSensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
 	double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
-	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);
-	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max);
+	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);//in microseconds
+	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max); // in microseconds
 
 	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
 	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
 
-	// sensor0CorrectedTime = 1.34;
-	// sensor1CorrectedTime = 1.38;
-
 	MeasuredResult res;
-	res.sensor0Time = sensor0CorrectedTime / US_IN_MILLISECOND;
-	res.sensor1Time = sensor1CorrectedTime / US_IN_MILLISECOND;
-
-	res.curtain1FrameAvgSpeed = 0;
-	res.curtain2FrameAvgSpeed = 0;
-	// res.curtain1spanAspeed = 1.22;
-	// res.curtain1spanBspeed = 1.23;
-	// res.curtain1spanCspeed = 1.24;
-	// res.curtain1spanAtime = 1.25;
-	// res.curtain1spanBtime = 1.26;
-	// res.curtain1spanCtime = 1.27;
-	// res.curtain1FrameAvgSpeed = 1.28;
-	// res.curtain1TotalTime = 1.29;
-
-	// res.curtain2spanAspeed = 1.32;
-	// res.curtain2spanBspeed = 1.33;
-	// res.curtain2spanCspeed = 1.34;
-	// res.curtain2spanAtime = 1.35;
-	// res.curtain2spanBtime = 1.36;
-	// res.curtain2spanCtime = 1.37;
-	// res.curtain2FrameAvgSpeed = 1.38;
-	// res.curtain2TotalTime = 1.39;
+	res.sensor0Time = sensor0CorrectedTime / US_IN_MILLISECOND;//in milliseconds
+	res.sensor1Time = sensor1CorrectedTime / US_IN_MILLISECOND;// in milliseconds
 
 	CurtainTimings curtainTimings;
 	double sensorDistance;
 	double frameSize;
 	CurtainMovementDirection curtainMovementDirection = CurtainMovementDirection::TopToBottom;
+
+	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
+	delay(100);
+	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	uint16_t curSensorCode = 927;//TODO: mocked, remove 
+	// Serial.print("Sensor unit code: ");
+	// Serial.println(curSensorCode);
+	int8_t curSensorDataIndex = -1;
+
+	for (size_t i = 0; i < sensorsDataArraySize; i++)
+	{
+		if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
+		{
+			curSensorDataIndex = i;
+		}
+	}
+
+	if (curSensorDataIndex == -1)
+	{
+		Serial.println(F("Sensor data not found"));
+		while(true);//halt the program
+	}
+
+	SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
 
 	if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
 	{
@@ -371,16 +387,17 @@ void drawMeasuredScreen()
 																	CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
 		}
 		
-		frameSize = (curtainMovement == CurtainMovement::HORISONTAL ? 
-																		(double)FRAME_WINDOW_WIDTH_35MM_SYSTEM_MM : (double)FRAME_WINDOW_HEIGHT_35MM_SYSTEM_MM) / (double)MM_IN_M;
-		sensorDistance = curtainMovement == CurtainMovement::HORISONTAL ? HORISONTAL_HOLE_DISTANCE_MM : VERTICAL_HOLE_DISTANCE_MM;
+		frameSize = curtainMovement == CurtainMovement::HORISONTAL ? 
+										curSensorData.FrameWidth : curSensorData.FrameHeight;// in millimiters
+		sensorDistance = curtainMovement == CurtainMovement::HORISONTAL ? 
+												curSensorData.HorisontalSensorDistance : curSensorData.VerticalSensorDistance;// in millimiters
 	}
 	else
 	{
 		//for leaf shutters
 	}
 
-	calculateResults(res, curtainTimings, sensorDistance, frameSize/* , sensor1CorrectedTime, sensor2CorrectedTime */);
+	calculateResults(res, curtainTimings, sensorDistance, frameSize, sensor0CorrectedTime, sensor1CorrectedTime);
 
 	int16_t startEncoderVal = AlexEncoder::counter;
 
@@ -418,19 +435,35 @@ void drawMeasuringScreen()
 	sensor0Max = 0;
 	sensor1Max = 0;
 
+	uint8_t savedBrightness = 10; // getSavedLightBrightness();
+	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness;
+	const uint8_t maxLightBrightness = 100;
+
 	adcISRFlow = AdcISRFlow::MEASURING;
-	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
 	startADCconversion(); // start first ADC conversion
 
 	while (true)
 	{
-		// int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
-		displayManager.drawMeasuringScreen();
+		int16_t resultBrightness = AlexEncoder::counter - startEncoderVal;
+
+		if (resultBrightness > maxLightBrightness)
+		{
+			startEncoderVal = AlexEncoder::counter - (maxLightBrightness);
+			resultBrightness = maxLightBrightness;
+		}
+
+		if (resultBrightness < 0)
+		{
+			resultBrightness = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		displayManager.drawMeasuringScreen(resultBrightness);
 
 		if (button.isClicked())
 		{
 			adcISRFlow = AdcISRFlow::NONE;
-			// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
 			return;
 		}
 		else if (adcISRFlow == AdcISRFlow::MEASURING &&
@@ -464,7 +497,7 @@ void drawCurtainMovementSelectionScreen()
 void drawLightCheckScreen()
 {
 	uint8_t savedBrightness = 10;// getSavedLightBrightness();
-	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness; //5 - 10 = -5
+	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness; 
 	const uint8_t maxLightBrightness = 100;
 	// int8_t oldBrightness = savedBrightness;
 	// long lastEEPROMUpdateTime = millis();
@@ -491,7 +524,8 @@ void drawLightCheckScreen()
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawLightCheckScreen(resultBrightness, sensor0Readings / (double)MAX_SIGNAL_LEVEL, sensor1Readings / (double)MAX_SIGNAL_LEVEL);
+		displayManager.drawLightCheckScreen(resultBrightness, sensor0Readings, sensor1Readings);
+		// Serial.println(sensor0Readings);
 
 		// if (resultBrightness != oldBrightness && millis() - lastEEPROMUpdateTime > EEPROMUpdateDelayMs)
 		// {

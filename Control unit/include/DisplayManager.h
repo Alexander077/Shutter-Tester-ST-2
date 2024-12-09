@@ -30,8 +30,8 @@ private:
       uint16_t strLength = strlen(mainBuf.c_str());
       char tmpBuf[TMP_BUF_SIZE];
 
-      Serial.print("Start writing main buf: ");
-      Serial.println(mainBuf.c_str());
+      // Serial.print("Start writing main buf: ");
+      // Serial.println(mainBuf.c_str());
 
       uint16_t startIndex = 0;
       do
@@ -86,10 +86,12 @@ public:
     sendBuf();
   }
 
-  void drawMeasuringScreen()
+  void drawMeasuringScreen(uint8_t lightBrightness)
   {
     mainBuf.clear();
     mainBuf += (char)Screens::MEASURING;
+    mainBuf += ":";
+    mainBuf.add(lightBrightness);
 
     sendBuf();
   }
@@ -104,22 +106,16 @@ public:
     sendBuf();
   }
 
-  void drawLightCheckScreen(uint8_t lightBrightness, double sensor0Val, double sensor1Val)
+  void drawLightCheckScreen(uint8_t lightBrightness, uint8_t sensor0Val, uint8_t sensor1Val)
   {
-    #define BUF_SIZE 40
-    char tmpBuf[BUF_SIZE];
-
     mainBuf.clear();
     mainBuf += (char)Screens::LIGHT_CHECK;
     mainBuf += ":";
     mainBuf.add(lightBrightness);
     mainBuf += ":";
-
-    dtostrf(sensor0Val, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
-    mainBuf.add(tmpBuf);
+    mainBuf.add(sensor0Val);
     mainBuf += ":";
-    dtostrf(sensor1Val, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
-    mainBuf.add(tmpBuf);
+    mainBuf.add(sensor1Val);
 
     sendBuf();
   }
@@ -152,78 +148,46 @@ public:
         mainBuf += tmpBuf;
         break;
       }
-      // case 2:
-      // {
-      //   dtostrf(results.sensor2Time, FLOAT_WIDTH, 2, tmpBuf);
-      //   mainBuf += tmpBuf;
-      //   break;
-      // }
-      // case 3://spans layout screen
-      // {
-      //   mainBuf += ((uint8_t)curtainMovementDirection);
-      //   break;
-      // }
       case 2:
       {
         dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf +=  tmpBuf;
         mainBuf +=  ":";
-        // dtostrf(results.curtain1spanBspeed, FLOAT_WIDTH, 2,tmpBuf);
-        // mainBuf +=  tmpBuf;
-        // mainBuf +=  ":";
-        // dtostrf(results.curtain1spanCspeed, FLOAT_WIDTH, 2,tmpBuf);
-        // mainBuf +=  tmpBuf;
-        // mainBuf +=  ":";
+
         dtostrf(results.curtain1spanAtime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf +=  tmpBuf;
         mainBuf +=  ":";
-        // dtostrf(results.curtain1spanBtime, FLOAT_WIDTH, 2,tmpBuf);
-        // mainBuf +=  tmpBuf;
-        // mainBuf +=  ":";
-        // dtostrf(results.curtain1spanCtime, FLOAT_WIDTH, 2,tmpBuf);
-        // mainBuf +=  tmpBuf;
-        // mainBuf +=  ":";
-        dtostrf(results.curtain1FrameAvgSpeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
-        mainBuf += tmpBuf;
-        mainBuf += ":";
+
         dtostrf(results.curtain1TotalTime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf +=  tmpBuf;
+        mainBuf += ":";
+
+        dtostrf(results.curtain2spanAspeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+
+        dtostrf(results.curtain2spanAtime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+        mainBuf += tmpBuf;
+        mainBuf += ":";
+
+        dtostrf(results.curtain2TotalTime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+        mainBuf += tmpBuf;
+
         break;
       }
       case 3:
       {
-        dtostrf(results.curtain2spanAspeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+        dtostrf(results.slitWidthSensor0, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
         mainBuf += ":";
-        // dtostrf(results.curtain2spanBspeed, FLOAT_WIDTH, 2, tmpBuf);
-        // mainBuf += tmpBuf;
-        // mainBuf += ":";
-        // dtostrf(results.curtain2spanCspeed, FLOAT_WIDTH, 2, tmpBuf);
-        // mainBuf += tmpBuf;
-        // mainBuf += ":";
-        dtostrf(results.curtain2spanAtime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+
+        dtostrf(results.slitWidthSensor1, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
         mainBuf += ":";
-        // dtostrf(results.curtain2spanBtime, FLOAT_WIDTH, 2, tmpBuf);
-        // mainBuf += tmpBuf;
-        // mainBuf += ":";
-        // dtostrf(results.curtain2spanCtime, FLOAT_WIDTH, 2, tmpBuf);
-        // mainBuf += tmpBuf;
-        // mainBuf += ":";
-        dtostrf(results.curtain2FrameAvgSpeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
+
+        dtostrf(results.slitWidthAverage, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
-        mainBuf += ":";
-        dtostrf(results.curtain2TotalTime, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
-        mainBuf += tmpBuf;
-        break;
-      }
-      case 4:
-      {
-        dtostrf(results.slitWidthSpanA, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
-        mainBuf += tmpBuf;
-        // mainBuf += ":";
-        // dtostrf(results.slitWidthSpanB, FLOAT_WIDTH, 2, tmpBuf);
-        // mainBuf += tmpBuf;
+
         break;
       }
 
@@ -249,3 +213,6 @@ public:
 
 #undef BUF_SIZE
 #undef MAIN_BUF_SIZE
+#undef TMP_BUF_SIZE
+#undef FLOAT_WIDTH
+#undef FLOAT_DECIMAL_WIDTH

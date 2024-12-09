@@ -6,18 +6,20 @@ struct MeasuredResult
 {
   Derection curtainMovementDirection;
 
-  double sensor0Time;
-  double sensor1Time;
+  double sensor0Time; // In milliseconds
+  double sensor1Time; // In milliseconds
 
-  double curtain1spanAtime;
-  double curtain1spanAspeed;
-  double curtain1FrameAvgSpeed;
-  double curtain1TotalTime;
+  double curtain1spanAtime; // In milliseconds
+  double curtain1spanAspeed;//In meters per second
+  // double curtain1FrameAvgSpeed;
+  double curtain1TotalTime; // In milliseconds
 
-  double curtain2spanAtime;
-  double curtain2spanAspeed;
-  double curtain2FrameAvgSpeed;
-  double curtain2TotalTime;
+  double curtain2spanAtime;  // In milliseconds
+  double curtain2spanAspeed; // In meters per second
+  // double curtain2FrameAvgSpeed;
+  double curtain2TotalTime; // In milliseconds
 
-  double slitWidthSpanA;
+  double slitWidthSensor0;//in mm
+  double slitWidthSensor1; // in mm
+  double slitWidthAverage; // in mm
 };
