@@ -10,6 +10,7 @@
 #include "../../include/AlexEncoder.h"
 #include "DisplayManager.h"
 #include "MeasuredResult.h"
+#include "StoredMeasuredResult.h"
 #include "CurtainMovementDirection.h"
 
 // #define SHUTTER_TESTER_DEBUG
@@ -41,9 +42,13 @@
 
 #define SENSOR_TYPE_CODE_PIN A7
 
-#define EEPROM_FIRST_RUN_VAL 22
+//EEPROM memory layout: |saved measures (0-1012)|saved brightness value(1013-1022)|first run value(1023)|
 #define EEPROM_FIRST_RUN_VAL_INDEX 1023
-#define EEPROM_LIGHT_BRIGHTNESS_INDEX 0
+#define EEPROM_FIRST_RUN_VAL 22
+#define EEPROM_LIGHT_BRIGHTNESS_START_VAL 0
+#define EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL 255
+#define EEPROM_LIGHT_BRIGHTNESS_START_INDEX 1013
+#define EEPROM_LIGHT_BRIGHTNESS_END_INDEX (EEPROM_FIRST_RUN_VAL_INDEX - 1)
 
 enum class AdcISRFlow
 {
@@ -245,14 +250,53 @@ bool isFirstRun()
 	return EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL;
 }
 
-uint8_t getSavedLightBrightness()
+template <typename T> bool verifiedEEPROMPut(const uint16_t index, const T &data)
 {
-	return EEPROM.read(EEPROM_LIGHT_BRIGHTNESS_INDEX);
+	EEPROM.put(index, data);
+	T dataForVerification;
+	EEPROM.get(index, dataForVerification);
+	return data == dataForVerification;
 }
 
-void saveLightBrightness(uint8_t brightness)
+uint8_t getSavedLightBrightness()
 {
-	EEPROM.update(EEPROM_LIGHT_BRIGHTNESS_INDEX, brightness);
+	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
+	{
+		uint8_t eepromVal = EEPROM.read(i);
+
+		if (eepromVal != EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL)//if data has been written
+		{
+			return EEPROM.read(i);
+		}
+	}
+
+	return 0;//if all cells are failed
+}
+
+bool saveLightBrightness(uint8_t brightness)
+{
+	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
+	{
+		uint8_t eepromVal = EEPROM.read(i);
+
+		if (eepromVal != EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL) // if data has been written
+		{
+			bool writeRes = verifiedEEPROMPut(i, brightness);
+
+			if (writeRes)
+			{
+				return true;
+			}
+
+			// if cell is failed and we do not reach last cell yet - move value to next cell
+			if (!writeRes && i != EEPROM_LIGHT_BRIGHTNESS_END_INDEX) 
+			{
+				return verifiedEEPROMPut(i + 1, brightness);
+			}
+		}
+	}
+
+	halt("Halted. Program should not get here");
 }
 
 double getCorrectedSensorValue(long rawSensorTime, uint8_t maxSensorValue)
@@ -296,7 +340,6 @@ void drawMeasuredScreen()
 		Shutter result screen
 			shutter time im us/ms (e.g. 1.55 ms)
 			shutter speed in fraction of a sec. (e.g. 1/750 sec)
-			Distance from closest shutter speeds in stops (1/2 stop from 1/500 and )
 			Distance from closest shutter speeds graphically
 
 		Total result screen
@@ -316,13 +359,14 @@ void drawMeasuredScreen()
 	// Sensor 1 timecodes: 16590476|16592600
 	// Sensor 0 max val.: 163
 	// Sensor 1 max val.: 167
-	pin0shutterOpenStartTime = 16599544;
-	pin0shutterOpenEndTime = 16601460;
-	pin1shutterOpenStartTime = 16590476;
-	pin1shutterOpenEndTime = 16592600;
-	sensor0Max = 163;
-	sensor1Max = 167;
-	curtainMovement = CurtainMovement::HORISONTAL;
+	
+	// pin0shutterOpenStartTime = 16599544;
+	// pin0shutterOpenEndTime = 16601460;
+	// pin1shutterOpenStartTime = 16590476;
+	// pin1shutterOpenEndTime = 16592600;
+	// sensor0Max = 163;
+	// sensor1Max = 167;
+	// curtainMovement = CurtainMovement::HORISONTAL;
 
 	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
 	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
@@ -348,8 +392,8 @@ void drawMeasuredScreen()
 
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
 	delay(100);
-	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	uint16_t curSensorCode = 927;//TODO: mocked, remove 
+	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
 	// Serial.print("Sensor unit code: ");
 	// Serial.println(curSensorCode);
 	int8_t curSensorDataIndex = -1;
@@ -364,8 +408,7 @@ void drawMeasuredScreen()
 
 	if (curSensorDataIndex == -1)
 	{
-		Serial.println(F("Sensor data not found"));
-		while(true);//halt the program
+		halt(F("Sensor data not found. Program halted"));
 	}
 
 	SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
@@ -435,7 +478,7 @@ void drawMeasuringScreen()
 	sensor0Max = 0;
 	sensor1Max = 0;
 
-	uint8_t savedBrightness = 10; // getSavedLightBrightness();
+	uint8_t savedBrightness = getSavedLightBrightness();
 	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness;
 	const uint8_t maxLightBrightness = 100;
 
@@ -464,6 +507,7 @@ void drawMeasuringScreen()
 		if (button.isClicked())
 		{
 			adcISRFlow = AdcISRFlow::NONE;
+			saveLightBrightness(resultBrightness);
 			return;
 		}
 		else if (adcISRFlow == AdcISRFlow::MEASURING &&
@@ -472,6 +516,7 @@ void drawMeasuringScreen()
 		{
 			delay(500); // wait for other sensors to get data
 			adcISRFlow = AdcISRFlow::NONE;
+			saveLightBrightness(resultBrightness);
 			drawMeasuredScreen();
 			return;
 		}
@@ -496,13 +541,9 @@ void drawCurtainMovementSelectionScreen()
 
 void drawLightCheckScreen()
 {
-	uint8_t savedBrightness = 10;// getSavedLightBrightness();
+	uint8_t savedBrightness = getSavedLightBrightness();
 	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness; 
 	const uint8_t maxLightBrightness = 100;
-	// int8_t oldBrightness = savedBrightness;
-	// long lastEEPROMUpdateTime = millis();
-	// const uint16_t EEPROMUpdateDelayMs = 700;
-
 
 	adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
@@ -526,13 +567,6 @@ void drawLightCheckScreen()
 
 		displayManager.drawLightCheckScreen(resultBrightness, sensor0Readings, sensor1Readings);
 		// Serial.println(sensor0Readings);
-
-		// if (resultBrightness != oldBrightness && millis() - lastEEPROMUpdateTime > EEPROMUpdateDelayMs)
-		// {
-		// 	oldBrightness = resultBrightness;
-		// 	saveLightBrightness(resultBrightness);
-		// 	lastEEPROMUpdateTime = millis();
-		// }
 
 		if (button.isClicked())
 		{
@@ -608,7 +642,27 @@ void setup()
 {
 	delay(1000);
 	Serial.begin(115200);
-	
+
+	Serial.println((uint16_t)sizeof(StoredMeasuredResult));
+	halt();
+
+	// write first run value/need to run once befor device shipping
+	// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
+
+	// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
+	if (false)//init EEPROM on first run
+	{
+		// init light brightness section in EEPROM
+		EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
+
+		for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		{
+			EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+		}
+
+		EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
+	}
+
 	ADCSRA = 0; // clear ADCSRA register
 	ADCSRB = 0; // clear ADCSRB register
 
@@ -624,20 +678,10 @@ void setup()
 	setADCautoTriggerEnabled(false);
 	ADCSRA |= (1 << ADEN); // enable ADC
 	enableADCinterrupt();
-	// startADCconversion(); // start first ADC conversion
 
-	// pinMode(buttonPin, INPUT_PULLUP);
 	pinMode(TEST_PIN, OUTPUT);
 
 	bool isVersionTextVisible = button.isDown();
-
-	// Serial.println("Setup done");
-	// EEPROM.write(EEPROM.length() - 3, 1);
-	// EEPROM.write(EEPROM.length() - 2, 1);
-	// EEPROM.write(EEPROM.length() - 1, 1);
-	// EEPROM.write(EEPROM.length(), 8);
-
-	// Serial.println(EEPROM.read(EEPROM.length()));
 
 	//Place button tate polling timer here so that button 
 	//don't react while showing startup screen

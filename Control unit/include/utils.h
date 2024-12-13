@@ -102,3 +102,23 @@ void SerialPrintf(char *fmt, ...)
   va_end(args);
   Serial.print(buf);
 }
+
+void halt(const char *message)
+{
+  if (message[0] != '\0')
+  {
+    Serial.println(message);
+  }
+
+  while (true);
+}
+
+void halt(const __FlashStringHelper *message)
+{
+  halt((const char *)message);
+}
+
+void halt()
+{
+  halt((const char *)'\0');
+}
