@@ -1,4 +1,5 @@
 #include <Arduino.h>
+// #include <EEPROM.h>
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 #include <mString.h>
@@ -19,7 +20,6 @@
 
 #define MAIN_MENU_ITEMS_COUNT 4
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
-#define RESULT_PAGES_COUNT 7
 
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
@@ -31,6 +31,8 @@
 #define DAC_CH1 17
 #define DAC_CH2 18
 #define DAC_MAX 255
+
+const uint8_t thresholdDacValue = 130;
 
 enum class MainMenuItems
 {
@@ -89,7 +91,7 @@ Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, DISPLAY_CS, SCK, MOSI);
 
 /* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
 Arduino_GFX *display = new Arduino_ST7735(
-    bus, DISPLAY_RESET, 3 /* rotation */, false /* IPS */,
+    bus, DISPLAY_RESET, 1 /* rotation */, false /* IPS */,
     128 /* width */, 160 /* height */,
     0 /* col offset 1 */, 0 /* row offset 1 */,
     0 /* col offset 2 */, 0 /* row offset 2 */,
@@ -150,54 +152,63 @@ void i2cReceiveEvent(int howMany)
 }
 
 void parseInputData(){
-  // uint16_t splitCount = inputCmdStr.split(inputDataArray, ':');
-  char* buf = inputCmdStr.buf;
-  uint16_t strLength = strlen(buf);
+  Serial.println(inputCmdStr.buf);
+  char* strings[inputCmdStr.splitAmount(':')];
+  int amount = inputCmdStr.split(strings, ':');
 
-  if (strLength > 0)
+  for (size_t i = 0; i < amount; i++)
   {
-    // Serial.println("Parsed data");
-    uint16_t dataArrIndex = 0;
-    int16_t startIndex = -1;
-
-    for (size_t i = 0; i < strLength; i++)
-    {
-      if (buf[i] == ':' && i != strLength - 1 && i > 0)//do not process delimeter on first and last indeces.
-      {
-        if (startIndex == -1)
-        {
-          strncpy(inputDataArray[dataArrIndex], &buf[0], i);
-        }
-        else 
-        {
-          strncpy(inputDataArray[dataArrIndex], &buf[startIndex + 1], i - startIndex - 1);
-        }
-
-        startIndex = i;
-        dataArrIndex++;
-      }
-    }
-
-    if (startIndex != -1)
-    {
-      strcpy(inputDataArray[dataArrIndex], &buf[startIndex + 1]);
-    }
-    else
-    {
-      strcpy(inputDataArray[dataArrIndex], &buf[0]);
-      dataArrIndex++;
-    }
-
-    // if (dataArrIndex > 0)
-    // {
-    //   for (size_t i = 0; i <= dataArrIndex; i++)
-    //   {
-    //     Serial.println(inputDataArray[i]);
-    //   }
-    // }
-
-    // Serial.println("Parsed data end");
+    strcpy(inputDataArray[i], strings[i]);
   }
+  
+  inputCmdStr.unsplit();
+
+  // char* buf = inputCmdStr.buf;
+  // uint16_t strLength = strlen(buf);
+
+  // if (strLength > 0)
+  // {
+  //   // Serial.println("Parsed data");
+  //   uint16_t dataArrIndex = 0;
+  //   int16_t startIndex = -1;
+
+  //   for (size_t i = 0; i < strLength; i++)
+  //   {
+  //     if (buf[i] == ':' && i != strLength - 1 && i > 0)//do not process delimeter on first and last indeces.
+  //     {
+  //       if (startIndex == -1)
+  //       {
+  //         strncpy(inputDataArray[dataArrIndex], &buf[0], i);
+  //       }
+  //       else 
+  //       {
+  //         strncpy(inputDataArray[dataArrIndex], &buf[startIndex + 1], i - startIndex - 1);
+  //       }
+
+  //       startIndex = i;
+  //       dataArrIndex++;
+  //     }
+  //   }
+
+  //   if (startIndex != -1)
+  //   {
+  //     strcpy(inputDataArray[dataArrIndex], &buf[startIndex + 1]);
+  //   }
+  //   else
+  //   {
+  //     strcpy(inputDataArray[dataArrIndex], &buf[0]);
+  //     dataArrIndex++;
+  //   }
+
+  // if (amount > 0)
+  // {
+  //   for (size_t i = 0; i <= amount; i++)
+  //   {
+  //     Serial.println(inputDataArray[i]);
+  //   }
+  // }
+
+  // Serial.println("Parsed data end");
 }
 
 Rect getStringRect(const char *str, int16_t x, int16_t y)
@@ -350,6 +361,7 @@ void drawCreditsScreen()
 void drawMeasuringScreen()
 {
   display->fillScreen(BLACK);
+  int8_t oldBrightness = -1;
 
   while ((Screens)getCurScreen() == Screens::MEASURING)
   {
@@ -357,12 +369,37 @@ void drawMeasuringScreen()
     drawStringHCentered("MEASURING", 40);
     display->setTextSize(1);
     drawStringHCentered("Release camera shutter", 60);
-    
+    drawStringHCentered("Light brightness", 85);
+
+    int8_t newBrightness = getInputParamsArrayInt(1);
+    uint8_t x = 65;
+    uint8_t y = 115;
+
+    if (oldBrightness != newBrightness)
+    {
+      display->setTextSize(2);
+      display->setCursor(x, y);
+      display->setTextColor(BLACK);
+      display->printf("%i%% ", oldBrightness); // erase
+      display->setCursor(x, y);
+      display->setTextColor(WHITE);
+      display->printf("%i%% ", newBrightness);
+      display->setTextSize(1);
+
+      uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
+      dacWrite(DAC_CH1, dacVal);
+      // Serial.println(dacVal);
+
+      oldBrightness = newBrightness;
+    }
+
     inputCmdStr.clear();
     dataProcessed = true;
     while (dataProcessed){}//wait for new data from main unit
     parseInputData();
   }
+
+  dacWrite(DAC_CH1, 0); // turn off the light
 }
 
 void drawMeasuredScreen()
@@ -377,7 +414,7 @@ void drawMeasuredScreen()
     int8_t resultPageIndex = bufStr.toInt();
 
     //result by sensor, shutter speed
-    if (resultPageIndex >= 0 && resultPageIndex <= 2 && prevPageIndex != resultPageIndex)
+    if (resultPageIndex >= 0 && resultPageIndex <= 1 && prevPageIndex != resultPageIndex)
     {
       display->fillScreen(BLACK);
       // display->fillRect(0,0, display->width(), 115,BLACK);
@@ -429,197 +466,56 @@ void drawMeasuredScreen()
       drawNavBar(resultPageIndex);
     }
 
-    //Spans layout screen
-    if (resultPageIndex == 3 && prevPageIndex != resultPageIndex)
+    //1-st and 2-nd curtain speeds and timings
+    if (resultPageIndex == 2 && prevPageIndex != resultPageIndex)
     {
       display->fillScreen(BLACK);
-      drawStringHCentered("Spans definition", 15);
-
-      bufStr.clear();
-      bufStr.add(inputDataArray[2]);
-
-      uint8_t spansLayoutScheme = bufStr.toInt();
-
-      int8_t imageX = 4;
-      int8_t imageY = 23;
-
-      if (spansLayoutScheme == 1 || spansLayoutScheme == 2)
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHeightBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
-      }
-
-      if (spansLayoutScheme == 3 || spansLayoutScheme == 4)
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphBgHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, WHITE);
-      }
-
-      switch (spansLayoutScheme)
-      {
-      case 1:
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanAUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCUpToDownVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
-
-        display->setCursor(30, 65);
-        display->print("Span ");
-        display->setTextColor(SPAN_C_COLOR);
-        display->print("C");
-        display->setTextColor(WHITE);
-
-        display->setCursor(90, 53);
-        display->print("Span ");
-        display->setTextColor(SPAN_A_COLOR);
-        display->print("A");
-        display->setTextColor(WHITE);
-
-        display->setCursor(90, 78);
-        display->print("Span ");
-        display->setTextColor(SPAN_B_COLOR);
-        display->print("B");
-        display->setTextColor(WHITE);
-        break;
-      }
-      case 2:
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanADownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBDownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCDownToUpVerticalBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
-        display->setCursor(30, 65);
-        display->print("Span ");
-        display->setTextColor(SPAN_C_COLOR);
-        display->print("C");
-        display->setTextColor(WHITE);
-
-        display->setCursor(90, 78);
-        display->print("Span ");
-        display->setTextColor(SPAN_A_COLOR);
-        display->print("A");
-        display->setTextColor(WHITE);
-
-        display->setCursor(90, 53);
-        display->print("Span ");
-        display->setTextColor(SPAN_B_COLOR);
-        display->print("B");
-        display->setTextColor(WHITE);
-        break;
-      }
-      case 3:
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanARightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBRightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCRightToLeftHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
-
-        display->setCursor(63, 87);
-        display->print("Span ");
-        display->setTextColor(SPAN_C_COLOR);
-        display->print("C");
-        display->setTextColor(WHITE);
-
-        display->setCursor(87, 47);
-        display->print("Span ");
-        display->setTextColor(SPAN_A_COLOR);
-        display->print("A");
-        display->setTextColor(WHITE);
-
-        display->setCursor(42, 48);
-        display->print("Span ");
-        display->setTextColor(SPAN_B_COLOR);
-        display->print("B");
-        display->setTextColor(WHITE);
-        break;
-      }
-      case 4:
-      {
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanALeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_A_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanBLeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_B_COLOR);
-        display->drawXBitmap(imageX, imageY, SpeedsHintGraphSpanCLeftToRightHorBits, SpeedsHintGraphBgWidth, SpeedsHintGraphBgHeight, SPAN_C_COLOR);
-
-        display->setCursor(63, 87);
-        display->print("Span ");
-        display->setTextColor(SPAN_C_COLOR);
-        display->print("C");
-        display->setTextColor(WHITE);
-
-        display->setCursor(42, 48);
-        display->print("Span ");
-        display->setTextColor(SPAN_A_COLOR);
-        display->print("A");
-        display->setTextColor(WHITE);
-
-        display->setCursor(87, 47);
-        display->print("Span ");
-        display->setTextColor(SPAN_B_COLOR);
-        display->print("B");
-        display->setTextColor(WHITE);
-        break;
-      }
-      default:
-        break;
-      }
-
-      
-
-      prevPageIndex = resultPageIndex;
-      drawNavBar(resultPageIndex);
-    }
-
-    //1-st or 2-nd curtain speeds and timings
-    if ((resultPageIndex == 4 || resultPageIndex == 5) && prevPageIndex != resultPageIndex)
-    {
-      mString<30> curtainNumber;
-
-      if (resultPageIndex == 4)
-      {
-        curtainNumber += "1st";
-      }
-
-      if (resultPageIndex == 5)
-      {
-        curtainNumber += "2nd";
-      }
-
-      curtainNumber += " curtain summary";
-
-      display->fillScreen(BLACK);
-      drawStringHCentered(curtainNumber, 15);
+      drawStringHCentered("1st curtain", 15);
       const uint8_t lineSpacing = 11;
-      uint8_t curPos = 27;
+      uint8_t curPos = 22;
 
       display->setFont();
 
       display->setCursor(0, curPos);
-      display->printf("  Span A speed: %1.2f m/s", getInputParamsArrayFloat(2));
+      display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(2));
       curPos += lineSpacing; 
+
       display->setCursor(0, curPos);
-      display->printf("  Span B speed: %1.2f m/s", getInputParamsArrayFloat(3));
+      display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(3));
       curPos += lineSpacing; 
-      display->setCursor(0, curPos);
-      display->printf("  Span C speed: %1.2f m/s", getInputParamsArrayFloat(4));
-      curPos += lineSpacing; 
-      display->setCursor(0, curPos);
-      display->printf("   Span A time: %1.2f ms", getInputParamsArrayFloat(5));
-      curPos += lineSpacing; 
-      display->setCursor(0, curPos);
-      display->printf("   Span B time: %1.2f ms", getInputParamsArrayFloat(6));
-      curPos += lineSpacing; 
-      display->setCursor(0, curPos);
-      display->printf("   Span C time: %1.2f ms", getInputParamsArrayFloat(7));
-      curPos += lineSpacing; 
-      // display->setCursor (0, curPos);
-      // display->printf ("    Avg speed: %1.2f m/s", getInputParamsArrayFloat(8));
-      // curPos += lineSpacing ;
+
       display->setCursor(0 , curPos);
-      display->printf("   Travel time: %1.2f ms", getInputParamsArrayFloat(9));
-      curPos += lineSpacing;
+      display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(4));
+      curPos += lineSpacing + 15;
+
       display->setCursor(0, curPos);
+      display->setFont(u8g2_font_6x13_tf);
+
+      drawStringHCentered("2nd curtain", curPos);
+
+      curPos += 5;
+
+      display->setFont();
+
+      display->setCursor(0, curPos);
+      display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(5));
+      curPos += lineSpacing;
+
+      display->setCursor(0, curPos);
+      display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(6));
+      curPos += lineSpacing;
+
+      display->setCursor(0, curPos);
+      display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(7));
+      curPos += lineSpacing + 5;
+
       display->setFont(u8g2_font_6x13_tf);
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);
     }
 
-    if (resultPageIndex == 6 && prevPageIndex != resultPageIndex)
+    if (resultPageIndex == 3 && prevPageIndex != resultPageIndex)
     {
       mString<30> title;
       title += "Estimated slit width";
@@ -632,10 +528,13 @@ void drawMeasuredScreen()
       display->setFont();
 
       display->setCursor(0, curPos);
-      display->printf("   Span A: %1.2f mm", getInputParamsArrayFloat(2));
+      display->printf("  By sensor 1: %1.2f mm", getInputParamsArrayFloat(2));
       curPos += lineSpacing;
       display->setCursor(0, curPos);
-      display->printf("   Span B: %1.2f mm", getInputParamsArrayFloat(3));
+      display->printf("  By sensor 2: %1.2f mm", getInputParamsArrayFloat(3));
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
+      display->printf("   On average: %1.2f mm", getInputParamsArrayFloat(4));
 
       display->setFont(u8g2_font_6x13_tf);
 
@@ -650,21 +549,63 @@ void drawMeasuredScreen()
   }
 }
 
+void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint8_t curSensorValue)
+{
+  const uint8_t barWidthPx = 80;
+  double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
+  sensorValueRate = sensorValueRate > 1.0 ? 1.0 : sensorValueRate;
+  x = 15;
+  y += 20;
+  display->setCursor(x, y);
+  display->printf("Sensor %i signal level", sensorNumber);
+  y += 5;
+  display->fillRect(11, y + 1, barWidthPx - 1, 8, BLACK);
+  display->drawRect(10, y, barWidthPx, 10, WHITE);
+  display->fillRect(11, y + 1, (barWidthPx - 2) * sensorValueRate, 8, WHITE);
+  x += barWidthPx;
+  y += 9;
+
+  display->setTextColor(BLACK);//erase old text
+  display->setCursor(x, y);
+  display->print("Too bright");
+  display->setCursor(x, y);
+  display->print("Too dim");
+  display->setCursor(x, y);
+  display->print("OK");
+
+  display->setCursor(x, y);
+  display->setTextColor(WHITE); 
+
+  if (curSensorValue < MIN_ALLOWED_SIGNAL_LEVEL)
+  {
+    display->print("Too dim");
+  }
+  else if (curSensorValue > MAX_ALLOWED_SIGNAL_LEVEL)
+  {
+    display->print("Too bright");
+  }
+  else
+  {
+    display->print("OK");
+  }
+}
+
 void drawLightCheckScreen()
 {
   display->fillScreen(BLACK);
   int8_t oldBrightness = -1;
   drawStringHCentered("Light brightness", 15);
-  const uint8_t thresholdDacValue = 100;
+  const uint16_t sensorValueBarUpodateIntervalMs = 100;
+  uint64_t lastSensorValueUpdateTime = millis();
 
   while ((Screens)getCurScreen() == Screens::LIGHT_CHECK)
   {
     int8_t newBrightness = getInputParamsArrayInt(1);
+    uint8_t x = 65;
+    uint8_t y = 45;
 
     if (oldBrightness != newBrightness)
     {
-      uint8_t x = 60;
-      uint8_t y = 75;
       display->setTextSize(2);
       display->setCursor(x, y);
       display->setTextColor(BLACK);
@@ -676,9 +617,20 @@ void drawLightCheckScreen()
 
       uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
       dacWrite(DAC_CH1, dacVal);
-      Serial.println(dacVal);
+      // Serial.println(dacVal);
 
       oldBrightness = newBrightness;
+    }
+
+    if (millis() - lastSensorValueUpdateTime > sensorValueBarUpodateIntervalMs)
+    {
+      display->setTextSize(1);
+      uint8_t sensor0Val = getInputParamsArrayInt(2);
+      // Serial.println(sensor0Val);
+      drawSensorSignalLevelBar(x, y, 1, sensor0Val);
+      uint8_t sensor1Val = getInputParamsArrayInt(3);
+      drawSensorSignalLevelBar(x, y, 2, sensor1Val);
+      lastSensorValueUpdateTime = millis();
     }
 
     inputCmdStr.clear();
@@ -740,11 +692,12 @@ void setup(void)
 {
   Serial.begin(115200);
 
+  display->begin();
+  display->fillScreen(BLACK);
+  
   Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
   Wire.onReceive(i2cReceiveEvent); 
 
-  display->begin();
-  display->fillScreen(BLACK);
 
   display->setTextColor(WHITE);
   display->setFont(u8g2_font_6x13_tf);
