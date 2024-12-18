@@ -1,15 +1,14 @@
 #include <Arduino.h>
-#include "Derection.h"
+#include "Direction.h"
 
 #pragma once
 
 struct StoredMeasuredResult
 {
   uint32_t recordNumber;
-  bool inFavorits;
-  // char recordNumber[20];
+  bool isDeleted;
 
-  Derection curtainMovementDirection;
+  Direction curtainMovementDirection;
 
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds
@@ -25,4 +24,9 @@ struct StoredMeasuredResult
   double slitWidthSensor0; // in mm
   double slitWidthSensor1; // in mm
   double slitWidthAverage; // in mm
+
+  bool operator==(StoredMeasuredResult const &rhs) const
+  {
+    return memcmp(this, &rhs, sizeof(StoredMeasuredResult)) == 0;
+  }
 };

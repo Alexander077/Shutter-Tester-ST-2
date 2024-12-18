@@ -198,6 +198,24 @@ public:
     sendBuf();
   }
 
+  void drawMeasurementResultRecordSelectionScreen(int16_t curSelectedIndex, int32_t recordNumbers[], int16_t recordNumbersCount)
+  {
+    mainBuf.clear();
+    mainBuf += (char)Screens::MEASUREMENT_RECORD_SELECTION;
+    mainBuf += ":";
+    mainBuf.add(curSelectedIndex);
+    mainBuf += ":";
+    mainBuf.add(recordNumbersCount);
+
+    for (size_t i = 0; i < recordNumbersCount; i++)
+    {
+      mainBuf += ":";
+      mainBuf.add(recordNumbers[i]);
+    }
+
+    sendBuf();
+  }
+
   void sendRawEncoder(int16_t encoderVal)
   {
     // mainBuf[0] = '\0';
@@ -206,6 +224,16 @@ public:
     // char numBuf[10];
     // snprintf(numBuf, sizeof(numBuf), "%d", encoderVal);
     // strcat(mainBuf, numBuf);
+
+    sendBuf();
+  }
+
+  void drawMeasurementSaveScreen(uint8_t curSelectedMenuIndex)
+  {
+    mainBuf.clear();
+    mainBuf += (char)Screens::MEASUREMENT_SAVE_SCREEN;
+    mainBuf += ":";
+    mainBuf.add(curSelectedMenuIndex);
 
     sendBuf();
   }

@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Derection.h"
+#include "Direction.h"
 
 struct MeasuredResult
 {
-  Derection curtainMovementDirection;
+  Direction curtainMovementDirection;
 
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds

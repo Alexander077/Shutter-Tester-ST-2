@@ -3,6 +3,7 @@
 // #include <U8g2lib.h>
 #include <EEPROM.h>
 #include <InterpolationLib.h>
+#include <AceSorting.h>
 // #include "../../include/LibPrintf/src/LibPrintf.h"
 // #include "../../include/LibPrintf/extras/printf/printf.h"
 #include "utils.h"
@@ -37,9 +38,6 @@
 #define HW_VERSION "1.0"
 #define SW_VERSION "1.0"
 
-#define MAIN_MENU_ITEMS_COUNT 4
-#define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
-
 #define SENSOR_TYPE_CODE_PIN A7
 
 //EEPROM memory layout: |saved measures (0-1012)|saved brightness value(1013-1022)|first run value(1023)|
@@ -50,6 +48,9 @@
 #define EEPROM_LIGHT_BRIGHTNESS_START_INDEX 1013
 #define EEPROM_LIGHT_BRIGHTNESS_END_INDEX (EEPROM_FIRST_RUN_VAL_INDEX - 1)
 
+#define EEPROM_MEASURED_RES_START_INDEX 0
+#define EEPROM_MEASURED_RES_END_INDEX 1012
+
 enum class AdcISRFlow
 {
 	NONE,
@@ -59,21 +60,6 @@ enum class AdcISRFlow
 	// PWM_LIGHT_CHECK,
 	// FAST_MEASURING,
 	// FAST_MEASURED
-};
-
-enum class CurtainMovement
-{
-	HORISONTAL,
-	VERTICAL,
-	LEAF,
-};
-
-enum class MainMenuItems
-{
-	MEASURE,
-	CHECK_LIGHT,
-	MEASURMENT_HISTORY,
-	CREDITS,
 };
 
 struct CurtainTimings
@@ -234,6 +220,7 @@ ISR(ADC_vect)
 		}
 
 		default:
+			halt(F("Halted. Unknown ADC ISR flow"));
 			break;
 	}
 }
@@ -299,6 +286,149 @@ bool saveLightBrightness(uint8_t brightness)
 	halt("Halted. Program should not get here");
 }
 
+int32_t drawMeasurementResultRecordSelectionScreen()
+{
+	// uint16_t blockSize = sizeof(StoredMeasuredResult);
+	// StoredMeasuredResult tempMeasRes;
+	// uint8_t recordsCount = (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX) / blockSize;
+	// int32_t recordNumbers[recordsCount];
+
+	// for (size_t i = EEPROM_MEASURED_RES_START_INDEX, x = 0; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+	// {
+	// 	EEPROM.get(i, tempMeasRes);
+
+	// 	if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
+	// 	{
+	// 		recordNumbers[x] = tempMeasRes.recordNumber;
+	// 		x++;
+	// 	}
+	// }
+
+	const uint8_t recordsCount = 4;
+	int32_t recordNumbers[recordsCount];
+
+	recordNumbers[0] = 0;
+	recordNumbers[1] = 89345;
+	recordNumbers[2] = 456;
+	recordNumbers[3] = 321;
+	// recordNumbers[4] = 5776;
+	// recordNumbers[5] = 57623;
+	// recordNumbers[6] = 120381;
+
+	ace_sorting::shellSortKnuth(recordNumbers, recordsCount);
+
+	while (true)
+	{
+		uint8_t curRecord = abs(AlexEncoder::counter) % recordsCount;
+		displayManager.drawMeasurementResultRecordSelectionScreen(curRecord, recordNumbers, recordsCount);
+
+		if (button.isClicked())
+		{
+			return curRecord;
+		}
+	}
+}
+
+bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwriteNewest)
+{
+	uint16_t blockSize = sizeof(StoredMeasuredResult);
+	int32_t numberOfLast = -1;
+	int32_t indexOfLast = -1;
+	StoredMeasuredResult savedMeasRes;
+	StoredMeasuredResult tempMeasRes;
+
+	for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+	{
+		EEPROM.get(i, tempMeasRes);
+
+		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
+		{
+			numberOfLast = tempMeasRes.recordNumber;
+			indexOfLast = i;
+		}
+	}
+
+	if (numberOfLast == -1)
+	{
+		halt(F("Halted. numberOfLast was not defined"));
+	}
+
+	savedMeasRes.recordNumber = numberOfLast + 1;
+	savedMeasRes.isDeleted = false;
+	savedMeasRes.curtainMovementDirection = res.curtainMovementDirection;
+	savedMeasRes.sensor0Time = res.sensor0Time;
+	savedMeasRes.sensor1Time = res.sensor1Time;
+	savedMeasRes.curtain1spanAspeed = res.curtain1spanAspeed;
+	savedMeasRes.curtain1spanAtime = res.curtain1spanAtime;
+	savedMeasRes.curtain1TotalTime = res.curtain1TotalTime;
+	savedMeasRes.curtain2spanAspeed = res.curtain2spanAspeed;
+	savedMeasRes.curtain2spanAtime = res.curtain2spanAtime;
+	savedMeasRes.curtain2TotalTime = res.curtain2TotalTime;
+	savedMeasRes.slitWidthSensor0 = res.slitWidthSensor0;
+	savedMeasRes.slitWidthSensor1 = res.slitWidthSensor1;
+	savedMeasRes.slitWidthAverage = res.slitWidthAverage;
+
+	if (numberOfLast == 0) // if there is no records at all in the EEPROM
+	{
+		return verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+	}
+
+	int16_t freeSlotIndex = -1;
+
+	// Check for free slots
+	for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+	{
+		EEPROM.get(i, tempMeasRes);
+
+		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+		{
+			freeSlotIndex = i;
+		}
+	}
+
+	if (freeSlotIndex != -1)
+	{
+		return verifiedEEPROMPut(freeSlotIndex, savedMeasRes);
+	}
+
+	if (overwriteOldest) // if no free slots available and user choose to overwrite oldest record
+	{
+		uint32_t numberOfOldest = INT32_MAX;
+		int16_t indexOfOldest = -1;
+
+		//find oldest
+		for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+		{
+			EEPROM.get(i, tempMeasRes);
+
+			if (tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
+			{
+				numberOfOldest = tempMeasRes.recordNumber;
+				indexOfOldest = i;
+			}
+		}
+
+		if (indexOfOldest == -1)
+		{
+			halt(F("Halted. indexOfOldest not found"));
+		}
+
+		return verifiedEEPROMPut(indexOfOldest, savedMeasRes);
+	}
+
+	if (overwriteNewest) // if no free slots available and user choose to overwrite newest record
+	{
+		if (indexOfLast == -1)
+		{
+			halt(F("Halted. indexOfLast not found"));
+		}
+
+		return verifiedEEPROMPut(indexOfLast, savedMeasRes);
+	}
+
+	halt(F("Halted. Program should not get here"));
+}
+
 double getCorrectedSensorValue(long rawSensorTime, uint8_t maxSensorValue)
 {
 	double correction = Interpolation::Linear(adcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
@@ -332,6 +462,50 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 	res.slitWidthSensor0 = estSlitSpeed * sensor0time;// in mm
 	res.slitWidthSensor1 = estSlitSpeed * sensor1time; // in mm
 	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0; // in mm
+}
+
+void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+{
+	while (true)
+	{
+		int8_t curMenuItem = abs(AlexEncoder::counter) % SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+		displayManager.drawMeasurementSaveScreen(curMenuItem);
+
+		if (button.isClicked())
+		{
+			switch ((MeasurementSaveMenuItems)curMenuItem)
+			{
+				case MeasurementSaveMenuItems::NO:
+				{
+					// drawCurtainMovementSelectionScreen();
+					break;
+				}
+				case MeasurementSaveMenuItems::YES:
+				{
+					// drawLightCheckScreen();
+					break;
+				}
+				case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
+				{
+					// drawLightCheckScreen();
+					break;
+				}
+				case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
+				{
+					// drawLightCheckScreen();
+					break;
+				}
+				case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
+				{
+					// drawLightCheckScreen();
+					break;
+				}
+				default:
+					halt(F("Halted. Unknown measurement save option"));
+					break;
+			}
+		}
+	}
 }
 
 void drawMeasuredScreen()
@@ -464,6 +638,7 @@ void drawMeasuredScreen()
 
 		if (button.isClicked())
 		{
+			drawMeasurementSaveScreen(res);
 			return;
 		}
 	}
@@ -617,8 +792,9 @@ void drawMainMenu()
 					break;
 				}
 
-			default:
-				break;
+				default:
+					halt(F("Halted. Unknown menu item"));
+					break;
 			}
 		}
 	}
@@ -643,8 +819,8 @@ void setup()
 	delay(1000);
 	Serial.begin(115200);
 
-	Serial.println((uint16_t)sizeof(StoredMeasuredResult));
-	halt();
+	// Serial.println((uint16_t)sizeof(MeasurementSaveMenuItems));
+	// halt();
 
 	// write first run value/need to run once befor device shipping
 	// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
@@ -694,6 +870,21 @@ void setup()
 
 void loop()
 {
+	// MeasuredResult r = {
+	// 		Direction::Left,
+	// 		3,
+	// 		4,
+	// 		3,
+	// 		4,
+	// 		5,
+	// 		6,
+	// 		7,
+	// 		8,
+	// 		9,
+	// 		12,
+	// 		12};
+	// drawMeasurementSaveScreen(r);
+	drawMeasurementResultRecordSelectionScreen();
 	// drawMeasuredScreen();
-	drawMainMenu();
+	// drawMainMenu();
 }

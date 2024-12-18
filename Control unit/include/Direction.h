@@ -1,6 +1,6 @@
 #pragma once
 
-enum class Derection
+enum class Direction
 {
   Top,
   Right,

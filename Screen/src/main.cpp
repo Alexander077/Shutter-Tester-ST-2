@@ -34,21 +34,6 @@
 
 const uint8_t thresholdDacValue = 130;
 
-enum class MainMenuItems
-{
-  MEASURE,
-  CHECK_LIGHT,
-  MEASURMENT_HISTORY,
-  CREDITS,
-};
-
-enum class CurtainMovement
-{
-  HORISONTAL,
-  VERTICAL,
-  LEAF,
-};
-
 struct Rect
 {
   int16_t x;
@@ -57,7 +42,7 @@ struct Rect
   int16_t height;
 };
 
-const char *MainMenuItemsStr[] =
+const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
 {
   "Measure",
   "Check Light",
@@ -65,12 +50,21 @@ const char *MainMenuItemsStr[] =
   "Credits"
 };
 
-const char *CurtainMovementItemsStr[] =
+const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
 {
   "Horisontal",
   "Vertical",
   "Leaf"
  };
+
+const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
+{
+  "No",
+  "Yes",
+  "Overwrite oldest",
+  "Overwrite newest",
+  "Sel. rec. to overwrite",
+};
 
 #define SHUTTR_SPEEDS_COUNT 14
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
@@ -83,6 +77,11 @@ const char *GetMenuItemTitle(MainMenuItems menuItem)
 const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
 {
   return CurtainMovementItemsStr[(uint8_t)menuItem];
+}
+
+const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem)
+{
+  return MeasurementSaveItemsStr[(uint8_t)menuItem];
 }
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
@@ -688,6 +687,112 @@ void drawCurtainMovementSelectionScreen()
   }
 }
 
+void drawMeasurementResultRecordSelectionScreen()
+{
+  display->fillScreen(BLACK);
+
+  uint8_t xMargin = 30;
+  uint8_t yMargin = 40;
+  uint8_t ySpacing = 15;
+  uint8_t arrowXmargin = 15;
+  int16_t recordsCount = getInputParamsArrayInt(2);
+  drawStringHCentered("Select record", 20);
+
+  for (uint8_t i = 0; i < recordsCount; i++)
+  {
+    display->setCursor(xMargin, yMargin + (ySpacing * i));
+
+    int32_t recordNumber = getInputParamsArrayInt(i + 3);
+
+    if (recordNumber == 0)//"Back" option
+    {
+      display->print("Back");
+      continue;
+    }
+
+    display->print(recordNumber);
+  }
+
+  display->setCursor(xMargin - arrowXmargin, yMargin);
+  display->print("->");
+
+  int8_t selectedRecordIndex = 0;
+  int8_t prevSelectedRecordIndex = 0;
+
+  int8_t topRecordIndex = 0;
+  int8_t prevTopRecordIndex = 0;
+  const int8_t maxVisibleRecordsCount = 5;
+
+  while ((Screens)getCurScreen() == Screens::MEASUREMENT_RECORD_SELECTION)
+  {
+    selectedRecordIndex = getInputParamsArrayInt(1);
+
+    if (prevSelectedRecordIndex != selectedRecordIndex)
+    {
+      display->setTextColor(BLACK);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedRecordIndex));
+      display->print("->");
+
+      display->setTextColor(WHITE);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * selectedRecordIndex));
+      display->print("->");
+
+      prevSelectedRecordIndex = selectedRecordIndex;
+    }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){} // wait for new data from main unit
+    parseInputData();
+  }
+}
+
+void drawMeasurementSaveScreen()
+{
+  display->fillScreen(BLACK);
+
+  uint8_t xMargin = 20;
+  uint8_t yMargin = 50;
+  uint8_t ySpacing = 15;
+  uint8_t arrowXmargin = 15;
+  drawStringHCentered("Save measurement result?", 20);
+
+  for (uint8_t i = 0; i < SAVE_MEASUREMENT_MENU_ITEMS_COUNT; i++)
+  {
+    display->setCursor(xMargin, yMargin + (ySpacing * i));
+    display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+  }
+
+  display->setCursor(xMargin - arrowXmargin, yMargin);
+  display->print("->");
+
+  int8_t selectedMenuItemIndex = 0;
+  int8_t prevSelectedMenuItemIndex = 0;
+
+  while ((Screens)getCurScreen() == Screens::MEASUREMENT_SAVE_SCREEN)
+  {
+    selectedMenuItemIndex = getInputParamsArrayInt(1);
+
+    if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+    {
+      display->setTextColor(BLACK);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+      display->print("->");
+
+      display->setTextColor(WHITE);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * selectedMenuItemIndex));
+      display->print("->");
+
+      prevSelectedMenuItemIndex = selectedMenuItemIndex;
+    }
+
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed){} // wait for new data from main unit
+    parseInputData();
+  }
+}
+
 void setup(void)
 {
   Serial.begin(115200);
@@ -748,6 +853,16 @@ void loop()
       case Screens::CURTAN_MOVEMENT_SELECTION:
       {
         drawCurtainMovementSelectionScreen();
+        break;
+      }
+      case Screens::MEASUREMENT_SAVE_SCREEN:
+      {
+        drawMeasurementSaveScreen();
+        break;
+      }
+      case Screens::MEASUREMENT_RECORD_SELECTION:
+      {
+        drawMeasurementResultRecordSelectionScreen();
         break;
       }
 
