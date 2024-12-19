@@ -228,12 +228,16 @@ public:
     sendBuf();
   }
 
-  void drawMeasurementSaveScreen(uint8_t curSelectedMenuIndex)
+  void drawMeasurementSaveScreen(uint8_t curSelectedMenuIndex, int16_t freeSlotsLeft, bool drawMoreThanZeroRecordsMenuItems)
   {
     mainBuf.clear();
     mainBuf += (char)Screens::MEASUREMENT_SAVE_SCREEN;
     mainBuf += ":";
     mainBuf.add(curSelectedMenuIndex);
+    mainBuf += ":";
+    mainBuf.add(freeSlotsLeft);
+    mainBuf += ":";
+    mainBuf.add((int8_t)drawMoreThanZeroRecordsMenuItems);
 
     sendBuf();
   }

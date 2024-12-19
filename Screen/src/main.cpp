@@ -69,21 +69,6 @@ const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
 #define SHUTTR_SPEEDS_COUNT 14
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
-const char *GetMenuItemTitle(MainMenuItems menuItem)
-{
-  return MainMenuItemsStr[(uint8_t)menuItem];
-}
-
-const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
-{
-  return CurtainMovementItemsStr[(uint8_t)menuItem];
-}
-
-const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem)
-{
-  return MeasurementSaveItemsStr[(uint8_t)menuItem];
-}
-
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
 Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, DISPLAY_CS, SCK, MOSI);
@@ -102,6 +87,21 @@ char curScreen = '\0';
 // char prevMode = '\0';
 // bool dataReady = false;
 volatile bool dataProcessed = true;
+
+const char *GetMenuItemTitle(MainMenuItems menuItem)
+{
+  return MainMenuItemsStr[(uint8_t)menuItem];
+}
+
+const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
+{
+  return CurtainMovementItemsStr[(uint8_t)menuItem];
+}
+
+const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem)
+{
+  return MeasurementSaveItemsStr[(uint8_t)menuItem];
+}
 
 void i2cReceiveEvent(int howMany)
 {
@@ -151,7 +151,7 @@ void i2cReceiveEvent(int howMany)
 }
 
 void parseInputData(){
-  Serial.println(inputCmdStr.buf);
+  // Serial.println(inputCmdStr.buf);
   char* strings[inputCmdStr.splitAmount(':')];
   int amount = inputCmdStr.split(strings, ':');
 
@@ -695,10 +695,14 @@ void drawMeasurementResultRecordSelectionScreen()
   uint8_t yMargin = 40;
   uint8_t ySpacing = 15;
   uint8_t arrowXmargin = 15;
+  const int16_t pageSize = 6;
+  int16_t prevPage = 1;
+  int16_t curPage = 1;
   int16_t recordsCount = getInputParamsArrayInt(2);
   drawStringHCentered("Select record", 20);
+  int8_t itemsCountToPrint = min(pageSize, recordsCount);
 
-  for (uint8_t i = 0; i < recordsCount; i++)
+  for (uint8_t i = 0; i < itemsCountToPrint; i++)
   {
     display->setCursor(xMargin, yMargin + (ySpacing * i));
 
@@ -721,7 +725,6 @@ void drawMeasurementResultRecordSelectionScreen()
 
   int8_t topRecordIndex = 0;
   int8_t prevTopRecordIndex = 0;
-  const int8_t maxVisibleRecordsCount = 5;
 
   while ((Screens)getCurScreen() == Screens::MEASUREMENT_RECORD_SELECTION)
   {
@@ -729,15 +732,62 @@ void drawMeasurementResultRecordSelectionScreen()
 
     if (prevSelectedRecordIndex != selectedRecordIndex)
     {
+      Serial.printf("Sel. index: %i\n", selectedRecordIndex);
+
       display->setTextColor(BLACK);
-      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedRecordIndex));
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * (prevSelectedRecordIndex % pageSize)));
       display->print("->");
 
       display->setTextColor(WHITE);
-      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * selectedRecordIndex));
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * (selectedRecordIndex % pageSize)));
       display->print("->");
 
       prevSelectedRecordIndex = selectedRecordIndex;
+
+      curPage = ceil((selectedRecordIndex + 1) / (double)pageSize);
+
+      if (prevPage != curPage)
+      {
+        display->setTextColor(BLACK);
+
+        int16_t prevPageMaxIndex = pageSize * (prevPage - 1) + pageSize;
+        int16_t prevPageLimit = min(prevPageMaxIndex, recordsCount);
+
+        for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++) // erase cur page
+        {
+          display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
+          int32_t recordNumber = getInputParamsArrayInt(i + 3);
+
+          if (recordNumber == 0) //"Back" option
+          {
+            display->print("Back");
+            continue;
+          }
+
+          display->print(recordNumber);
+        }
+
+        display->setTextColor(WHITE);
+        int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
+        int16_t limit = min(nextPageMaxIndex, recordsCount);
+
+        for (uint8_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++) // draw new page records
+        {
+          display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
+          int32_t recordNumber = getInputParamsArrayInt(i + 3);
+
+          if (recordNumber == 0) //"Back" option
+          {
+            display->print("Back");
+            continue;
+          }
+
+          display->print(recordNumber);
+        }
+
+        prevPage = curPage;
+        // Serial.printf("Page changed: %i", curPage);
+      }
     }
 
     inputCmdStr.clear();
@@ -752,15 +802,35 @@ void drawMeasurementSaveScreen()
   display->fillScreen(BLACK);
 
   uint8_t xMargin = 20;
-  uint8_t yMargin = 50;
+  uint8_t yMargin = 45;
   uint8_t ySpacing = 15;
   uint8_t arrowXmargin = 15;
   drawStringHCentered("Save measurement result?", 20);
+  int16_t freeSlotsLeft = getInputParamsArrayInt(2);
+  bool drawMoreThanZeroRecordsMenuItems = getInputParamsArrayInt(3);
+  int16_t menuItemsCount = drawMoreThanZeroRecordsMenuItems ? SAVE_MEASUREMENT_MENU_ITEMS_COUNT : 2;
 
-  for (uint8_t i = 0; i < SAVE_MEASUREMENT_MENU_ITEMS_COUNT; i++)
+  for (uint8_t i = 0; i < menuItemsCount; i++)
   {
     display->setCursor(xMargin, yMargin + (ySpacing * i));
-    display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+
+    if (i == (uint8_t)MeasurementSaveMenuItems::YES)
+    {
+      if (freeSlotsLeft == 0)
+      {
+        display->setTextColor(DARKGREY);
+        display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+        display->setTextColor(WHITE);
+      }
+      else
+      {
+        display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i), freeSlotsLeft);
+      }
+    }
+    else
+    {
+      display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+    }
   }
 
   display->setCursor(xMargin - arrowXmargin, yMargin);

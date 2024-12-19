@@ -50,6 +50,7 @@
 
 #define EEPROM_MEASURED_RES_START_INDEX 0
 #define EEPROM_MEASURED_RES_END_INDEX 1012
+#define EEPROM_MEASURED_RES_TOTAL_BYTES (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX)
 
 enum class AdcISRFlow
 {
@@ -245,6 +246,16 @@ template <typename T> bool verifiedEEPROMPut(const uint16_t index, const T &data
 	return data == dataForVerification;
 }
 
+int16_t getMeasurementSaveRecordSize()
+{
+	return sizeof(StoredMeasuredResult);
+}
+
+int16_t getTotalMeasurementSaveRecordsCount()
+{
+	return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
+}
+
 uint8_t getSavedLightBrightness()
 {
 	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
@@ -304,42 +315,80 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	// 	}
 	// }
 
-	const uint8_t recordsCount = 4;
+	const uint8_t recordsCount = 12;
 	int32_t recordNumbers[recordsCount];
 
 	recordNumbers[0] = 0;
 	recordNumbers[1] = 89345;
 	recordNumbers[2] = 456;
 	recordNumbers[3] = 321;
-	// recordNumbers[4] = 5776;
-	// recordNumbers[5] = 57623;
-	// recordNumbers[6] = 120381;
+	recordNumbers[4] = 5776;
+	recordNumbers[5] = 57623;
+	recordNumbers[6] = 120381;
+	recordNumbers[7] = 335;
+	recordNumbers[8] = 5675;
+	recordNumbers[9] = 768;
+	recordNumbers[10] = 57;
+	recordNumbers[11] = 789;
 
 	ace_sorting::shellSortKnuth(recordNumbers, recordsCount);
 
+	int16_t startEncoderVal = AlexEncoder::counter;
+
 	while (true)
 	{
-		uint8_t curRecord = abs(AlexEncoder::counter) % recordsCount;
-		displayManager.drawMeasurementResultRecordSelectionScreen(curRecord, recordNumbers, recordsCount);
+		// uint8_t curRecord = 0;
+
+		// if (AlexEncoder::counter >= 0)
+		// {
+		// 	curRecord = AlexEncoder::counter % recordsCount;
+		// }
+		// else
+		// {
+		// 	curRecord = recordsCount - (abs(AlexEncoder::counter) % recordsCount);
+		// }
+
+		// Serial.print("Encoder:");
+		// Serial.print(AlexEncoder::counter);
+
+		// Serial.print(" Record index:");
+		// Serial.println(curRecord);
+
+		int16_t curIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (curIndex > recordsCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (recordsCount - 1);
+			curIndex = recordsCount - 1;
+		}
+
+		if (curIndex < 0)
+		{
+			curIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, recordsCount);
 
 		if (button.isClicked())
 		{
-			return curRecord;
+			return curIndex;
 		}
 	}
 }
 
-bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwriteNewest)
+bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-	uint16_t blockSize = sizeof(StoredMeasuredResult);
 	int32_t numberOfLast = -1;
 	int32_t indexOfLast = -1;
 	StoredMeasuredResult savedMeasRes;
 	StoredMeasuredResult tempMeasRes;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t totalRecordsCount = getTotalMeasurementSaveRecordsCount();
 
-	for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+	for (size_t i = 0; i < totalRecordsCount; i++)
 	{
-		EEPROM.get(i, tempMeasRes);
+		EEPROM.get(i * blockSize, tempMeasRes);
 
 		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
 		{
@@ -376,9 +425,9 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwr
 	int16_t freeSlotIndex = -1;
 
 	// Check for free slots
-	for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+	for (size_t i = 0; i < totalRecordsCount; i++)
 	{
-		EEPROM.get(i, tempMeasRes);
+		EEPROM.get(i * blockSize, tempMeasRes);
 
 		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
 		{
@@ -388,7 +437,7 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwr
 
 	if (freeSlotIndex != -1)
 	{
-		return verifiedEEPROMPut(freeSlotIndex, savedMeasRes);
+		return verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
 	}
 
 	if (overwriteOldest) // if no free slots available and user choose to overwrite oldest record
@@ -397,9 +446,9 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwr
 		int16_t indexOfOldest = -1;
 
 		//find oldest
-		for (size_t i = EEPROM_MEASURED_RES_START_INDEX; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
+		for (size_t i = 0; i < totalRecordsCount; i++)
 		{
-			EEPROM.get(i, tempMeasRes);
+			EEPROM.get(i * blockSize, tempMeasRes);
 
 			if (tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
 			{
@@ -413,7 +462,7 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwr
 			halt(F("Halted. indexOfOldest not found"));
 		}
 
-		return verifiedEEPROMPut(indexOfOldest, savedMeasRes);
+		return verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
 	}
 
 	if (overwriteNewest) // if no free slots available and user choose to overwrite newest record
@@ -423,7 +472,22 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest, bool overwr
 			halt(F("Halted. indexOfLast not found"));
 		}
 
-		return verifiedEEPROMPut(indexOfLast, savedMeasRes);
+		return verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+	}
+
+	if (recordNumberToOverwrite != -1)
+	{
+		for (size_t i = 0; i < totalRecordsCount; i++)
+		{
+			EEPROM.get(i * blockSize, tempMeasRes);
+
+			if (tempMeasRes.recordNumber == recordNumberToOverwrite)
+			{
+				return verifiedEEPROMPut(i * blockSize, savedMeasRes);
+			}
+		}
+
+		halt(F("Halted. recordNumberToOverwrite not found"));
 	}
 
 	halt(F("Halted. Program should not get here"));
@@ -466,10 +530,42 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 
 void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
+	uint16_t freeSlotsCount = 0;
+	StoredMeasuredResult tempMeasRes;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t totalRecordsCount = getTotalMeasurementSaveRecordsCount();
+
+	for (size_t i = 0; i < totalRecordsCount; i++)
+	{
+		EEPROM.get(i * blockSize, tempMeasRes);
+
+		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+		{
+			freeSlotsCount++;
+		}
+	}
+
+	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? 2 : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+	int16_t startEncoderVal = AlexEncoder::counter;
+
 	while (true)
 	{
-		int8_t curMenuItem = abs(AlexEncoder::counter) % SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
-		displayManager.drawMeasurementSaveScreen(curMenuItem);
+		int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (resultIndex > menuItemsCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (menuItemsCount - 1);
+			resultIndex = menuItemsCount - 1;
+		}
+
+		if (resultIndex < 0)
+		{
+			resultIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		int8_t curMenuItem = abs(AlexEncoder::counter) % menuItemsCount;
+		displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT);
 
 		if (button.isClicked())
 		{
@@ -477,7 +573,7 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 			{
 				case MeasurementSaveMenuItems::NO:
 				{
-					// drawCurtainMovementSelectionScreen();
+					return;
 					break;
 				}
 				case MeasurementSaveMenuItems::YES:
@@ -534,13 +630,13 @@ void drawMeasuredScreen()
 	// Sensor 0 max val.: 163
 	// Sensor 1 max val.: 167
 	
-	// pin0shutterOpenStartTime = 16599544;
-	// pin0shutterOpenEndTime = 16601460;
-	// pin1shutterOpenStartTime = 16590476;
-	// pin1shutterOpenEndTime = 16592600;
-	// sensor0Max = 163;
-	// sensor1Max = 167;
-	// curtainMovement = CurtainMovement::HORISONTAL;
+	pin0shutterOpenStartTime = 16599544;
+	pin0shutterOpenEndTime = 16601460;
+	pin1shutterOpenStartTime = 16590476;
+	pin1shutterOpenEndTime = 16592600;
+	sensor0Max = 163;
+	sensor1Max = 167;
+	curtainMovement = CurtainMovement::HORISONTAL;
 
 	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
 	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
@@ -566,8 +662,8 @@ void drawMeasuredScreen()
 
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
 	delay(100);
-	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
+	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
 	// Serial.print("Sensor unit code: ");
 	// Serial.println(curSensorCode);
 	int8_t curSensorDataIndex = -1;
@@ -884,7 +980,7 @@ void loop()
 	// 		12,
 	// 		12};
 	// drawMeasurementSaveScreen(r);
-	drawMeasurementResultRecordSelectionScreen();
-	// drawMeasuredScreen();
+	// drawMeasurementResultRecordSelectionScreen();
+	drawMeasuredScreen();
 	// drawMainMenu();
 }
