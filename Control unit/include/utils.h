@@ -115,7 +115,10 @@ void halt(const char *message)
 
 void halt(const __FlashStringHelper *message)
 {
-  halt((const char *)message);
+  int16_t bufferSize = strlen_P((const char*)message) + 1;
+  char buffer[bufferSize];
+  strncpy_P(buffer, (const char*)message, bufferSize);
+  halt(buffer);
 }
 
 void halt()

@@ -69,11 +69,16 @@ struct CurtainTimings
 	double curtain2spanAtime; // In microseconds
 };
 
+struct MeasurementRecordSaveResult
+{
+	bool isSuccess;
+	int32_t newRecordNumber;
+};
+
 volatile long pin0shutterOpenStartTime = -1,
 				  pin0shutterOpenEndTime = -1,
 				  pin1shutterOpenStartTime = -1,
 				  pin1shutterOpenEndTime = -1;
-byte val = 0;
 
 AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 AlexButton button(BUTTON_PIN);
@@ -137,7 +142,7 @@ const SensorUnitData sensorsData[sensorsDataArraySize] = {
 
 ISR(ADC_vect)
 {
-	val = ADCH; // read 8 bit value from ADC
+	byte val = ADCH; // read 8 bit value from ADC
 
 	switch (adcISRFlow)
 	{
@@ -253,7 +258,7 @@ int16_t getFreeMeasurementSaveSlotsCount()
 	int16_t freeCount = 0;
 	StoredMeasuredResult tempMeasRes;
 
-	for (size_t i = 0; i < totalCount; i++)
+	for (int16_t i = 0; i < totalCount; i++)
 	{
 		EEPROM.get(i * blockSize, tempMeasRes);
 
@@ -317,7 +322,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int32_t recordNumbers[totalArraySaize];
 	recordNumbers[0] = 0;//"Back" option
 
-	for (size_t i = 0, r = 1; i < totalSlotsCount; i++)
+	for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
 	{
 		EEPROM.get(i * blockSize, tempMeasRes);
 
@@ -348,23 +353,6 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 	while (true)
 	{
-		// uint8_t curRecord = 0;
-
-		// if (AlexEncoder::counter >= 0)
-		// {
-		// 	curRecord = AlexEncoder::counter % recordsCount;
-		// }
-		// else
-		// {
-		// 	curRecord = recordsCount - (abs(AlexEncoder::counter) % recordsCount);
-		// }
-
-		// Serial.print("Encoder:");
-		// Serial.print(AlexEncoder::counter);
-
-		// Serial.print(" Record index:");
-		// Serial.println(curRecord);
-
 		int16_t curIndex = AlexEncoder::counter - startEncoderVal;
 
 		if (curIndex > totalArraySaize - 1)
@@ -388,7 +376,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	}
 }
 
-bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
 	int32_t numberOfLast = -1;
 	int32_t indexOfLast = -1;
@@ -396,8 +384,9 @@ bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, b
 	StoredMeasuredResult tempMeasRes;
 	int16_t blockSize = getMeasurementSaveRecordSize();
 	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
+	MeasurementRecordSaveResult saveRes = {false, -1};
 
-	for (size_t i = 0; i < totalRecordsCount; i++)
+	for (int16_t i = 0; i < totalRecordsCount; i++)
 	{
 		EEPROM.get(i * blockSize, tempMeasRes);
 
@@ -430,48 +419,64 @@ bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, b
 
 	if (numberOfLast == 0) // if there is no records at all in the EEPROM
 	{
-		bool saveRes = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
-		Serial.print("Meas. res. savaed: ");
+		saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+
+		if (saveRes.isSuccess)
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
+
+		Serial.print("Meas. res. savaed. Rec. num.: ");
 		Serial.print(savedMeasRes.recordNumber);
-		Serial.print(", result: ");
-		Serial.println(saveRes);
+		Serial.print(", success: ");
+		Serial.println(saveRes.isSuccess);
 		return saveRes;
 	}
 
 	int16_t freeSlotIndex = -1;
 
-	// Check for free slots
-	for (size_t i = 0; i < totalRecordsCount; i++)
+	// save to free slot
+	if (!overwriteNewest && !overwriteOldest && recordNumberToOverwrite == -1)
 	{
-		EEPROM.get(i * blockSize, tempMeasRes);
-
-		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
-		{
-			freeSlotIndex = i;
-		}
-	}
-
-	if (freeSlotIndex != -1)
-	{
-		bool saveRes = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
-		Serial.print("Meas. res. savaed: ");
-		Serial.print(savedMeasRes.recordNumber);
-		Serial.print(", result: ");
-		Serial.println(saveRes);
-		return saveRes;
-	}
-
-	if (overwriteOldest) // if no free slots available and user choose to overwrite oldest record
-	{
-		uint32_t numberOfOldest = INT32_MAX;
-		int16_t indexOfOldest = -1;
-
-		//find oldest
-		for (size_t i = 0; i < totalRecordsCount; i++)
+		// Check for free slots
+		for (int16_t i = 0; i < totalRecordsCount; i++)
 		{
 			EEPROM.get(i * blockSize, tempMeasRes);
 
-			if (tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
+			if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+			{
+				freeSlotIndex = i;
+			}
+		}
+
+		if (freeSlotIndex != -1)
+		{
+			saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
+			if (saveRes.isSuccess)
+			{
+				saveRes.newRecordNumber = savedMeasRes.recordNumber;
+			}
+			Serial.print("Meas. res. savaed. Rec. num.: ");
+			Serial.print(savedMeasRes.recordNumber);
+			Serial.print(", success: ");
+			Serial.println(saveRes.isSuccess);
+			return saveRes;
+		}
+		halt(F("Halted. freeSlotIndex not found"));
+	}
+
+	// if user choose to overwrite oldest record
+	if (overwriteOldest) 
+	{
+		int32_t numberOfOldest = INT32_MAX;
+		int16_t indexOfOldest = -1;
+
+		//find oldest
+		for (int16_t i = 0; i < totalRecordsCount; i++)
+		{
+			EEPROM.get(i * blockSize, tempMeasRes);
+
+			if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
 			{
 				numberOfOldest = tempMeasRes.recordNumber;
 				indexOfOldest = i;
@@ -483,42 +488,61 @@ bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, b
 			halt(F("Halted. indexOfOldest not found"));
 		}
 
-		bool saveRes = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
-		Serial.print("Meas. res. savaed: ");
+		saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+
+		if (saveRes.isSuccess)
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
+		
+		Serial.print("Meas. res. savaed. Rec. num.: ");
 		Serial.print(savedMeasRes.recordNumber);
-		Serial.print(", result: ");
-		Serial.println(saveRes);
+		Serial.print(", success: ");
+		Serial.println(saveRes.isSuccess);
 		return saveRes;
 	}
 
-	if (overwriteNewest) // if no free slots available and user choose to overwrite newest record
+	// if user choose to overwrite newest record
+	if (overwriteNewest) 
 	{
 		if (indexOfLast == -1)
 		{
 			halt(F("Halted. indexOfLast not found"));
 		}
 
-		bool saveRes = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
-		Serial.print("Meas. res. savaed: ");
+		saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+
+		if (saveRes.isSuccess)
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
+
+		Serial.print("Meas. res. savaed. Rec. num.: ");
 		Serial.print(savedMeasRes.recordNumber);
-		Serial.print(", result: ");
-		Serial.println(saveRes);
+		Serial.print(", success: ");
+		Serial.println(saveRes.isSuccess);
 		return saveRes;
 	}
 
 	if (recordNumberToOverwrite != -1)
 	{
-		for (size_t i = 0; i < totalRecordsCount; i++)
+		for (int16_t i = 0; i < totalRecordsCount; i++)
 		{
 			EEPROM.get(i * blockSize, tempMeasRes);
 
 			if (tempMeasRes.recordNumber == recordNumberToOverwrite)
 			{
-				bool saveRes = verifiedEEPROMPut(i * blockSize, savedMeasRes);
-				Serial.print("Meas. res. savaed: ");
+				saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
+
+				if (saveRes.isSuccess)
+				{
+					saveRes.newRecordNumber = savedMeasRes.recordNumber;
+				}
+
+				Serial.print("Meas. res. savaed. Rec. num.: ");
 				Serial.print(savedMeasRes.recordNumber);
-				Serial.print(", result: ");
-				Serial.println(saveRes);
+				Serial.print(", success: ");
+				Serial.println(saveRes.isSuccess);
 				return saveRes;
 			}
 		}
@@ -531,7 +555,9 @@ bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, b
 
 double getCorrectedSensorValue(long rawSensorTime, uint8_t maxSensorValue)
 {
+	// #pragma GCC diagnostic ignored "-fpermissive"
 	double correction = Interpolation::Linear(adcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
+	// #pragma GCC diagnostic pop
 	double resSensorTime = rawSensorTime + correction;
 	return resSensorTime;
 }
@@ -604,53 +630,66 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 
 		if (button.isClicked())
 		{
+			MeasurementRecordSaveResult saveRes;
 			switch ((MeasurementSaveMenuItems)resultIndex)
 			{
 				case MeasurementSaveMenuItems::NO:
 				{
-					return;
+					return;//do not save the result
 					break;
 				}
 				case MeasurementSaveMenuItems::YES:
 				{
 					Serial.println("Saving record...");
-					int32_t newRecordNumber = -1;
-					bool saveRes = saveMesurementResult(measurementRes, newRecordNumber);
-					char buf[30];
-					Serial.println(saveRes);
-
-					if (saveRes)
-					{
-						sprintf(buf, "Record saved as '%i'", newRecordNumber);
-					}
-					else
-					{
-						sprintf(buf, "Failed to save record");
-					}
-					
-					drawMessageScreen(buf);
-					return;
+					saveRes = saveMesurementResult(measurementRes);
 					break;
 				}
 				case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
 				{
-					// drawLightCheckScreen();
+					Serial.println("Saving record...");
+					saveRes = saveMesurementResult(measurementRes, false, true);
 					break;
 				}
 				case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
 				{
-					// drawLightCheckScreen();
+					Serial.println("Saving record...");
+					saveRes = saveMesurementResult(measurementRes, true);
 					break;
 				}
 				case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
 				{
-					// drawLightCheckScreen();
+					int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
+
+					if (selectedMesurementRecordNumber == 0)//user selected "Back" option
+					{
+						continue;
+					}
+
+					Serial.println("Saving record...");
+					Serial.println(selectedMesurementRecordNumber);
+					saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
 					break;
 				}
 				default:
 					halt(F("Halted. Unknown measurement save option"));
 					break;
 			}
+
+			char buf[30];
+
+			if (saveRes.isSuccess)
+			{
+				#pragma GCC diagnostic ignored "-Wformat"
+				sprintf(buf, "Record saved as '%i'", saveRes.newRecordNumber);
+				#pragma GCC diagnostic pop
+			}
+			else
+			{
+				sprintf(buf, "Failed to save record");
+			}
+
+			drawMessageScreen(buf);
+			return;
 		}
 	}
 }
@@ -997,23 +1036,20 @@ void setup()
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
 		// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
-		if (false) // init EEPROM on first run
+		for (size_t i = 0; i < EEPROM.length(); i++)
 		{
-			for (size_t i = 0; i < EEPROM.length(); i++)
-			{
-				EEPROM.update(i, 0);
-			}
-
-			// // init light brightness section in EEPROM
-			// EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
-
-			// for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
-			// {
-			// 	EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
-			// }
-
-			// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
+			EEPROM.update(i, 0);
 		}
+
+		// // init light brightness section in EEPROM
+		// EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
+
+		// for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		// {
+		// 	EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+		// }
+
+		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
 		while (button.isDown());
 	}

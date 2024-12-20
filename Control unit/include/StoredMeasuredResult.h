@@ -5,7 +5,7 @@
 
 struct StoredMeasuredResult
 {
-  uint32_t recordNumber;
+  int32_t recordNumber;
   bool isDeleted;
 
   Direction curtainMovementDirection;

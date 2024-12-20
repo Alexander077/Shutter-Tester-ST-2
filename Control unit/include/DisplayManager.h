@@ -207,7 +207,7 @@ public:
     mainBuf += ":";
     mainBuf.add(recordNumbersCount);
 
-    for (size_t i = 0; i < recordNumbersCount; i++)
+    for (int16_t i = 0; i < recordNumbersCount; i++)
     {
       mainBuf += ":";
       mainBuf.add(recordNumbers[i]);
