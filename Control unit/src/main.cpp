@@ -228,8 +228,6 @@ ISR(ADC_vect)
 
 ISR(TIMER2_A)
 {
-	// key.tick();
-	// isButtonPressed = !digitalRead(BUTTON_PIN);
 	button.tick();
 }
 
@@ -238,22 +236,33 @@ bool isFirstRun()
 	return EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL;
 }
 
-template <typename T> bool verifiedEEPROMPut(const uint16_t index, const T &data)
-{
-	EEPROM.put(index, data);
-	T dataForVerification;
-	EEPROM.get(index, dataForVerification);
-	return data == dataForVerification;
-}
-
 int16_t getMeasurementSaveRecordSize()
 {
 	return sizeof(StoredMeasuredResult);
 }
 
-int16_t getTotalMeasurementSaveRecordsCount()
+int16_t getTotalMeasurementSaveSlotsCount()
 {
 	return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
+}
+
+int16_t getFreeMeasurementSaveSlotsCount()
+{
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t freeCount = 0;
+	StoredMeasuredResult tempMeasRes;
+
+	for (size_t i = 0; i < totalCount; i++)
+	{
+		EEPROM.get(i * blockSize, tempMeasRes);
+
+		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+		{
+			freeCount++;
+		}
+	}
+	return freeCount;
 }
 
 uint8_t getSavedLightBrightness()
@@ -299,39 +308,41 @@ bool saveLightBrightness(uint8_t brightness)
 
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
-	// uint16_t blockSize = sizeof(StoredMeasuredResult);
-	// StoredMeasuredResult tempMeasRes;
-	// uint8_t recordsCount = (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX) / blockSize;
-	// int32_t recordNumbers[recordsCount];
+	StoredMeasuredResult tempMeasRes;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t totalSlotsCount = getTotalMeasurementSaveSlotsCount();
+	int16_t freeRecordSlots = getFreeMeasurementSaveSlotsCount();
+	int16_t existingRecordsCount = totalSlotsCount - freeRecordSlots;
+	int16_t totalArraySaize = existingRecordsCount + 1;
+	int32_t recordNumbers[totalArraySaize];
+	recordNumbers[0] = 0;//"Back" option
 
-	// for (size_t i = EEPROM_MEASURED_RES_START_INDEX, x = 0; i < EEPROM_MEASURED_RES_END_INDEX; i += blockSize)
-	// {
-	// 	EEPROM.get(i, tempMeasRes);
+	for (size_t i = 0, r = 1; i < totalSlotsCount; i++)
+	{
+		EEPROM.get(i * blockSize, tempMeasRes);
 
-	// 	if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
-	// 	{
-	// 		recordNumbers[x] = tempMeasRes.recordNumber;
-	// 		x++;
-	// 	}
-	// }
+		if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
+		{
+			recordNumbers[r] = tempMeasRes.recordNumber;
+			r++;
+		}
+	}
 
-	const uint8_t recordsCount = 12;
-	int32_t recordNumbers[recordsCount];
 
-	recordNumbers[0] = 0;
-	recordNumbers[1] = 89345;
-	recordNumbers[2] = 456;
-	recordNumbers[3] = 321;
-	recordNumbers[4] = 5776;
-	recordNumbers[5] = 57623;
-	recordNumbers[6] = 120381;
-	recordNumbers[7] = 335;
-	recordNumbers[8] = 5675;
-	recordNumbers[9] = 768;
-	recordNumbers[10] = 57;
-	recordNumbers[11] = 789;
+	// recordNumbers[0] = 0;
+	// recordNumbers[1] = 89345;
+	// recordNumbers[2] = 456;
+	// recordNumbers[3] = 321;
+	// recordNumbers[4] = 5776;
+	// recordNumbers[5] = 57623;
+	// recordNumbers[6] = 120381;
+	// recordNumbers[7] = 335;
+	// recordNumbers[8] = 5675;
+	// recordNumbers[9] = 768;
+	// recordNumbers[10] = 57;
+	// recordNumbers[11] = 789;
 
-	ace_sorting::shellSortKnuth(recordNumbers, recordsCount);
+	ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
 
 	int16_t startEncoderVal = AlexEncoder::counter;
 
@@ -356,10 +367,10 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 		int16_t curIndex = AlexEncoder::counter - startEncoderVal;
 
-		if (curIndex > recordsCount - 1)
+		if (curIndex > totalArraySaize - 1)
 		{
-			startEncoderVal = AlexEncoder::counter - (recordsCount - 1);
-			curIndex = recordsCount - 1;
+			startEncoderVal = AlexEncoder::counter - (totalArraySaize - 1);
+			curIndex = totalArraySaize - 1;
 		}
 
 		if (curIndex < 0)
@@ -368,7 +379,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, recordsCount);
+		displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, totalArraySaize);
 
 		if (button.isClicked())
 		{
@@ -377,14 +388,14 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	}
 }
 
-bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+bool saveMesurementResult(const MeasuredResult &res, int32_t& newRecordNumber, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
 	int32_t numberOfLast = -1;
 	int32_t indexOfLast = -1;
 	StoredMeasuredResult savedMeasRes;
 	StoredMeasuredResult tempMeasRes;
 	int16_t blockSize = getMeasurementSaveRecordSize();
-	int16_t totalRecordsCount = getTotalMeasurementSaveRecordsCount();
+	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
 
 	for (size_t i = 0; i < totalRecordsCount; i++)
 	{
@@ -419,7 +430,12 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, boo
 
 	if (numberOfLast == 0) // if there is no records at all in the EEPROM
 	{
-		return verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+		bool saveRes = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+		Serial.print("Meas. res. savaed: ");
+		Serial.print(savedMeasRes.recordNumber);
+		Serial.print(", result: ");
+		Serial.println(saveRes);
+		return saveRes;
 	}
 
 	int16_t freeSlotIndex = -1;
@@ -437,7 +453,12 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, boo
 
 	if (freeSlotIndex != -1)
 	{
-		return verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
+		bool saveRes = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
+		Serial.print("Meas. res. savaed: ");
+		Serial.print(savedMeasRes.recordNumber);
+		Serial.print(", result: ");
+		Serial.println(saveRes);
+		return saveRes;
 	}
 
 	if (overwriteOldest) // if no free slots available and user choose to overwrite oldest record
@@ -462,7 +483,12 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, boo
 			halt(F("Halted. indexOfOldest not found"));
 		}
 
-		return verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+		bool saveRes = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+		Serial.print("Meas. res. savaed: ");
+		Serial.print(savedMeasRes.recordNumber);
+		Serial.print(", result: ");
+		Serial.println(saveRes);
+		return saveRes;
 	}
 
 	if (overwriteNewest) // if no free slots available and user choose to overwrite newest record
@@ -472,7 +498,12 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, boo
 			halt(F("Halted. indexOfLast not found"));
 		}
 
-		return verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+		bool saveRes = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+		Serial.print("Meas. res. savaed: ");
+		Serial.print(savedMeasRes.recordNumber);
+		Serial.print(", result: ");
+		Serial.println(saveRes);
+		return saveRes;
 	}
 
 	if (recordNumberToOverwrite != -1)
@@ -483,7 +514,12 @@ bool saveMesurementResult(MeasuredResult &res, bool overwriteOldest = false, boo
 
 			if (tempMeasRes.recordNumber == recordNumberToOverwrite)
 			{
-				return verifiedEEPROMPut(i * blockSize, savedMeasRes);
+				bool saveRes = verifiedEEPROMPut(i * blockSize, savedMeasRes);
+				Serial.print("Meas. res. savaed: ");
+				Serial.print(savedMeasRes.recordNumber);
+				Serial.print(", result: ");
+				Serial.println(saveRes);
+				return saveRes;
 			}
 		}
 
@@ -528,23 +564,23 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0; // in mm
 }
 
-void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+void drawMessageScreen(const char* message)
 {
-	uint16_t freeSlotsCount = 0;
-	StoredMeasuredResult tempMeasRes;
-	int16_t blockSize = getMeasurementSaveRecordSize();
-	int16_t totalRecordsCount = getTotalMeasurementSaveRecordsCount();
-
-	for (size_t i = 0; i < totalRecordsCount; i++)
+	while (true)
 	{
-		EEPROM.get(i * blockSize, tempMeasRes);
+		displayManager.drawMessageScreen(message);
 
-		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+		if (button.isClicked())
 		{
-			freeSlotsCount++;
+			return;
 		}
 	}
+}
 
+void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+{
+	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
+	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
 	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? 2 : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 	int16_t startEncoderVal = AlexEncoder::counter;
 
@@ -564,12 +600,11 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		int8_t curMenuItem = abs(AlexEncoder::counter) % menuItemsCount;
 		displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT);
 
 		if (button.isClicked())
 		{
-			switch ((MeasurementSaveMenuItems)curMenuItem)
+			switch ((MeasurementSaveMenuItems)resultIndex)
 			{
 				case MeasurementSaveMenuItems::NO:
 				{
@@ -578,7 +613,23 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 				}
 				case MeasurementSaveMenuItems::YES:
 				{
-					// drawLightCheckScreen();
+					Serial.println("Saving record...");
+					int32_t newRecordNumber = -1;
+					bool saveRes = saveMesurementResult(measurementRes, newRecordNumber);
+					char buf[30];
+					Serial.println(saveRes);
+
+					if (saveRes)
+					{
+						sprintf(buf, "Record saved as '%i'", newRecordNumber);
+					}
+					else
+					{
+						sprintf(buf, "Failed to save record");
+					}
+					
+					drawMessageScreen(buf);
+					return;
 					break;
 				}
 				case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
@@ -861,6 +912,26 @@ void drawCreditsScreen()
 	}
 }
 
+void drawViewRecordsScreen()
+{
+	int32_t selectedRecordNumber = drawMeasurementResultRecordSelectionScreen();
+
+	if (selectedRecordNumber == 0)//"Back" option selected
+	{
+		return;
+	}
+	
+
+	while (true)
+	{
+
+		if (button.isClicked())
+		{
+			return;
+		}
+	}
+}
+
 void drawMainMenu()
 {
 	while (true)
@@ -885,6 +956,11 @@ void drawMainMenu()
 				case MainMenuItems::CREDITS:
 				{
 					drawCreditsScreen();
+					break;
+				}
+				case MainMenuItems::MEASURMENT_HISTORY:
+				{
+					drawViewRecordsScreen();
 					break;
 				}
 
@@ -915,24 +991,31 @@ void setup()
 	delay(1000);
 	Serial.begin(115200);
 
-	// Serial.println((uint16_t)sizeof(MeasurementSaveMenuItems));
-	// halt();
-
-	// write first run value/need to run once befor device shipping
-	// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
-
-	// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
-	if (false)//init EEPROM on first run
+	if (button.isDown()) // factory reset
 	{
-		// init light brightness section in EEPROM
-		EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
+		// write first run value/need to run once befor device shipping
+		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
-		for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
+		if (false) // init EEPROM on first run
 		{
-			EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+			for (size_t i = 0; i < EEPROM.length(); i++)
+			{
+				EEPROM.update(i, 0);
+			}
+
+			// // init light brightness section in EEPROM
+			// EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
+
+			// for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+			// {
+			// 	EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+			// }
+
+			// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 		}
 
-		EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
+		while (button.isDown());
 	}
 
 	ADCSRA = 0; // clear ADCSRA register
@@ -953,9 +1036,7 @@ void setup()
 
 	pinMode(TEST_PIN, OUTPUT);
 
-	bool isVersionTextVisible = button.isDown();
-
-	//Place button tate polling timer here so that button 
+	//Place button state polling timer here so that button 
 	//don't react while showing startup screen
 	Timer2.setFrequency(USER_INPUT_POLLING_FREQ_HZ);
 	Timer2.enableISR(CHANNEL_A);
@@ -980,7 +1061,12 @@ void loop()
 	// 		12,
 	// 		12};
 	// drawMeasurementSaveScreen(r);
-	// drawMeasurementResultRecordSelectionScreen();
+	// int32_t selectedRecordIndex = drawMeasurementResultRecordSelectionScreen();
+	// Serial.println(selectedRecordIndex);
+	// halt();
 	drawMeasuredScreen();
 	// drawMainMenu();
+	// char buf[40];
+	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
+	// drawMessageScreen(buf);
 }

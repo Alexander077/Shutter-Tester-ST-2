@@ -43,5 +43,6 @@ enum class Screens
   LIGHT_CHECK = 'l',
   MEASUREMENT_SAVE_SCREEN = 's',
   MEASUREMENT_RECORD_SELECTION = 'h',
+  MESSAGE = 'g',
   TEST = 't',
 };

@@ -241,6 +241,21 @@ public:
 
     sendBuf();
   }
+
+  void drawMessageScreen(const char* message)
+  {
+    if (strchr(message, ':'))
+    {
+      halt(F("Halted. Not allowed character: ':'"));
+    }
+    
+    mainBuf.clear();
+    mainBuf += (char)Screens::MESSAGE;
+    mainBuf += ":";
+    mainBuf += message;
+
+    sendBuf();
+  }
 };
 
 #undef BUF_SIZE

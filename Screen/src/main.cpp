@@ -285,6 +285,11 @@ int32_t getInputParamsArrayInt(uint8_t index)
   return bufStr.toInt();
 }
 
+void getInputParamsArrayString(uint8_t index, mString<50>& outStr)
+{
+  outStr += inputDataArray[index];
+}
+
 void drawNavBar(int8_t activePageIndex)
 {
   int16_t navBarWidth = 120;
@@ -863,6 +868,34 @@ void drawMeasurementSaveScreen()
   }
 }
 
+void drawMessageScreen()
+{
+  display->fillScreen(BLACK);
+
+  uint8_t xMargin = 70;
+  uint8_t yMargin = 60;
+  uint8_t ySpacing = 15;
+  uint8_t arrowXmargin = 15;
+  mString<50> message;
+  getInputParamsArrayString(1, message);
+
+  drawStringHCentered(message, 45);
+
+  display->setCursor(xMargin, yMargin + ySpacing);
+  display->println("OK");
+
+  display->setCursor(xMargin - arrowXmargin, yMargin + ySpacing);
+  display->print("->");
+
+  while ((Screens)getCurScreen() == Screens::MESSAGE)
+  {
+    inputCmdStr.clear();
+    dataProcessed = true;
+    while (dataProcessed);// wait for new data from main unit
+    parseInputData();
+  }
+}
+
 void setup(void)
 {
   Serial.begin(115200);
@@ -933,6 +966,11 @@ void loop()
       case Screens::MEASUREMENT_RECORD_SELECTION:
       {
         drawMeasurementResultRecordSelectionScreen();
+        break;
+      }
+      case Screens::MESSAGE:
+      {
+        drawMessageScreen();
         break;
       }
 
