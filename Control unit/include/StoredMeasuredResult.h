@@ -13,7 +13,7 @@ struct StoredMeasuredResult
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds
 
-  double curtain1spanAtime; // In milliseconds
+  double curtain1spanAtime ; // In milliseconds
   double curtain1spanAspeed; // In meters per second
   double curtain1TotalTime; // In milliseconds
 

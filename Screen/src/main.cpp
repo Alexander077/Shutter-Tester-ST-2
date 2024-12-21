@@ -82,7 +82,7 @@ Arduino_GFX *display = new Arduino_ST7735(
     false /* BGR */);
 
 mString<300> inputCmdStr;
-char inputDataArray[20][20];
+char inputDataArray[100][50];
 char curScreen = '\0';
 // char prevMode = '\0';
 // bool dataReady = false;
@@ -161,43 +161,6 @@ void parseInputData(){
   }
   
   inputCmdStr.unsplit();
-
-  // char* buf = inputCmdStr.buf;
-  // uint16_t strLength = strlen(buf);
-
-  // if (strLength > 0)
-  // {
-  //   // Serial.println("Parsed data");
-  //   uint16_t dataArrIndex = 0;
-  //   int16_t startIndex = -1;
-
-  //   for (size_t i = 0; i < strLength; i++)
-  //   {
-  //     if (buf[i] == ':' && i != strLength - 1 && i > 0)//do not process delimeter on first and last indeces.
-  //     {
-  //       if (startIndex == -1)
-  //       {
-  //         strncpy(inputDataArray[dataArrIndex], &buf[0], i);
-  //       }
-  //       else 
-  //       {
-  //         strncpy(inputDataArray[dataArrIndex], &buf[startIndex + 1], i - startIndex - 1);
-  //       }
-
-  //       startIndex = i;
-  //       dataArrIndex++;
-  //     }
-  //   }
-
-  //   if (startIndex != -1)
-  //   {
-  //     strcpy(inputDataArray[dataArrIndex], &buf[startIndex + 1]);
-  //   }
-  //   else
-  //   {
-  //     strcpy(inputDataArray[dataArrIndex], &buf[0]);
-  //     dataArrIndex++;
-  //   }
 
   // if (amount > 0)
   // {
@@ -278,7 +241,7 @@ double getInputParamsArrayFloat(uint8_t index)
   return bufStr.toFloat();
 }
 
-int32_t getInputParamsArrayInt(uint8_t index)
+int32_t getInputParamsArrayInt(int16_t index)
 {
   mString<20> bufStr;
   bufStr.add(inputDataArray[index]);
@@ -737,7 +700,7 @@ void drawMeasurementResultRecordSelectionScreen()
 
     if (prevSelectedRecordIndex != selectedRecordIndex)
     {
-      Serial.printf("Sel. index: %i\n", selectedRecordIndex);
+      // Serial.printf("Sel. index: %i\n", selectedRecordIndex);
 
       display->setTextColor(BLACK);
       display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * (prevSelectedRecordIndex % pageSize)));
@@ -758,7 +721,8 @@ void drawMeasurementResultRecordSelectionScreen()
         int16_t prevPageMaxIndex = pageSize * (prevPage - 1) + pageSize;
         int16_t prevPageLimit = min(prevPageMaxIndex, recordsCount);
 
-        for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++) // erase cur page
+        // erase cur page
+        for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++) 
         {
           display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
           int32_t recordNumber = getInputParamsArrayInt(i + 3);
@@ -772,11 +736,13 @@ void drawMeasurementResultRecordSelectionScreen()
           display->print(recordNumber);
         }
 
+
         display->setTextColor(WHITE);
         int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
         int16_t limit = min(nextPageMaxIndex, recordsCount);
 
-        for (uint8_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++) // draw new page records
+        // draw new page records
+        for (int16_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++) 
         {
           display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
           int32_t recordNumber = getInputParamsArrayInt(i + 3);
@@ -791,7 +757,6 @@ void drawMeasurementResultRecordSelectionScreen()
         }
 
         prevPage = curPage;
-        // Serial.printf("Page changed: %i", curPage);
       }
     }
 

@@ -270,6 +270,24 @@ int16_t getFreeMeasurementSaveSlotsCount()
 	return freeCount;
 }
 
+StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
+{
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	StoredMeasuredResult measRes = {-1};
+
+	for (int16_t i = 0; i < totalCount; i++)
+	{
+		EEPROM.get(i * blockSize, measRes);
+
+		if (measRes.recordNumber == recordNumber)
+		{
+			return measRes;
+		}
+	}
+	return measRes;
+}
+
 uint8_t getSavedLightBrightness()
 {
 	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
@@ -333,7 +351,6 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 		}
 	}
 
-
 	// recordNumbers[0] = 0;
 	// recordNumbers[1] = 89345;
 	// recordNumbers[2] = 456;
@@ -371,7 +388,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 		if (button.isClicked())
 		{
-			return curIndex;
+			return recordNumbers[curIndex];
 		}
 	}
 }
@@ -590,15 +607,31 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0; // in mm
 }
 
-void drawMessageScreen(const char* message)
+int16_t drawMessageScreen(const char *title, const char *options[], int16_t optionsCount)
 {
+	int16_t startEncoderVal = AlexEncoder::counter;
+
 	while (true)
 	{
-		displayManager.drawMessageScreen(message);
+		int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (resultOptionIndex > optionsCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (optionsCount - 1);
+			resultOptionIndex = optionsCount - 1;
+		}
+
+		if (resultOptionIndex < 0)
+		{
+			resultOptionIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		displayManager.drawMessageScreen(title, options, optionsCount, resultOptionIndex);
 
 		if (button.isClicked())
 		{
-			return;
+			return resultOptionIndex;
 		}
 	}
 }
@@ -640,8 +673,16 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 				}
 				case MeasurementSaveMenuItems::YES:
 				{
-					Serial.println("Saving record...");
-					saveRes = saveMesurementResult(measurementRes);
+					if (freeSlotsCount > 0)
+					{
+						Serial.println("Saving record...");
+						saveRes = saveMesurementResult(measurementRes);
+					}
+					else
+					{
+						continue;
+					}
+					
 					break;
 				}
 				case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
@@ -666,7 +707,6 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 					}
 
 					Serial.println("Saving record...");
-					Serial.println(selectedMesurementRecordNumber);
 					saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
 					break;
 				}
@@ -748,7 +788,7 @@ void drawMeasuredScreen()
 	CurtainTimings curtainTimings;
 	double sensorDistance;
 	double frameSize;
-	CurtainMovementDirection curtainMovementDirection = CurtainMovementDirection::TopToBottom;
+	// CurtainMovementDirection curtainMovementDirection = CurtainMovementDirection::TopToBottom;
 
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
 	delay(100);
@@ -779,15 +819,15 @@ void drawMeasuredScreen()
 		{
 			curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
 			curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
-			curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-																		CurtainMovementDirection::LeftToRight : CurtainMovementDirection::TopToBottom;
+			// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
+			// 															CurtainMovementDirection::LeftToRight : CurtainMovementDirection::TopToBottom;
 		}
 		else // right to left or bottom to top curtans movement
 		{
 			curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
 			curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
-			curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-																	CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
+			// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
+			// 														CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
 		}
 		
 		frameSize = curtainMovement == CurtainMovement::HORISONTAL ? 
@@ -820,7 +860,7 @@ void drawMeasuredScreen()
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawMeasuredScreen(resultPageIndex, curtainMovementDirection, res);
+		displayManager.drawMeasuredScreen(resultPageIndex/* , curtainMovementDirection */, res);
 
 		if (button.isClicked())
 		{
@@ -953,20 +993,60 @@ void drawCreditsScreen()
 
 void drawViewRecordsScreen()
 {
-	int32_t selectedRecordNumber = drawMeasurementResultRecordSelectionScreen();
-
-	if (selectedRecordNumber == 0)//"Back" option selected
-	{
-		return;
-	}
-	
-
 	while (true)
 	{
+		int32_t selectedRecordNumber = drawMeasurementResultRecordSelectionScreen();
 
-		if (button.isClicked())
+		if (selectedRecordNumber == 0) //"Back" option selected
 		{
 			return;
+		}
+
+		StoredMeasuredResult selectedResult = getMeasurementStoredResultByNumber(selectedRecordNumber);
+
+		if (selectedResult.recordNumber == -1)
+		{
+			halt(F("Halted. selectedRecordNumber is not found"));
+		}
+
+		MeasuredResult resultToDisplay = {};
+		resultToDisplay.sensor0Time = selectedResult.sensor0Time;
+		resultToDisplay.sensor1Time = selectedResult.sensor1Time;
+		resultToDisplay.curtainMovementDirection = selectedResult.curtainMovementDirection;
+		resultToDisplay.curtain1spanAspeed = selectedResult.curtain1spanAspeed;
+		resultToDisplay.curtain1spanAtime = selectedResult.curtain1spanAtime;
+		resultToDisplay.curtain1TotalTime = selectedResult.curtain1TotalTime;
+		resultToDisplay.curtain2spanAspeed = selectedResult.curtain2spanAspeed;
+		resultToDisplay.curtain2spanAtime = selectedResult.curtain2spanAtime;
+		resultToDisplay.curtain2TotalTime = selectedResult.curtain2TotalTime;
+		resultToDisplay.slitWidthSensor0 = selectedResult.slitWidthSensor0;
+		resultToDisplay.slitWidthSensor1 = selectedResult.slitWidthSensor1;
+		resultToDisplay.slitWidthAverage = selectedResult.slitWidthAverage;
+
+		int16_t startEncoderVal = AlexEncoder::counter;
+
+		while (true)
+		{
+			int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+
+			if (resultPageIndex > RESULT_PAGES_COUNT - 1)
+			{
+				startEncoderVal = AlexEncoder::counter - (RESULT_PAGES_COUNT - 1);
+				resultPageIndex = RESULT_PAGES_COUNT - 1;
+			}
+
+			if (resultPageIndex < 0)
+			{
+				resultPageIndex = 0;
+				startEncoderVal = AlexEncoder::counter;
+			}
+
+			displayManager.drawMeasuredScreen(resultPageIndex, resultToDisplay);
+
+			if (button.isClicked())
+			{
+				return;
+			}
 		}
 	}
 }
@@ -1100,9 +1180,11 @@ void loop()
 	// int32_t selectedRecordIndex = drawMeasurementResultRecordSelectionScreen();
 	// Serial.println(selectedRecordIndex);
 	// halt();
-	drawMeasuredScreen();
+	// drawMeasuredScreen();
 	// drawMainMenu();
 	// char buf[40];
 	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
 	// drawMessageScreen(buf);
+
+	drawViewRecordsScreen();
 }

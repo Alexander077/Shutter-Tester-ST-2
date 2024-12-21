@@ -120,7 +120,7 @@ public:
     sendBuf();
   }
 
-  void drawMeasuredScreen(int8_t resultPageIndex, CurtainMovementDirection curtainMovementDirection, const MeasuredResult results)
+  void drawMeasuredScreen(int8_t resultPageIndex, const MeasuredResult results)
   {
     #define BUF_SIZE 40
     mainBuf.clear();
@@ -242,17 +242,34 @@ public:
     sendBuf();
   }
 
-  void drawMessageScreen(const char* message)
+  void drawMessageScreen(const char *message, const char *options[], int16_t optionsCount, int16_t selectedOptionIndex)
   {
     if (strchr(message, ':'))
     {
       halt(F("Halted. Not allowed character: ':'"));
     }
-    
+
     mainBuf.clear();
     mainBuf += (char)Screens::MESSAGE;
     mainBuf += ":";
+    mainBuf.add(optionsCount);
+    mainBuf += ":";
+    mainBuf.add(selectedOptionIndex);
+    mainBuf += ":";
     mainBuf += message;
+
+    for (int16_t i = 0; i < optionsCount; i++)
+    {
+      if (strchr(options[i], ':'))
+      {
+        halt(F("Halted. Not allowed character in options: ':'"));
+      }
+      else
+      {
+        mainBuf += ":";
+        mainBuf += options[i];
+      }
+    }
 
     sendBuf();
   }
