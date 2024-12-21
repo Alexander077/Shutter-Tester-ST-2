@@ -288,6 +288,24 @@ StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 	return measRes;
 }
 
+bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
+{
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	StoredMeasuredResult measRes = {-1};
+
+	for (int16_t i = 0; i < totalCount; i++)
+	{
+		EEPROM.get(i * blockSize, measRes);
+
+		if (measRes.recordNumber == recordNumber)
+		{
+			measRes.isDeleted = true;
+			return verifiedEEPROMPut(i * blockSize, measRes);
+		}
+	}
+}
+
 uint8_t getSavedLightBrightness()
 {
 	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
@@ -339,6 +357,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int16_t totalArraySaize = existingRecordsCount + 1;
 	int32_t recordNumbers[totalArraySaize];
 	recordNumbers[0] = 0;//"Back" option
+	// char *recordTitles[totalArraySaize];
 
 	for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
 	{
@@ -346,6 +365,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 		if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
 		{
+
 			recordNumbers[r] = tempMeasRes.recordNumber;
 			r++;
 		}
@@ -607,9 +627,10 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0; // in mm
 }
 
-int16_t drawMessageScreen(const char *title, const char *options[], int16_t optionsCount)
+int16_t _drawMessageScreen(bool useProgMem, const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
 	int16_t startEncoderVal = AlexEncoder::counter;
+	int32_t messageScreenId = random(INT32_MAX);
 
 	while (true)
 	{
@@ -627,13 +648,23 @@ int16_t drawMessageScreen(const char *title, const char *options[], int16_t opti
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawMessageScreen(title, options, optionsCount, resultOptionIndex);
+		displayManager.drawMessageScreen(messageScreenId, useProgMem, title, options, optionsCount, resultOptionIndex);
 
 		if (button.isClicked())
 		{
 			return resultOptionIndex;
 		}
 	}
+}
+
+int16_t drawMessageScreen_P(const char *title, int16_t optionsCount = 0, const char *options[] = {})
+{
+	return _drawMessageScreen(true, title, optionsCount, options);
+}
+
+int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
+{
+	return _drawMessageScreen(false, title, optionsCount, options);
 }
 
 void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
@@ -715,20 +746,22 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 					break;
 			}
 
-			char buf[30];
+			char resMessage[50];
 
 			if (saveRes.isSuccess)
 			{
+				char buf[30];
+				formatRecordName(saveRes.newRecordNumber, buf);
 				#pragma GCC diagnostic ignored "-Wformat"
-				sprintf(buf, "Record saved as '%i'", saveRes.newRecordNumber);
+				sprintf(resMessage, "Record saved as '%s'", buf);
 				#pragma GCC diagnostic pop
 			}
 			else
 			{
-				sprintf(buf, "Failed to save record");
+				sprintf(resMessage, "Failed to save record");
 			}
-
-			drawMessageScreen(buf);
+			const char *option[] = {"OK"};
+			drawMessageScreen(resMessage, 1, option);
 			return;
 		}
 	}
@@ -1045,6 +1078,49 @@ void drawViewRecordsScreen()
 
 			if (button.isClicked())
 			{
+				const char *options[] = {
+					(const char *)F("Go back to list"), 
+					(const char *)F("Go to main menu"), 
+					(const char *)F("Delete record")};
+				int16_t selectedOptionIndex = drawMessageScreen_P((const char *)F("What's next?"), 3, options);
+
+				if (selectedOptionIndex == 0)//Go back to list
+				{
+					break;
+				}
+
+				if (selectedOptionIndex == 1)//Go to main menu
+				{
+					return;
+				}
+
+				if (selectedOptionIndex == 2) // Delete record
+				{
+					const char *options[] = {
+							(const char *)F("Yes"),
+							(const char *)F("No")};
+					int16_t deleteOptionIndex = drawMessageScreen_P((const char *)F("Really delete?"), 2, options);
+
+					if (deleteOptionIndex == 0)//Delete record
+					{
+						bool deleteRes = deleteMeasurementStoredResultByNumber(selectedResult.recordNumber);
+						char* msg;
+
+						if (!deleteRes)
+						{
+							msg = (char *)F("Failed to delete record");
+						}
+						else
+						{
+							msg = (char *)F("Record deleted");
+						}
+						
+						const char *failedDeleteOptions[] = {(const char*)F("OK")};
+						drawMessageScreen_P(msg, 1, failedDeleteOptions);
+					}
+					break;//go to records list selection
+				}
+
 				return;
 			}
 		}
@@ -1181,10 +1257,9 @@ void loop()
 	// Serial.println(selectedRecordIndex);
 	// halt();
 	// drawMeasuredScreen();
-	// drawMainMenu();
+	drawMainMenu();
 	// char buf[40];
 	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
 	// drawMessageScreen(buf);
-
-	drawViewRecordsScreen();
+	// drawViewRecordsScreen();
 }

@@ -151,7 +151,7 @@ void i2cReceiveEvent(int howMany)
 }
 
 void parseInputData(){
-  // Serial.println(inputCmdStr.buf);
+  Serial.println(inputCmdStr.buf);
   char* strings[inputCmdStr.splitAmount(':')];
   int amount = inputCmdStr.split(strings, ':');
 
@@ -375,7 +375,6 @@ void drawMeasuredScreen()
 
   while ((Screens)getCurScreen() == Screens::MEASURED)
   {
-    Serial.println("Drawing measured screen");
     mString<20> bufStr;
     bufStr.add(inputDataArray[1]);
     int8_t resultPageIndex = bufStr.toInt();
@@ -666,6 +665,7 @@ void drawMeasurementResultRecordSelectionScreen()
   const int16_t pageSize = 6;
   int16_t prevPage = 1;
   int16_t curPage = 1;
+  const int16_t recTitleBufSize = 30;
   int16_t recordsCount = getInputParamsArrayInt(2);
   drawStringHCentered("Select record", 20);
   int8_t itemsCountToPrint = min(pageSize, recordsCount);
@@ -682,7 +682,9 @@ void drawMeasurementResultRecordSelectionScreen()
       continue;
     }
 
-    display->print(recordNumber);
+    char recTitle[recTitleBufSize];
+    formatRecordName(recordNumber, recTitle);
+    display->print(recTitle);
   }
 
   display->setCursor(xMargin - arrowXmargin, yMargin);
@@ -726,6 +728,8 @@ void drawMeasurementResultRecordSelectionScreen()
         {
           display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
           int32_t recordNumber = getInputParamsArrayInt(i + 3);
+          char recTitle[recTitleBufSize];
+          formatRecordName(recordNumber, recTitle);
 
           if (recordNumber == 0) //"Back" option
           {
@@ -733,9 +737,8 @@ void drawMeasurementResultRecordSelectionScreen()
             continue;
           }
 
-          display->print(recordNumber);
+          display->print(recTitle);
         }
-
 
         display->setTextColor(WHITE);
         int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
@@ -753,7 +756,9 @@ void drawMeasurementResultRecordSelectionScreen()
             continue;
           }
 
-          display->print(recordNumber);
+          char recTitle[recTitleBufSize];
+          formatRecordName(recordNumber, recTitle);
+          display->print(recTitle);
         }
 
         prevPage = curPage;
@@ -837,23 +842,47 @@ void drawMessageScreen()
 {
   display->fillScreen(BLACK);
 
-  uint8_t xMargin = 70;
-  uint8_t yMargin = 60;
+  uint8_t xMargin = 35;
+  uint8_t yMargin = 50;
   uint8_t ySpacing = 15;
   uint8_t arrowXmargin = 15;
   mString<50> message;
-  getInputParamsArrayString(1, message);
+  int32_t messageScreenId = getInputParamsArrayInt(1);
+  int16_t optionsCount = getInputParamsArrayInt(2);
+  getInputParamsArrayString(4, message);
+  drawStringHCentered(message, 25);
 
-  drawStringHCentered(message, 45);
+  for (int16_t i = 0; i < optionsCount; i++)
+  {
+    display->setCursor(xMargin, yMargin + (ySpacing * i));
+    mString<50> optionStr;
+    getInputParamsArrayString(i + 5, optionStr);
+    display->print(optionStr.c_str());
+  }
 
-  display->setCursor(xMargin, yMargin + ySpacing);
-  display->println("OK");
-
-  display->setCursor(xMargin - arrowXmargin, yMargin + ySpacing);
+  display->setCursor(xMargin - arrowXmargin, yMargin);
   display->print("->");
 
-  while ((Screens)getCurScreen() == Screens::MESSAGE)
+  int8_t selectedMenuItemIndex = 0;
+  int8_t prevSelectedMenuItemIndex = 0;
+
+  while ((Screens)getCurScreen() == Screens::MESSAGE && messageScreenId == getInputParamsArrayInt(1))
   {
+    selectedMenuItemIndex = getInputParamsArrayInt(3);
+
+    if (prevSelectedMenuItemIndex != selectedMenuItemIndex)
+    {
+      display->setTextColor(BLACK);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+      display->print("->");
+
+      display->setTextColor(WHITE);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * selectedMenuItemIndex));
+      display->print("->");
+
+      prevSelectedMenuItemIndex = selectedMenuItemIndex;
+    }
+
     inputCmdStr.clear();
     dataProcessed = true;
     while (dataProcessed);// wait for new data from main unit

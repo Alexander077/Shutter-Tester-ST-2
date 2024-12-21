@@ -242,32 +242,57 @@ public:
     sendBuf();
   }
 
-  void drawMessageScreen(const char *message, const char *options[], int16_t optionsCount, int16_t selectedOptionIndex)
+  void drawMessageScreen(int32_t messageScreenId, bool useProgmem, const char *message, const char *options[], int16_t optionsCount, int16_t selectedOptionIndex)
   {
-    if (strchr(message, ':'))
+    const __FlashStringHelper* errStr = F("Halted. Not allowed character: ':'");
+
+    if (useProgmem && strchr_P(message, ':'))
     {
-      halt(F("Halted. Not allowed character: ':'"));
+      halt(errStr);
     }
 
+    if (!useProgmem && strchr(message, ':'))
+    {
+      halt(errStr);
+    }
+    
     mainBuf.clear();
     mainBuf += (char)Screens::MESSAGE;
+    mainBuf += ":";
+    mainBuf.add(messageScreenId);
     mainBuf += ":";
     mainBuf.add(optionsCount);
     mainBuf += ":";
     mainBuf.add(selectedOptionIndex);
     mainBuf += ":";
-    mainBuf += message;
+
+    if (useProgmem)
+    {
+      mainBuf.add_P(message);
+    }
+    else
+    {
+      mainBuf.add(message);
+    }
 
     for (int16_t i = 0; i < optionsCount; i++)
     {
-      if (strchr(options[i], ':'))
+      if (strchr_P(options[i], ':'))
       {
         halt(F("Halted. Not allowed character in options: ':'"));
       }
       else
       {
         mainBuf += ":";
-        mainBuf += options[i];
+
+        if (useProgmem)
+        {
+          mainBuf.add_P(options[i]);
+        }
+        else
+        {
+          mainBuf.add(options[i]);
+        }
       }
     }
 

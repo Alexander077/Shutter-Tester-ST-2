@@ -46,3 +46,17 @@ enum class Screens
   MESSAGE = 'g',
   TEST = 't',
 };
+
+void formatRecordName(int32_t recordNumber, char resultRecordName[30])
+{
+  int16_t bufSize = 30;
+
+  if (recordNumber < 10000)
+  {
+    snprintf(resultRecordName, bufSize, "%04d", recordNumber);
+  }
+  else if (recordNumber < 100000)
+  {
+    snprintf(resultRecordName, bufSize, "%05d", recordNumber);
+  }
+}
