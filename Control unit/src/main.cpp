@@ -4,6 +4,8 @@
 #include <EEPROM.h>
 #include <InterpolationLib.h>
 #include <AceSorting.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 // #include "../../include/LibPrintf/src/LibPrintf.h"
 // #include "../../include/LibPrintf/extras/printf/printf.h"
 #include "utils.h"
@@ -18,13 +20,16 @@
 
 #define BUTTON_PIN 4
 #define TEST_PIN 5
+#define TEMP_SENSOR_PIN 7
+
+#define TEMP_SENSOR_POLLING_INTERVAL_MS 1000
+#define MAX_LIGHT_TEMP_C 60
+
 #define SHUTTER_OPEN_LEVEL 70
 #define SHUTTER_CLOSED_LEVEL 70
 #define USER_INPUT_POLLING_FREQ_HZ 100
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
-#define SCREEN_WIDTH 128
-#define CHAR_BUF_SIZE 30
 
 #define FRAME_WINDOW_HEIGHT_35MM_SYSTEM_MM 24
 #define FRAME_WINDOW_WIDTH_35MM_SYSTEM_MM 36
@@ -83,6 +88,10 @@ volatile long pin0shutterOpenStartTime = -1,
 AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 AlexButton button(BUTTON_PIN);
 DisplayManager displayManager;
+// Setup a oneWire instance to communicate with temp sensor
+OneWire oneWire(TEMP_SENSOR_PIN);
+// Pass our oneWire reference to Dallas Temperature sensor
+DallasTemperature tempSensor(&oneWire);
 
 bool curADCpinNumber = true;
 volatile byte sensor0Readings = 0;
@@ -905,6 +914,10 @@ void drawMeasuredScreen()
 
 void drawMeasuringScreen()
 {
+	uint32_t lastTime = millis() + 2000;//giive sensor a warmup time
+	tempSensor.requestTemperatures();
+	int16_t curLightTemp = 0;
+
 	pin0shutterOpenStartTime = -1;
 	pin0shutterOpenEndTime = -1;
 	pin1shutterOpenStartTime = -1;
@@ -937,8 +950,24 @@ void drawMeasuringScreen()
 		}
 
 		displayManager.drawMeasuringScreen(resultBrightness);
+		
+		static int32_t counter = 0;
 
-		if (button.isClicked())
+		if (millis() - lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
+		{
+			Serial.print("Light temp: ");
+			// Why "byIndex"? You can have more than one IC on the same bus. 0 refers to the first IC on the wire
+			curLightTemp = tempSensor.getTempCByIndex(0);
+			Serial.println(curLightTemp);
+			// Call sensors.requestTemperatures() to issue a global temperature and Requests to all devices on the bus
+			tempSensor.requestTemperatures();
+			lastTime = millis();
+		}
+
+		// Serial.print("Cnt: ");
+		// Serial.println(counter++);
+
+		if (button.isClicked() || curLightTemp > MAX_LIGHT_TEMP_C)
 		{
 			adcISRFlow = AdcISRFlow::NONE;
 			saveLightBrightness(resultBrightness);
@@ -1131,13 +1160,30 @@ void drawMainMenu()
 {
 	while (true)
 	{
-		int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
-		displayManager.drawMainMenu(curMenuItem);
+		int16_t startEncoderVal = AlexEncoder::counter;
 
-		if (button.isClicked())
+		while (true)
 		{
-			switch ((MainMenuItems)curMenuItem)
+			int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+
+			if (resultPageIndex > MAIN_MENU_ITEMS_COUNT - 1)
 			{
+				startEncoderVal = AlexEncoder::counter - (MAIN_MENU_ITEMS_COUNT - 1);
+				resultPageIndex = MAIN_MENU_ITEMS_COUNT - 1;
+			}
+
+			if (resultPageIndex < 0)
+			{
+				resultPageIndex = 0;
+				startEncoderVal = AlexEncoder::counter;
+			}
+
+			displayManager.drawMainMenu(curMenuItem);
+
+			if (button.isClicked())
+			{
+				switch ((MainMenuItems)curMenuItem)
+				{
 				case MainMenuItems::MEASURE:
 				{
 					drawCurtainMovementSelectionScreen();
@@ -1164,7 +1210,7 @@ void drawMainMenu()
 					break;
 			}
 		}
-	}
+		}
 }
 
 void sendRawEncoder()
@@ -1235,6 +1281,9 @@ void setup()
 
 	AlexEncoder::init(2, 3);
 	displayManager.Init();
+
+	tempSensor.setResolution(9);
+	tempSensor.setWaitForConversion(false);
 }
 
 void loop()

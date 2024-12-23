@@ -51,6 +51,7 @@ void formatRecordName(int32_t recordNumber, char resultRecordName[30])
 {
   int16_t bufSize = 30;
 
+  #pragma GCC diagnostic ignored "-Wformat"
   if (recordNumber < 10000)
   {
     snprintf(resultRecordName, bufSize, "%04d", recordNumber);
@@ -59,4 +60,5 @@ void formatRecordName(int32_t recordNumber, char resultRecordName[30])
   {
     snprintf(resultRecordName, bufSize, "%05d", recordNumber);
   }
+  #pragma GCC diagnostic pop
 }
