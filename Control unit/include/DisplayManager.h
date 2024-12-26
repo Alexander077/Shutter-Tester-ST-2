@@ -86,12 +86,14 @@ public:
     sendBuf();
   }
 
-  void drawMeasuringScreen(uint8_t lightBrightness)
+  void drawMeasuringScreen(uint8_t lightBrightness, int16_t lightTemp)
   {
     mainBuf.clear();
     mainBuf += (char)Screens::MEASURING;
     mainBuf += ":";
     mainBuf.add(lightBrightness);
+    mainBuf += ":";
+    mainBuf.add(lightTemp);
 
     sendBuf();
   }
@@ -106,12 +108,14 @@ public:
     sendBuf();
   }
 
-  void drawLightCheckScreen(uint8_t lightBrightness, uint8_t sensor0Val, uint8_t sensor1Val)
+  void drawLightCheckScreen(uint8_t lightBrightness, int16_t lightTemp, uint8_t sensor0Val, uint8_t sensor1Val)
   {
     mainBuf.clear();
     mainBuf += (char)Screens::LIGHT_CHECK;
     mainBuf += ":";
     mainBuf.add(lightBrightness);
+    mainBuf += ":";
+    mainBuf.add(lightTemp);
     mainBuf += ":";
     mainBuf.add(sensor0Val);
     mainBuf += ":";

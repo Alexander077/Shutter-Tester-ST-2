@@ -22,8 +22,7 @@
 #define TEST_PIN 5
 #define TEMP_SENSOR_PIN 7
 
-#define TEMP_SENSOR_POLLING_INTERVAL_MS 1000
-#define MAX_LIGHT_TEMP_C 60
+#define TEMP_SENSOR_POLLING_INTERVAL_MS 700
 
 #define SHUTTER_OPEN_LEVEL 70
 #define SHUTTER_CLOSED_LEVEL 70
@@ -233,10 +232,15 @@ ISR(ADC_vect)
 			startADCconversion();
 			break;
 		}
-
+		case AdcISRFlow::NONE://flow just to stop adc conversions
+		{
+			break;
+		}
 		default:
+		{
 			halt(F("Halted. Unknown ADC ISR flow"));
 			break;
+		}
 	}
 }
 
@@ -802,13 +806,13 @@ void drawMeasuredScreen()
 	// Sensor 0 max val.: 163
 	// Sensor 1 max val.: 167
 	
-	pin0shutterOpenStartTime = 16599544;
-	pin0shutterOpenEndTime = 16601460;
-	pin1shutterOpenStartTime = 16590476;
-	pin1shutterOpenEndTime = 16592600;
-	sensor0Max = 163;
-	sensor1Max = 167;
-	curtainMovement = CurtainMovement::HORISONTAL;
+	// pin0shutterOpenStartTime = 16599544;
+	// pin0shutterOpenEndTime = 16601460;
+	// pin1shutterOpenStartTime = 16590476;
+	// pin1shutterOpenEndTime = 16592600;
+	// sensor0Max = 163;
+	// sensor1Max = 167;
+	// curtainMovement = CurtainMovement::HORISONTAL;
 
 	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
 	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
@@ -834,8 +838,8 @@ void drawMeasuredScreen()
 
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
 	delay(100);
-	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
+	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
 	// Serial.print("Sensor unit code: ");
 	// Serial.println(curSensorCode);
 	int8_t curSensorDataIndex = -1;
@@ -914,9 +918,9 @@ void drawMeasuredScreen()
 
 void drawMeasuringScreen()
 {
-	uint32_t lastTime = millis() + 2000;//giive sensor a warmup time
+	uint32_t lastTime = millis() + 500;//giive a temp. sensor a warmup time
 	tempSensor.requestTemperatures();
-	int16_t curLightTemp = 0;
+	int16_t curLightTemp = NO_TEMP_READING; // just a mark value to indicate that no temp. reading is made
 
 	pin0shutterOpenStartTime = -1;
 	pin0shutterOpenEndTime = -1;
@@ -949,28 +953,33 @@ void drawMeasuringScreen()
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawMeasuringScreen(resultBrightness);
-		
-		static int32_t counter = 0;
-
-		if (millis() - lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
+		if ((int64_t)millis() - (int64_t)lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
 		{
-			Serial.print("Light temp: ");
-			// Why "byIndex"? You can have more than one IC on the same bus. 0 refers to the first IC on the wire
+			// Serial.print("Light temp: ");
 			curLightTemp = tempSensor.getTempCByIndex(0);
 			Serial.println(curLightTemp);
-			// Call sensors.requestTemperatures() to issue a global temperature and Requests to all devices on the bus
 			tempSensor.requestTemperatures();
 			lastTime = millis();
 		}
 
-		// Serial.print("Cnt: ");
-		// Serial.println(counter++);
+		if (curLightTemp >= MAX_LIGHT_TEMP_C ||
+				curLightTemp == NO_TEMP_READING ||
+				curLightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
+		{
+			resultBrightness = 0;//Turn off the light
+		}
 
-		if (button.isClicked() || curLightTemp > MAX_LIGHT_TEMP_C)
+		displayManager.drawMeasuringScreen(resultBrightness, curLightTemp);
+
+		if (button.isClicked())
 		{
 			adcISRFlow = AdcISRFlow::NONE;
-			saveLightBrightness(resultBrightness);
+
+			if (curLightTemp < MAX_LIGHT_TEMP_C)
+			{
+				saveLightBrightness(resultBrightness);
+			}
+
 			return;
 		}
 		else if (adcISRFlow == AdcISRFlow::MEASURING &&
@@ -1007,6 +1016,8 @@ void drawLightCheckScreen()
 	uint8_t savedBrightness = getSavedLightBrightness();
 	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness; 
 	const uint8_t maxLightBrightness = 100;
+	uint32_t lastTime = millis() + 500; // giive a temp. sensor a warmup time
+	int16_t curLightTemp = NO_TEMP_READING; // just a mark value to indicate that no temp. reading is made
 
 	adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
@@ -1028,12 +1039,31 @@ void drawLightCheckScreen()
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawLightCheckScreen(resultBrightness, sensor0Readings, sensor1Readings);
+		if ((int64_t)millis() - (int64_t)lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
+		{
+			// Serial.print("Light temp: ");
+			curLightTemp = tempSensor.getTempCByIndex(0);
+			Serial.println(curLightTemp);
+			tempSensor.requestTemperatures();
+			lastTime = millis();
+		}
+
+		if (curLightTemp >= MAX_LIGHT_TEMP_C ||
+				curLightTemp == NO_TEMP_READING ||
+				curLightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
+		{
+			resultBrightness = 0; // Turn off the light
+		}
+
+		displayManager.drawLightCheckScreen(resultBrightness, curLightTemp, sensor0Readings, sensor1Readings);
 		// Serial.println(sensor0Readings);
 
 		if (button.isClicked())
 		{
-			saveLightBrightness(resultBrightness);
+			if (curLightTemp < MAX_LIGHT_TEMP_C)
+			{
+				saveLightBrightness(resultBrightness);
+			}
 			return;
 		}
 	}
@@ -1164,53 +1194,56 @@ void drawMainMenu()
 
 		while (true)
 		{
-			int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+			int16_t resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
 
-			if (resultPageIndex > MAIN_MENU_ITEMS_COUNT - 1)
+			if (resultMenuItemIndex > MAIN_MENU_ITEMS_COUNT - 1)
 			{
 				startEncoderVal = AlexEncoder::counter - (MAIN_MENU_ITEMS_COUNT - 1);
-				resultPageIndex = MAIN_MENU_ITEMS_COUNT - 1;
+				resultMenuItemIndex = MAIN_MENU_ITEMS_COUNT - 1;
 			}
 
-			if (resultPageIndex < 0)
+			if (resultMenuItemIndex < 0)
 			{
-				resultPageIndex = 0;
+				resultMenuItemIndex = 0;
 				startEncoderVal = AlexEncoder::counter;
 			}
 
-			displayManager.drawMainMenu(curMenuItem);
+			displayManager.drawMainMenu(resultMenuItemIndex);
 
 			if (button.isClicked())
 			{
-				switch ((MainMenuItems)curMenuItem)
+				switch ((MainMenuItems)resultMenuItemIndex)
 				{
-				case MainMenuItems::MEASURE:
-				{
-					drawCurtainMovementSelectionScreen();
-					break;
-				}
-				case MainMenuItems::CHECK_LIGHT:
-				{
-					drawLightCheckScreen();
-					break;
-				}
-				case MainMenuItems::CREDITS:
-				{
-					drawCreditsScreen();
-					break;
-				}
-				case MainMenuItems::MEASURMENT_HISTORY:
-				{
-					drawViewRecordsScreen();
-					break;
+					case MainMenuItems::MEASURE:
+					{
+						drawCurtainMovementSelectionScreen();
+						break;
+					}
+					case MainMenuItems::CHECK_LIGHT:
+					{
+						drawLightCheckScreen();
+						break;
+					}
+					case MainMenuItems::CREDITS:
+					{
+						drawCreditsScreen();
+						break;
+					}
+					case MainMenuItems::MEASURMENT_HISTORY:
+					{
+						drawViewRecordsScreen();
+						break;
+					}
+
+					default:
+						halt(F("Halted. Unknown menu item"));
+						break;
 				}
 
-				default:
-					halt(F("Halted. Unknown menu item"));
-					break;
+				startEncoderVal = AlexEncoder::counter;
 			}
 		}
-		}
+	}
 }
 
 void sendRawEncoder()
@@ -1238,18 +1271,18 @@ void setup()
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
 		// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
-		for (size_t i = 0; i < EEPROM.length(); i++)
-		{
-			EEPROM.update(i, 0);
-		}
-
-		// // init light brightness section in EEPROM
-		// EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
-
-		// for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		// for (size_t i = 0; i < EEPROM.length(); i++)
 		// {
-		// 	EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+		// 	EEPROM.update(i, 0);
 		// }
+
+		// init light brightness section in EEPROM
+		EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
+
+		for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		{
+			EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+		}
 
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 

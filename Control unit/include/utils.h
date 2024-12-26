@@ -103,29 +103,6 @@ void SerialPrintf(char *fmt, ...)
   Serial.print(buf);
 }
 
-void halt(const char *message)
-{
-  if (message[0] != '\0')
-  {
-    Serial.println(message);
-  }
-
-  while (true);
-}
-
-void halt(const __FlashStringHelper *message)
-{
-  int16_t bufferSize = strlen_P((const char*)message) + 1;
-  char buffer[bufferSize];
-  strncpy_P(buffer, (const char*)message, bufferSize);
-  halt(buffer);
-}
-
-void halt()
-{
-  halt((const char *)'\0');
-}
-
 template <typename T>
 bool verifiedEEPROMPut(const uint16_t index, const T &data)
 {

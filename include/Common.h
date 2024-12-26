@@ -9,6 +9,11 @@
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
 #define SAVE_MEASUREMENT_MENU_ITEMS_COUNT 5
 
+#define START_LIGHT_TEMP_C 20
+#define MAX_LIGHT_TEMP_C 35
+#define NO_TEMP_READING -10000
+#define DISCONNECTED_LIGHT_TEMP_VALUE -127
+
 enum class MainMenuItems
 {
   MEASURE,
@@ -61,4 +66,27 @@ void formatRecordName(int32_t recordNumber, char resultRecordName[30])
     snprintf(resultRecordName, bufSize, "%05d", recordNumber);
   }
   #pragma GCC diagnostic pop
+}
+
+void halt(const char *message)
+{
+  if (message[0] != '\0')
+  {
+    Serial.println(message);
+  }
+
+  while (true);
+}
+
+void halt(const __FlashStringHelper *message)
+{
+  int16_t bufferSize = strlen_P((const char *)message) + 1;
+  char buffer[bufferSize];
+  strncpy_P(buffer, (const char *)message, bufferSize);
+  halt(buffer);
+}
+
+void halt()
+{
+  halt("\0");
 }
