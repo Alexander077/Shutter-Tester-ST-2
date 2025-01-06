@@ -24,7 +24,8 @@
 
 #define TEMP_SENSOR_POLLING_INTERVAL_MS 700
 
-#define SHUTTER_OPEN_LEVEL 70
+#define SHUTTER_OPEN_LEVEL 60
+#define SHUTTER_DIFF_LEVEL 50
 #define SHUTTER_CLOSED_LEVEL 70
 #define USER_INPUT_POLLING_FREQ_HZ 100
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
@@ -97,8 +98,8 @@ volatile byte sensor0Readings = 0;
 volatile byte sensor1Readings = 0;
 // volatile bool isAdcWarmedUp = false;
 
-byte sensor0Max = 0; //volatile?
-byte sensor1Max = 0; // volatile?
+uint8_t sensor0Max = 0; //volatile?
+uint8_t sensor1Max = 0; // volatile?
 
 uint16_t sensorCheckCounter = 0;
 #define SENSOR_CHECK_COUNTER_SCREEN_UPDATE_VALUE 1000
@@ -164,24 +165,26 @@ ISR(ADC_vect)
 			//and not cause noise after i call startADCconversion() below
 			setADCInputPin((byte)curADCpinNumber);
 
-			if (!measuredADCpin)
+			if (!measuredADCpin)//sensor 1
 			{
 				if (val > sensor0Max)
 				{
 					sensor0Max = val;
 				}
 
-				if (val > SHUTTER_OPEN_LEVEL && pin0shutterOpenStartTime == -1)
+				// if (val > SHUTTER_OPEN_LEVEL && pin0shutterOpenStartTime == -1)
+				if (val > SHUTTER_DIFF_LEVEL && pin0shutterOpenStartTime == -1)
 				{
 					pin0shutterOpenStartTime = micros();
 				}
 
-				if (val < SHUTTER_CLOSED_LEVEL && pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime == -1)
+				// if (val < SHUTTER_CLOSED_LEVEL && pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime == -1)
+				if (val < sensor0Max - SHUTTER_DIFF_LEVEL && pin0shutterOpenEndTime == -1)
 				{
 					pin0shutterOpenEndTime = micros();
 				}
 			}
-			else
+			else//sensor 2
 			{
 				if (val > sensor1Max)
 				{
@@ -819,108 +822,165 @@ void drawMeasuredScreen()
 	// Serial.println(String("Sensor 0 max val.: ") + sensor0Max);
 	// Serial.println(String("Sensor 1 max val.: ") + sensor1Max);
 
+	static uint32_t lastPin0shutterOpenEndTime = 0;
+	uint32_t oneRevolutionTimreTaken = pin0shutterOpenEndTime - lastPin0shutterOpenEndTime;
+	lastPin0shutterOpenEndTime = pin0shutterOpenEndTime;
+
+	static uint32_t rawSensorOpenTimeUs = 0;
+	static double rawSensorOpenTimeMs = 0;
+	rawSensorOpenTimeUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
+	rawSensorOpenTimeMs = rawSensorOpenTimeUs / 1000.0;
+	#define RUNNING_AVG_COUNT 20
+	static uint32_t runningAvg[RUNNING_AVG_COUNT] = {};
+	static uint8_t curRunningAvgInd = 0;
+	runningAvg[curRunningAvgInd] = rawSensorOpenTimeUs;
+	curRunningAvgInd++;
+	curRunningAvgInd = curRunningAvgInd == RUNNING_AVG_COUNT ? 0 : curRunningAvgInd;
+
+	float rpm = 60000000.0 / oneRevolutionTimreTaken;
+	Serial.print("RPM: ");
+	Serial.print(rpm);
+
+	Serial.print(", Sen. max: ");
+	Serial.print(sensor0Max /* lastPin1OpenTime + (170 - ((lastSensorMax / 200.0) * 170)) */);
+
+	Serial.print(", RT: ");
+	Serial.print(rawSensorOpenTimeUs);
+
+	int32_t correctedSensorTime = getCorrectedSensorValue(rawSensorOpenTimeUs, sensor0Max);
+	Serial.print(", CT: ");
+	Serial.print(correctedSensorTime);
+
+	int32_t rAvg = 0;
+
+	for (int8_t i = 0; i < RUNNING_AVG_COUNT; i++)
+	{
+		rAvg += runningAvg[i];
+	}
+	
+	rAvg = rAvg / RUNNING_AVG_COUNT;
+
+	Serial.print(", Running RT: ");
+	Serial.print(rAvg);
+
+	Serial.println();
+
+	return;
+
+	// Serial.print(", T: ");
+	// Serial.print(lastPin1OpenTime);
+
+	// float target = (((/* 332.65 */ 253.17 / rpm) * /* 1000.0 */ 500.0 /* 2000.0 */) /* * 2.0 */);
+	// Serial.print(", Tgt: ");
+	// Serial.print(target);
+
+	// float deviationFromTargetShutterSpeed = lastPin1OpenTime - target;
+
+	// Serial.print(", Dev: ");
+	// Serial.print(deviationFromTargetShutterSpeed /*  - 320 */);
+
 	double rawSensor0TimeTaken = pin0shutterOpenEndTime - pin0shutterOpenStartTime;
-	double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
-	double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);//in microseconds
-	double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max); // in microseconds
+	// double rawSensor1TimeTaken = pin1shutterOpenEndTime - pin1shutterOpenStartTime;
+	// double sensor0CorrectedTime = getCorrectedSensorValue(rawSensor0TimeTaken, sensor0Max);//in microseconds
+	// double sensor1CorrectedTime = getCorrectedSensorValue(rawSensor1TimeTaken, sensor1Max); // in microseconds
 
 	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
 	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
 
-	MeasuredResult res;
-	res.sensor0Time = sensor0CorrectedTime / US_IN_MILLISECOND;//in milliseconds
-	res.sensor1Time = sensor1CorrectedTime / US_IN_MILLISECOND;// in milliseconds
+	// MeasuredResult res;
+	// res.sensor0Time = sensor0CorrectedTime / US_IN_MILLISECOND;//in milliseconds
+	// res.sensor1Time = sensor1CorrectedTime / US_IN_MILLISECOND;// in milliseconds
 
-	CurtainTimings curtainTimings;
-	double sensorDistance;
-	double frameSize;
+	// CurtainTimings curtainTimings;
+	// double sensorDistance;
+	// double frameSize;
 	// CurtainMovementDirection curtainMovementDirection = CurtainMovementDirection::TopToBottom;
 
-	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
-	delay(100);
-	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
+	// delay(100);
+	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
 	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
 	// Serial.print("Sensor unit code: ");
 	// Serial.println(curSensorCode);
-	int8_t curSensorDataIndex = -1;
+	// int8_t curSensorDataIndex = -1;
 
-	for (size_t i = 0; i < sensorsDataArraySize; i++)
-	{
-		if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
-		{
-			curSensorDataIndex = i;
-		}
-	}
+	// for (size_t i = 0; i < sensorsDataArraySize; i++)
+	// {
+	// 	if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
+	// 	{
+	// 		curSensorDataIndex = i;
+	// 	}
+	// }
 
-	if (curSensorDataIndex == -1)
-	{
-		halt(F("Sensor data not found. Program halted"));
-	}
+	// if (curSensorDataIndex == -1)
+	// {
+	// 	halt(F("Sensor data not found. Program halted"));
+	// }
 
-	SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
+	// SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
 
-	if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
-	{
-		if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
-		{
-			curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
-			curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
-			// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-			// 															CurtainMovementDirection::LeftToRight : CurtainMovementDirection::TopToBottom;
-		}
-		else // right to left or bottom to top curtans movement
-		{
-			curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
-			curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
-			// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-			// 														CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
-		}
+	// if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
+	// {
+	// 	if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
+	// 	{
+	// 		curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
+	// 		curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
+	// 		// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
+	// 		// 															CurtainMovementDirection::LeftToRight : CurtainMovementDirection::TopToBottom;
+	// 	}
+	// 	else // right to left or bottom to top curtans movement
+	// 	{
+	// 		curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
+	// 		curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
+	// 		// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
+	// 		// 														CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
+	// 	}
 		
-		frameSize = curtainMovement == CurtainMovement::HORISONTAL ? 
-										curSensorData.FrameWidth : curSensorData.FrameHeight;// in millimiters
-		sensorDistance = curtainMovement == CurtainMovement::HORISONTAL ? 
-												curSensorData.HorisontalSensorDistance : curSensorData.VerticalSensorDistance;// in millimiters
-	}
-	else
-	{
-		//for leaf shutters
-	}
+	// 	frameSize = curtainMovement == CurtainMovement::HORISONTAL ? 
+	// 									curSensorData.FrameWidth : curSensorData.FrameHeight;// in millimiters
+	// 	sensorDistance = curtainMovement == CurtainMovement::HORISONTAL ? 
+	// 											curSensorData.HorisontalSensorDistance : curSensorData.VerticalSensorDistance;// in millimiters
+	// }
+	// else
+	// {
+	// 	//for leaf shutters
+	// }
 
-	calculateResults(res, curtainTimings, sensorDistance, frameSize, sensor0CorrectedTime, sensor1CorrectedTime);
+	// calculateResults(res, curtainTimings, sensorDistance, frameSize, sensor0CorrectedTime, sensor1CorrectedTime);
 
-	int16_t startEncoderVal = AlexEncoder::counter;
+	// int16_t startEncoderVal = AlexEncoder::counter;
 
-	while (true)
-	{
-		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+	// while (true)
+	// {
+	// 	int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
 
-		if (resultPageIndex > RESULT_PAGES_COUNT - 1)
-		{
-			startEncoderVal = AlexEncoder::counter - (RESULT_PAGES_COUNT - 1);
-			resultPageIndex = RESULT_PAGES_COUNT - 1;
-		}
+	// 	if (resultPageIndex > RESULT_PAGES_COUNT - 1)
+	// 	{
+	// 		startEncoderVal = AlexEncoder::counter - (RESULT_PAGES_COUNT - 1);
+	// 		resultPageIndex = RESULT_PAGES_COUNT - 1;
+	// 	}
 
-		if (resultPageIndex < 0)
-		{
-			resultPageIndex = 0;
-			startEncoderVal = AlexEncoder::counter;
-		}
+	// 	if (resultPageIndex < 0)
+	// 	{
+	// 		resultPageIndex = 0;
+	// 		startEncoderVal = AlexEncoder::counter;
+	// 	}
 
-		displayManager.drawMeasuredScreen(resultPageIndex/* , curtainMovementDirection */, res);
+	// 	displayManager.drawMeasuredScreen(resultPageIndex/* , curtainMovementDirection */, res);
 
-		if (button.isClicked())
-		{
-			drawMeasurementSaveScreen(res);
-			return;
-		}
-	}
+	// 	if (button.isClicked())
+	// 	{
+	// 		drawMeasurementSaveScreen(res);
+	// 		return;
+	// 	}
+	// }
 }
 
 void drawMeasuringScreen()
 {
-	uint32_t lastTime = millis() + 500;//giive a temp. sensor a warmup time
-	tempSensor.requestTemperatures();
-	int16_t curLightTemp = NO_TEMP_READING; // just a mark value to indicate that no temp. reading is made
+	// uint32_t lastTime = millis() + 500;//giive a temp. sensor a warmup time
+	// tempSensor.requestTemperatures();
+	// int16_t curLightTemp = NO_TEMP_READING; // just a mark value to indicate that no temp. reading is made
 
 	pin0shutterOpenStartTime = -1;
 	pin0shutterOpenEndTime = -1;
@@ -929,9 +989,9 @@ void drawMeasuringScreen()
 	sensor0Max = 0;
 	sensor1Max = 0;
 
-	uint8_t savedBrightness = getSavedLightBrightness();
-	int16_t startEncoderVal = AlexEncoder::counter - savedBrightness;
-	const uint8_t maxLightBrightness = 100;
+	// uint8_t savedBrightness = getSavedLightBrightness();
+	// int16_t startEncoderVal = AlexEncoder::counter - savedBrightness;
+	// const uint8_t maxLightBrightness = 100;
 
 	adcISRFlow = AdcISRFlow::MEASURING;
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
@@ -939,46 +999,46 @@ void drawMeasuringScreen()
 
 	while (true)
 	{
-		int16_t resultBrightness = AlexEncoder::counter - startEncoderVal;
+		// int16_t resultBrightness = AlexEncoder::counter - startEncoderVal;
 
-		if (resultBrightness > maxLightBrightness)
-		{
-			startEncoderVal = AlexEncoder::counter - (maxLightBrightness);
-			resultBrightness = maxLightBrightness;
-		}
+		// if (resultBrightness > maxLightBrightness)
+		// {
+		// 	startEncoderVal = AlexEncoder::counter - (maxLightBrightness);
+		// 	resultBrightness = maxLightBrightness;
+		// }
 
-		if (resultBrightness < 0)
-		{
-			resultBrightness = 0;
-			startEncoderVal = AlexEncoder::counter;
-		}
+		// if (resultBrightness < 0)
+		// {
+		// 	resultBrightness = 0;
+		// 	startEncoderVal = AlexEncoder::counter;
+		// }
 
-		if ((int64_t)millis() - (int64_t)lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
-		{
-			// Serial.print("Light temp: ");
-			curLightTemp = tempSensor.getTempCByIndex(0);
-			Serial.println(curLightTemp);
-			tempSensor.requestTemperatures();
-			lastTime = millis();
-		}
+		// if ((int64_t)millis() - (int64_t)lastTime > TEMP_SENSOR_POLLING_INTERVAL_MS)
+		// {
+		// 	// Serial.print("Light temp: ");
+		// 	curLightTemp = tempSensor.getTempCByIndex(0);
+		// 	Serial.println(curLightTemp);
+		// 	tempSensor.requestTemperatures();
+		// 	lastTime = millis();
+		// }
 
-		if (curLightTemp >= MAX_LIGHT_TEMP_C ||
-				curLightTemp == NO_TEMP_READING ||
-				curLightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
-		{
-			resultBrightness = 0;//Turn off the light
-		}
+		// if (curLightTemp >= MAX_LIGHT_TEMP_C ||
+		// 		curLightTemp == NO_TEMP_READING ||
+		// 		curLightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
+		// {
+		// 	resultBrightness = 0;//Turn off the light
+		// }
 
-		displayManager.drawMeasuringScreen(resultBrightness, curLightTemp);
+		displayManager.drawMeasuringScreen(/* resultBrightness */0, /* curLightTemp */0);
 
 		if (button.isClicked())
 		{
 			adcISRFlow = AdcISRFlow::NONE;
 
-			if (curLightTemp < MAX_LIGHT_TEMP_C)
-			{
-				saveLightBrightness(resultBrightness);
-			}
+			// if (curLightTemp < MAX_LIGHT_TEMP_C)
+			// {
+				// saveLightBrightness(resultBrightness);
+			// }
 
 			return;
 		}
@@ -986,11 +1046,22 @@ void drawMeasuringScreen()
 						 ((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
 							(pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1))) // Check if at least one sensor has data
 		{
-			delay(500); // wait for other sensors to get data
+			// delay(500); // wait for other sensors to get data
 			adcISRFlow = AdcISRFlow::NONE;
-			saveLightBrightness(resultBrightness);
+			setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
+
+			// saveLightBrightness(resultBrightness);
 			drawMeasuredScreen();
-			return;
+			pin0shutterOpenStartTime = -1;
+			pin0shutterOpenEndTime = -1;
+			// pin1shutterOpenStartTime = -1;
+			// pin1shutterOpenEndTime = -1;
+			sensor0Max = 0;
+			// sensor1Max = 0;
+			adcISRFlow = AdcISRFlow::MEASURING;
+			setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+			startADCconversion(); // start first ADC conversion
+			continue;
 		}
 	}
 }
@@ -1340,6 +1411,7 @@ void loop()
 	// halt();
 	// drawMeasuredScreen();
 	drawMainMenu();
+	// drawMeasuringScreen();
 	// char buf[40];
 	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
 	// drawMessageScreen(buf);
