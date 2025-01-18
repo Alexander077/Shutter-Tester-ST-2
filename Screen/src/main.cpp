@@ -210,7 +210,7 @@ Rect drawStringHCentered(const char *str, uint16_t y)
   return r;
 }
 
-Rect drawStringHCentered(String str, uint16_t y)
+Rect drawStringHCentered(const String& str, uint16_t y)
 {
   #define CHAR_BUF_SIZE 50
   char buf[CHAR_BUF_SIZE];
@@ -366,9 +366,9 @@ void drawLightStatusBar(int16_t y, int16_t lightTemp)
 void drawMeasuringScreen()
 {
   display->fillScreen(BLACK);
-  int8_t oldBrightness = -1;
-  int16_t oldLightTemp = -1;
-  const char *lightBrightnessLabel = "Light brightness: %i%% ";
+  // int8_t oldBrightness = -1;
+  // int16_t oldLightTemp = -1;
+  // const char *lightBrightnessLabel = "Light brightness: %i%% ";
 
   while ((Screens)getCurScreen() == Screens::MEASURING)
   {
@@ -378,39 +378,39 @@ void drawMeasuringScreen()
     drawStringHCentered("Release camera shutter", 48);
     // drawStringHCentered("Light brightness", 70);
 
-    int8_t newBrightness = getInputParamsArrayInt(1);
-    uint8_t x = 16;
-    uint8_t y = 75;
+    // int8_t newBrightness = getInputParamsArrayInt(1);
+    // uint8_t x = 16;
+    // uint8_t y = 75;
 
-    if (oldBrightness != newBrightness)
-    {
-      display->setCursor(x, y);
-      display->setTextColor(BLACK);
-      display->printf(lightBrightnessLabel, oldBrightness); // erase
-      display->setCursor(x, y);
-      display->setTextColor(WHITE);
-      display->printf(lightBrightnessLabel, newBrightness);
+    // if (oldBrightness != newBrightness)
+    // {
+    //   display->setCursor(x, y);
+    //   display->setTextColor(BLACK);
+    //   display->printf(lightBrightnessLabel, oldBrightness); // erase
+    //   display->setCursor(x, y);
+    //   display->setTextColor(WHITE);
+    //   display->printf(lightBrightnessLabel, newBrightness);
 
-      uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
+    //   uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
 
-      if (newBrightness == 0)
-      {
-        dacVal = 0;//turn off the light on zero brightness
-      }
+    //   if (newBrightness == 0)
+    //   {
+    //     dacVal = 0;//turn off the light on zero brightness
+    //   }
       
-      dacWrite(DAC_CH1, dacVal);
-      // Serial.println(dacVal);
+    //   dacWrite(DAC_CH1, dacVal);
+    //   // Serial.println(dacVal);
 
-      oldBrightness = newBrightness;
-    }
+    //   oldBrightness = newBrightness;
+    // }
 
-    int16_t newTemp = getInputParamsArrayInt(2);
+    // int16_t newTemp = getInputParamsArrayInt(2);
 
-    if (oldLightTemp != newTemp)
-    {
-      drawLightStatusBar(y + 20, newTemp);
-      oldLightTemp = newTemp;
-    }
+    // if (oldLightTemp != newTemp)
+    // {
+    //   drawLightStatusBar(y + 20, newTemp);
+    //   oldLightTemp = newTemp;
+    // }
 
     inputCmdStr.clear();
     dataProcessed = true;
@@ -418,7 +418,7 @@ void drawMeasuringScreen()
     parseInputData();
   }
 
-  dacWrite(DAC_CH1, 0); // turn off the light
+  // dacWrite(DAC_CH1, 0); // turn off the light
 }
 
 void drawMeasuredScreen()
@@ -569,7 +569,17 @@ void drawMeasuredScreen()
 
 void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint8_t curSensorValue)
 {
+  static int8_t prevSensor1SignalStatus = -1;
+  static int8_t prevSensor2SignalStatus = -1;
+  static int8_t prevSensor1ActualBarWidth = 0;
+  static int8_t prevSensor2ActualBarWidth = 0;
+  static const char *sensorStatuses[3]  = {
+    "Too dim",
+    "Too bright",
+    "OK"
+  };
   const uint8_t barWidthPx = 80;
+  const uint8_t barX = 10;
   double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
   sensorValueRate = sensorValueRate > 1.0 ? 1.0 : sensorValueRate;
   x = 15;
@@ -577,103 +587,126 @@ void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint
   display->setCursor(x, y);
   display->printf("Sensor %i signal level", sensorNumber);
   y += 5;
-  display->fillRect(11, y + 1, barWidthPx - 1, 8, BLACK);
-  display->drawRect(10, y, barWidthPx, 10, WHITE);
-  display->fillRect(11, y + 1, (barWidthPx - 2) * sensorValueRate, 8, WHITE);
+  display->drawRect(barX, y, barWidthPx, 10, WHITE);
+  int16_t newBarWidth = (barWidthPx - 2) * sensorValueRate;
+
+  if (sensorNumber == 1 && newBarWidth != prevSensor1ActualBarWidth)
+  {
+    if (newBarWidth > prevSensor1ActualBarWidth)//add to what we have
+    {
+      display->fillRect(barX + 1 + prevSensor1ActualBarWidth, y + 1, newBarWidth - prevSensor1ActualBarWidth, 8, WHITE);
+    }
+    else//draw black upon what we have
+    {
+      display->fillRect(barX + 1 + prevSensor1ActualBarWidth - (prevSensor1ActualBarWidth - newBarWidth),
+                        y + 1, prevSensor1ActualBarWidth - newBarWidth, 8, BLACK);
+    }
+
+    prevSensor1ActualBarWidth = newBarWidth;
+  }
+
+  if (sensorNumber == 2 && newBarWidth != prevSensor2ActualBarWidth)
+  {
+    if (newBarWidth > prevSensor2ActualBarWidth) // add to what we have
+    {
+      display->fillRect(barX + 1 + prevSensor2ActualBarWidth, y + 1, newBarWidth - prevSensor2ActualBarWidth, 8, WHITE);
+    }
+    else // draw black upon what we have
+    {
+      display->fillRect(barX + 1 + prevSensor2ActualBarWidth - (prevSensor2ActualBarWidth - newBarWidth),
+                        y + 1, prevSensor2ActualBarWidth - newBarWidth, 8, BLACK);
+    }
+
+    prevSensor2ActualBarWidth = newBarWidth;
+  }
+
   x += barWidthPx;
   y += 9;
 
-  display->setTextColor(BLACK);//erase old text
-  display->setCursor(x, y);
-  display->print("Too bright");
-  display->setCursor(x, y);
-  display->print("Too dim");
-  display->setCursor(x, y);
-  display->print("OK");
-
-  display->setCursor(x, y);
-  display->setTextColor(WHITE); 
+  int8_t sensorStatus = 0;
 
   if (curSensorValue < MIN_ALLOWED_SIGNAL_LEVEL)
   {
-    display->print("Too dim");
+    sensorStatus = 0;
   }
   else if (curSensorValue > MAX_ALLOWED_SIGNAL_LEVEL)
   {
-    display->print("Too bright");
+    sensorStatus = 1;
   }
   else
   {
-    display->print("OK");
+    sensorStatus = 2;
   }
+
+  if (sensorNumber == 1 && sensorStatus != prevSensor1SignalStatus)
+  {
+    display->setTextColor(BLACK); // erase old text
+    display->setCursor(x, y);
+    display->print(sensorStatuses[prevSensor1SignalStatus == -1 ? 0 : prevSensor1SignalStatus]);
+
+    prevSensor1SignalStatus = sensorStatus;
+  }
+
+  if (sensorNumber == 2 && sensorStatus != prevSensor2SignalStatus)
+  {
+    display->setTextColor(BLACK); // erase old text
+    display->setCursor(x, y);
+    display->print(sensorStatuses[prevSensor2SignalStatus == -1 ? 0 : prevSensor2SignalStatus]);
+
+    prevSensor2SignalStatus = sensorStatus;
+  }
+
+  display->setCursor(x, y);
+  display->setTextColor(WHITE);
+  display->print(sensorStatuses[sensorStatus]);
 }
 
 void drawLightCheckScreen()
 {
   display->fillScreen(BLACK);
-  int8_t oldBrightness = -1;
-  int16_t oldLightTemp = -1;
-  const uint16_t sensorValueBarUpodateIntervalMs = 100;
-  uint64_t lastSensorValueUpdateTime = millis();
-  const char *lightBrightnessLabel = "Light brightness: %i%% ";
+  bool oldIsLightQualityOkVal = false;
+  const char *lightQualityBrightnessLabel = "Light quality";
 
   while ((Screens)getCurScreen() == Screens::LIGHT_CHECK)
   {
-    int8_t newBrightness = getInputParamsArrayInt(1);
+    bool isLightQualityOk = (bool)getInputParamsArrayInt(1);
     uint8_t x = 16;
-    uint8_t y = 17;
+    uint8_t y = 20;
 
-    if (oldBrightness != newBrightness)
+    drawStringHCentered("Light quality", y);
+    y += 30;
+
+    display->setTextSize(2);
+
+    if(oldIsLightQualityOkVal != isLightQualityOk)
     {
-      display->setCursor(x, y);
       display->setTextColor(BLACK);
-      display->printf(lightBrightnessLabel, oldBrightness); // erase
-      display->setCursor(x, y);
-      display->setTextColor(WHITE);
-      display->printf(lightBrightnessLabel, newBrightness);
+      drawStringHCentered(oldIsLightQualityOkVal ? "OK" : "Bad", y);
 
-      uint8_t dacVal = thresholdDacValue + (uint8_t)round((newBrightness / 100.0) * (double)(DAC_MAX - thresholdDacValue));
-
-      if (newBrightness == 0)
-      {
-        dacVal = 0; // turn off the light on zero brightness
-      }
-
-      dacWrite(DAC_CH1, dacVal);
-      // Serial.println(dacVal);
-
-      oldBrightness = newBrightness;
+      oldIsLightQualityOkVal = isLightQualityOk;
     }
 
-    int16_t newTemp = getInputParamsArrayInt(2);
+    display->setCursor(x, y);
+    display->setTextColor(isLightQualityOk ? GREEN : RED);
+    drawStringHCentered(isLightQualityOk ? "OK" : "Bad", y);
 
-    if (oldLightTemp != newTemp)
-    {
-      drawLightStatusBar(y + 14, newTemp);
-      oldLightTemp = newTemp;
-    }
+    display->setTextColor(WHITE);
+    display->setTextSize(1);
 
     x = 65;
     y = 52;
 
-    if (millis() - lastSensorValueUpdateTime > sensorValueBarUpodateIntervalMs)
-    {
-      display->setTextSize(1);
-      uint8_t sensor0Val = getInputParamsArrayInt(3);
-      // Serial.println(sensor0Val);
-      drawSensorSignalLevelBar(x, y, 1, sensor0Val);
-      uint8_t sensor1Val = getInputParamsArrayInt(4);
-      drawSensorSignalLevelBar(x, y, 2, sensor1Val);
-      lastSensorValueUpdateTime = millis();
-    }
+    display->setTextSize(1);
+    uint8_t sensor0Val = getInputParamsArrayInt(2);
+    drawSensorSignalLevelBar(x, y, 1, sensor0Val);
+    uint8_t sensor1Val = getInputParamsArrayInt(3);
+    drawSensorSignalLevelBar(x, y, 2, sensor1Val);
 
     inputCmdStr.clear();
     dataProcessed = true;
     while (dataProcessed){} // wait for new data from main unit
     parseInputData();
   }
-
-  dacWrite(DAC_CH1, 0); // turn off the light
 }
 
 void drawCurtainMovementSelectionScreen()
