@@ -86,15 +86,11 @@ public:
     sendBuf();
   }
 
-  void drawMeasuringScreen(/* uint8_t lightBrightness, int16_t lightTemp */)
+  void drawMeasuringScreen()
   {
     mainBuf.clear();
     mainBuf += (char)Screens::MEASURING;
-    // mainBuf += ":";
-    // mainBuf.add(lightBrightness);
-    // mainBuf += ":";
-    // mainBuf.add(lightTemp);
-
+    
     sendBuf();
   }
 

@@ -73,7 +73,6 @@ Arduino_GFX *display = new Arduino_ST7735(
 mString<300> inputCmdStr;
 char inputDataArray[100][50];
 char curScreen = '\0';
-// char prevMode = '\0';
 // bool dataReady = false;
 volatile bool dataProcessed = true;
 
@@ -373,9 +372,9 @@ void drawMeasuringScreen()
   while ((Screens)getCurScreen() == Screens::MEASURING)
   {
     display->setTextSize(2);
-    drawStringHCentered("MEASURING", 30);
+    drawStringHCentered("MEASURING", 40);
     display->setTextSize(1);
-    drawStringHCentered("Release camera shutter", 48);
+    drawStringHCentered("Release camera shutter", 60);
     // drawStringHCentered("Light brightness", 70);
 
     // int8_t newBrightness = getInputParamsArrayInt(1);
@@ -441,44 +440,60 @@ void drawMeasuredScreen()
 
       double sensorTime = bufStr.toFloat();
       drawStringHCentered("Sensor " + String(resultPageIndex + 1) + " summary", 15);
-      display->setCursor(5, 35);
-      display->printf("Time: %.2f ms", sensorTime);
-      display->setCursor(5, 50);
-      double shutterSpeed = 1000.0 / sensorTime;
-      String speedLabel = "Speed: ";
-      String speedLabelValue = "1/" + String(shutterSpeed, 1) + " s";
-      display->print(speedLabel + speedLabelValue);
-      uint16_t speedA = -1;
-      uint16_t speedB = -1;
 
-      for (size_t i = 0; i < SHUTTR_SPEEDS_COUNT; i++)
+      if (sensorTime > 0)//if any data taken
       {
-        if (shutterSpeeds[i] <= shutterSpeed)
+        display->setCursor(5, 35);
+        display->printf("Time: %.2f ms", sensorTime);
+        display->setCursor(5, 50);
+        double shutterSpeed = 1000.0 / sensorTime;
+        String speedLabel = "Speed: ";
+        String speedLabelValue = "1/" + String(shutterSpeed, 1) + " s";
+        display->print(speedLabel + speedLabelValue);
+        uint16_t speedA = -1;
+        uint16_t speedB = -1;
+
+        for (size_t i = 0; i < SHUTTR_SPEEDS_COUNT; i++)
         {
-          speedA = shutterSpeeds[i - 1];
-          speedB = shutterSpeeds[i];
-          break;
+          if (shutterSpeeds[i] <= shutterSpeed)
+          {
+            speedA = shutterSpeeds[i - 1];
+            speedB = shutterSpeeds[i];
+            break;
+          }
+        }
+
+        display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
+        display->setCursor(5, 105);
+        display->printf("1/%d", speedA);
+        String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
+        Rect speedBRect = getStringRect(speedBstr.c_str(), 0, 0);
+        display->setCursor(160 - speedBRect.width - 5, 105);
+        display->printf(speedBstr.c_str());
+
+        double resultPercents = (sensorTime / (1000.0 / speedA)) - 1;
+        double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
+
+        int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
+        int16_t circleY = 83;
+        display->fillCircle(circleX, circleY, 3, GREEN);
+
+        Rect speedLabelRect = getStringRect(speedLabelValue.c_str(), 0, 0);
+        display->drawLine(circleX, circleY, 5 + speedLabelRect.width + 40, 52, GREEN);
+        display->drawLine(5 + speedLabelRect.width + 40, 52, 45, 52, GREEN);
+      }
+      else
+      {
+        if (sensorTime == SENSOR_LIGHT_IS_TOO_DIM)
+        {
+          drawStringHCentered("Light is too dim", 40);
+        }
+
+        if (sensorTime == SENSOR_LIGHT_IS_TOO_BRIGHT)
+        {
+          drawStringHCentered("Light is too bright", 40);
         }
       }
-
-      display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
-      display->setCursor(5, 105);
-      display->printf("1/%d", speedA);
-      String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
-      Rect speedBRect = getStringRect(speedBstr.c_str(), 0, 0);
-      display->setCursor(160 - speedBRect.width - 5, 105);
-      display->printf(speedBstr.c_str());
-
-      double resultPercents = (sensorTime / (1000.0 / speedA)) - 1;
-      double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
-
-      int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
-      int16_t circleY = 83;
-      display->fillCircle(circleX, circleY, 3, GREEN);
-
-      Rect speedLabelRect = getStringRect(speedLabelValue.c_str(), 0, 0);
-      display->drawLine(circleX, circleY, 5 + speedLabelRect.width + 40, 52, GREEN);
-      display->drawLine(5 + speedLabelRect.width + 40, 52, 45, 52, GREEN);
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);
@@ -488,46 +503,56 @@ void drawMeasuredScreen()
     if (resultPageIndex == 2 && prevPageIndex != resultPageIndex)
     {
       display->fillScreen(BLACK);
-      drawStringHCentered("1st curtain", 15);
-      const uint8_t lineSpacing = 11;
       uint8_t curPos = 22;
 
-      display->setFont();
+      if (getInputParamsArrayFloat(2) == -1)//no curtain data
+      {
+        drawStringHCentered("No curtain data", 30);
+        drawStringHCentered("Measurements from both", 55);
+        drawStringHCentered("sensors are required", 70);
+      }
+      else
+      {
+        drawStringHCentered("1st curtain", 15);
+        const uint8_t lineSpacing = 11;
 
-      display->setCursor(0, curPos);
-      display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(2));
-      curPos += lineSpacing; 
+        display->setFont();
 
-      display->setCursor(0, curPos);
-      display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(3));
-      curPos += lineSpacing; 
+        display->setCursor(0, curPos);
+        display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(2));
+        curPos += lineSpacing;
 
-      display->setCursor(0 , curPos);
-      display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(4));
-      curPos += lineSpacing + 15;
+        display->setCursor(0, curPos);
+        display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(3));
+        curPos += lineSpacing;
 
-      display->setCursor(0, curPos);
-      display->setFont(u8g2_font_6x13_tf);
+        display->setCursor(0, curPos);
+        display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(4));
+        curPos += lineSpacing + 15;
 
-      drawStringHCentered("2nd curtain", curPos);
+        display->setCursor(0, curPos);
+        display->setFont(u8g2_font_6x13_tf);
 
-      curPos += 5;
+        drawStringHCentered("2nd curtain", curPos);
 
-      display->setFont();
+        curPos += 5;
 
-      display->setCursor(0, curPos);
-      display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(5));
-      curPos += lineSpacing;
+        display->setFont();
 
-      display->setCursor(0, curPos);
-      display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(6));
-      curPos += lineSpacing;
+        display->setCursor(0, curPos);
+        display->printf(" Speed b/w sen.: %1.2f m/s", getInputParamsArrayFloat(5));
+        curPos += lineSpacing;
 
-      display->setCursor(0, curPos);
-      display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(7));
-      curPos += lineSpacing + 5;
+        display->setCursor(0, curPos);
+        display->printf("  Time b/w sen.: %1.2f ms", getInputParamsArrayFloat(6));
+        curPos += lineSpacing;
 
-      display->setFont(u8g2_font_6x13_tf);
+        display->setCursor(0, curPos);
+        display->printf(" Est. tot. time: %1.2f ms", getInputParamsArrayFloat(7));
+        curPos += lineSpacing + 5;
+
+        display->setFont(u8g2_font_6x13_tf);
+      }
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);
@@ -535,26 +560,36 @@ void drawMeasuredScreen()
 
     if (resultPageIndex == 3 && prevPageIndex != resultPageIndex)
     {
-      mString<30> title;
-      title += "Estimated slit width";
-
       display->fillScreen(BLACK);
-      drawStringHCentered(title, 15);
-      const uint8_t lineSpacing = 11;
-      uint8_t curPos = 27;
 
-      display->setFont();
+      if (getInputParamsArrayFloat(2) == -1)//no slit data
+      {
+        drawStringHCentered("No slit width data", 30);
+        drawStringHCentered("Measurements from both", 55);
+        drawStringHCentered("sensors are required", 70);
+      }
+      else
+      {
+        mString<30> title;
+        title += "Estimated slit width";
 
-      display->setCursor(0, curPos);
-      display->printf("  By sensor 1: %1.2f mm", getInputParamsArrayFloat(2));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("  By sensor 2: %1.2f mm", getInputParamsArrayFloat(3));
-      curPos += lineSpacing;
-      display->setCursor(0, curPos);
-      display->printf("   On average: %1.2f mm", getInputParamsArrayFloat(4));
+        drawStringHCentered(title, 15);
+        const uint8_t lineSpacing = 11;
+        uint8_t curPos = 27;
 
-      display->setFont(u8g2_font_6x13_tf);
+        display->setFont();
+
+        display->setCursor(0, curPos);
+        display->printf("  By sensor 1: %1.2f mm", getInputParamsArrayFloat(2));
+        curPos += lineSpacing;
+        display->setCursor(0, curPos);
+        display->printf("  By sensor 2: %1.2f mm", getInputParamsArrayFloat(3));
+        curPos += lineSpacing;
+        display->setCursor(0, curPos);
+        display->printf("   On average: %1.2f mm", getInputParamsArrayFloat(4));
+
+        display->setFont(u8g2_font_6x13_tf);
+      }
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex);

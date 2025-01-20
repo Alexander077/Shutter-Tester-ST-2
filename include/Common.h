@@ -16,6 +16,9 @@
 #define NO_TEMP_READING -10000
 #define DISCONNECTED_LIGHT_TEMP_VALUE -127
 
+#define SENSOR_LIGHT_IS_TOO_DIM -1
+#define SENSOR_LIGHT_IS_TOO_BRIGHT -2
+
 enum class MainMenuItems
 {
   MEASURE,
