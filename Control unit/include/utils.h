@@ -93,6 +93,25 @@ void setADCautoTriggerEnabled(bool isEnabled)
 
 #define setADCInputPin(adcPinIndex) (ADMUX = (ADMUX & 0b11110000) | (adcPinIndex))
 
+void setupADC()
+{
+  ADCSRA = 0; // clear ADCSRA register
+  ADCSRB = 0; // clear ADCSRB register
+
+  // set analig pin 0 as input
+  setADCInputPin(0);
+
+  ADMUX |= (1 << REFS0); // set reference voltage
+  ADMUX |= (1 << ADLAR); // left align ADC value to 8 bits from ADCH register
+
+  setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+  // setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
+
+  setADCautoTriggerEnabled(false);
+  ADCSRA |= (1 << ADEN); // enable ADC
+  enableADCinterrupt();
+}
+
 void SerialPrintf(char *fmt, ...)
 {
   char buf[128]; // resulting string limited to 128 chars

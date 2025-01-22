@@ -12,7 +12,7 @@
 #define TMP_BUF_SIZE 32
 
 #define FLOAT_WIDTH 7
-#define FLOAT_DECIMAL_WIDTH 2
+#define FLOAT_DECIMAL_WIDTH 3
 
 class DisplayManager
 {
@@ -90,7 +90,7 @@ public:
   {
     mainBuf.clear();
     mainBuf += (char)Screens::MEASURING;
-    
+
     sendBuf();
   }
 

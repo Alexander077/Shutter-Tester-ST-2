@@ -868,13 +868,13 @@ void drawMeasuredScreen()
 	// Sensor 0 max val.: 163
 	// Sensor 1 max val.: 167
 
-	pin0shutterOpenStartTime = 16599544;
-	pin0shutterOpenEndTime = 16601460;
-	pin1shutterOpenStartTime = -1;
-	pin1shutterOpenEndTime = -1;
-	sensor0Max = 163;
-	sensor1Max = 20;
-	curtainMovement = CurtainMovement::HORISONTAL;
+	// pin0shutterOpenStartTime = 16599544;
+	// pin0shutterOpenEndTime = 16601460;
+	// pin1shutterOpenStartTime = -1;
+	// pin1shutterOpenEndTime = -1;
+	// sensor0Max = 163;
+	// sensor1Max = 20;
+	// curtainMovement = CurtainMovement::HORISONTAL;
 
 
 	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
@@ -925,7 +925,7 @@ void drawMeasuredScreen()
 	}
 	else
 	{
-		double sensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime; // in microseconds
+		sensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime; // in microseconds
 		res.sensor1Time = sensor1TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
 		sensor1DataOk = true;
 	}
@@ -937,8 +937,9 @@ void drawMeasuredScreen()
 
 	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
 	delay(100);
-	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
+	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
+	setupADC();//resetup ADC
 	// Serial.print("Sensor unit code: ");
 	// Serial.println(curSensorCode);
 
@@ -1090,37 +1091,20 @@ void drawCurtainMovementSelectionScreen()
 
 void drawLightCheckScreen()
 {
-	// uint8_t savedBrightness = getSavedLightBrightness();
-	// int16_t startEncoderVal = AlexEncoder::counter - savedBrightness; 
-	// const uint8_t maxLightBrightness = 100;
 	uint32_t lastTime = millis();
-	// int16_t curLightTemp = NO_TEMP_READING; // just a mark value to indicate that no temp. reading is made
 
-	adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
-	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
-	startADCconversion(); // start first ADC conversion
 	sensor0BlinkCount = 0;
 	sensor1BlinkCount = 0;
 	bool isLightGood = false;
 	uint16_t sensor0ResSignalLevel = 0;
 	uint16_t sensor1ResSignalLevel = 0;
 
+	adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
+	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+	startADCconversion(); // start first ADC conversion
+
 	while (true)
 	{
-		// int16_t resultBrightness = AlexEncoder::counter - startEncoderVal;
-
-		// if (resultBrightness > maxLightBrightness)
-		// {
-		// 	startEncoderVal = AlexEncoder::counter - (maxLightBrightness);
-		// 	resultBrightness = maxLightBrightness;
-		// }
-
-		// if (resultBrightness < 0)
-		// {
-		// 	resultBrightness = 0;
-		// 	startEncoderVal = AlexEncoder::counter;
-		// }
-
 		if ((int64_t)millis() - (int64_t)lastTime > SENSOR_VALUES_UPDATE_INTERVAL)
 		{
 			// Serial.println(sensor0BlinkCount);
@@ -1165,22 +1149,11 @@ void drawLightCheckScreen()
 			lastTime = millis();
 		}
 
-		// if (curLightTemp >= MAX_LIGHT_TEMP_C ||
-		// 		curLightTemp == NO_TEMP_READING ||
-		// 		curLightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
-		// {
-		// 	resultBrightness = 0; // Turn off the light
-		// }
-
 		displayManager.drawLightCheckScreen(isLightGood, sensor0ResSignalLevel, sensor1ResSignalLevel);
 		// Serial.println(sensor0Readings);
 
 		if (button.isClicked())
 		{
-			// if (curLightTemp < MAX_LIGHT_TEMP_C)
-			// {
-			// 	saveLightBrightness(resultBrightness);
-			// }
 			adcISRFlow = AdcISRFlow::NONE;
 			return;
 		}
@@ -1377,7 +1350,6 @@ void sendRawEncoder()
 	}
 }
 
-
 void setup()
 {
 	delay(1000);
@@ -1407,21 +1379,7 @@ void setup()
 		while (button.isDown());
 	}
 
-	ADCSRA = 0; // clear ADCSRA register
-	ADCSRB = 0; // clear ADCSRB register
-
-	// set analig pin 0 as input
-	setADCInputPin(0);
-
-	ADMUX |= (1 << REFS0); // set reference voltage
-	ADMUX |= (1 << ADLAR); // left align ADC value to 8 bits from ADCH register
-
-	setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
-	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);
-
-	setADCautoTriggerEnabled(false);
-	ADCSRA |= (1 << ADEN); // enable ADC
-	enableADCinterrupt();
+	setupADC();
 
 	pinMode(TEST_PIN, OUTPUT);
 

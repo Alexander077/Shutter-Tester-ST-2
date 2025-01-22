@@ -241,15 +241,15 @@ void getInputParamsArrayString(uint8_t index, mString<50>& outStr)
   outStr += inputDataArray[index];
 }
 
-void drawNavBar(int8_t activePageIndex)
+void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
   int16_t navBarWidth = 120;
   int16_t navBarY = 120;
-  int16_t navBarItemsCount = RESULT_PAGES_COUNT;
+  // int16_t navBarItemsCount = RESULT_PAGES_COUNT;
   int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
   display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
 
-  for (int8_t i = 0, spacing = 0; i < navBarItemsCount; i++, spacing += navBarWidth / (navBarItemsCount - 1))
+  for (int8_t i = 0, spacing = 0; i < itemsCount; i++, spacing += navBarWidth / (itemsCount - 1))
   {
     display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
   }
@@ -444,7 +444,16 @@ void drawMeasuredScreen()
       if (sensorTime > 0)//if any data taken
       {
         display->setCursor(5, 35);
-        display->printf("Time: %.2f ms", sensorTime);
+        
+        if (sensorTime  < 1.0)
+        {
+          display->printf("Time: %.3f ms", sensorTime);
+        }
+        else
+        {
+          display->printf("Time: %.2f ms", sensorTime);
+        }
+        
         display->setCursor(5, 50);
         double shutterSpeed = 1000.0 / sensorTime;
         String speedLabel = "Speed: ";
@@ -496,7 +505,7 @@ void drawMeasuredScreen()
       }
 
       prevPageIndex = resultPageIndex;
-      drawNavBar(resultPageIndex);
+      drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
     }
 
     //1-st and 2-nd curtain speeds and timings
@@ -555,7 +564,7 @@ void drawMeasuredScreen()
       }
 
       prevPageIndex = resultPageIndex;
-      drawNavBar(resultPageIndex);
+      drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
     }
 
     if (resultPageIndex == 3 && prevPageIndex != resultPageIndex)
@@ -592,7 +601,7 @@ void drawMeasuredScreen()
       }
 
       prevPageIndex = resultPageIndex;
-      drawNavBar(resultPageIndex);
+      drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
     }
 
     inputCmdStr.clear();
@@ -798,13 +807,16 @@ void drawMeasurementResultRecordSelectionScreen()
   uint8_t yMargin = 40;
   uint8_t ySpacing = 15;
   uint8_t arrowXmargin = 15;
-  const int16_t pageSize = 6;
+  uint8_t curPageLabelY = 120;
+  mString<30> pageLabel;
+  const int16_t pageSize = 5;
   int16_t prevPage = 1;
   int16_t curPage = 1;
   const int16_t recTitleBufSize = 30;
-  int16_t recordsCount = getInputParamsArrayInt(2);
+  int16_t totalRecordsCount = getInputParamsArrayInt(2);
+  int16_t totalPagesCount = ceil((double)totalRecordsCount / (double)pageSize);
   drawStringHCentered("Select record", 20);
-  int8_t itemsCountToPrint = min(pageSize, recordsCount);
+  int8_t itemsCountToPrint = min(pageSize, totalRecordsCount);
 
   for (uint8_t i = 0; i < itemsCountToPrint; i++)
   {
@@ -821,6 +833,13 @@ void drawMeasurementResultRecordSelectionScreen()
     char recTitle[recTitleBufSize];
     formatRecordName(recordNumber, recTitle);
     display->print(recTitle);
+
+    pageLabel.clear();
+    pageLabel += "Page ";
+    pageLabel.add(curPage);
+    pageLabel += " of ";
+    pageLabel.add(totalPagesCount);
+    drawStringHCentered(pageLabel, curPageLabelY);
   }
 
   display->setCursor(xMargin - arrowXmargin, yMargin);
@@ -857,7 +876,7 @@ void drawMeasurementResultRecordSelectionScreen()
         display->setTextColor(BLACK);
 
         int16_t prevPageMaxIndex = pageSize * (prevPage - 1) + pageSize;
-        int16_t prevPageLimit = min(prevPageMaxIndex, recordsCount);
+        int16_t prevPageLimit = min(prevPageMaxIndex, totalRecordsCount);
 
         // erase cur page
         for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++) 
@@ -876,9 +895,16 @@ void drawMeasurementResultRecordSelectionScreen()
           display->print(recTitle);
         }
 
+        pageLabel.clear();
+        pageLabel += "Page ";
+        pageLabel.add(prevPage);
+        pageLabel += " of ";
+        pageLabel.add(totalPagesCount);
+        drawStringHCentered(pageLabel, curPageLabelY);
+
         display->setTextColor(WHITE);
         int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
-        int16_t limit = min(nextPageMaxIndex, recordsCount);
+        int16_t limit = min(nextPageMaxIndex, totalRecordsCount);
 
         // draw new page records
         for (int16_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++) 
@@ -896,6 +922,13 @@ void drawMeasurementResultRecordSelectionScreen()
           formatRecordName(recordNumber, recTitle);
           display->print(recTitle);
         }
+
+        pageLabel.clear();
+        pageLabel += "Page ";
+        pageLabel.add(curPage);
+        pageLabel += " of ";
+        pageLabel.add(totalPagesCount);
+        drawStringHCentered(pageLabel, curPageLabelY);
 
         prevPage = curPage;
       }
