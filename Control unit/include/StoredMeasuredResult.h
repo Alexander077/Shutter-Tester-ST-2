@@ -8,7 +8,7 @@ struct StoredMeasuredResult
   int32_t recordNumber;
   bool isDeleted;
 
-  Direction curtainMovementDirection;
+  // Direction curtainMovementDirection;
 
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds
@@ -24,6 +24,9 @@ struct StoredMeasuredResult
   double slitWidthSensor0; // in mm
   double slitWidthSensor1; // in mm
   double slitWidthAverage; // in mm
+
+  SensorType usedSensorType;
+  CurtainMovement selectedCurtainMovement;
 
   bool operator==(StoredMeasuredResult const &rhs) const
   {

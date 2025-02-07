@@ -185,6 +185,12 @@ public:
 
         dtostrf(results.slitWidthAverage, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
+        mainBuf += ":";
+
+        mainBuf.add((uint8_t)results.usedSensorType);
+        mainBuf += ":";
+
+        mainBuf.add((uint8_t)results.selectedCurtainMovement);
 
         break;
       }

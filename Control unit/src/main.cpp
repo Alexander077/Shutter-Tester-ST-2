@@ -43,10 +43,6 @@
 //EEPROM memory layout: |saved measures (0-1012)|saved brightness value(1013-1022)|first run value(1023)|
 #define EEPROM_FIRST_RUN_VAL_INDEX 1023
 #define EEPROM_FIRST_RUN_VAL 22
-#define EEPROM_LIGHT_BRIGHTNESS_START_VAL 0
-#define EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL 255
-#define EEPROM_LIGHT_BRIGHTNESS_START_INDEX 1013
-#define EEPROM_LIGHT_BRIGHTNESS_END_INDEX (EEPROM_FIRST_RUN_VAL_INDEX - 1)
 
 #define EEPROM_MEASURED_RES_START_INDEX 0
 #define EEPROM_MEASURED_RES_END_INDEX 1012
@@ -106,17 +102,11 @@ uint8_t sensor1MaxArr[SENSOR_MAX_AVG_ARRAY_SIZE] = {};
 uint16_t sensorCheckCounter = 0;
 #define SENSOR_CHECK_COUNTER_SCREEN_UPDATE_VALUE 1000
 
-#define INTRPOLATION_POINTS_COUNT 7
-const double adcVals[INTRPOLATION_POINTS_COUNT] = {96, 112, 130, 160, 193, 235, 250};
-const double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {120, 70, 35, -30, -70, -90, -110};
+#define INTRPOLATION_POINTS_COUNT 4
+const double sensorMaxAdcVals[INTRPOLATION_POINTS_COUNT] = {80, 110, 140, 230};
+const double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {15, 25, 30, 0};
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
-
-enum class SensorType
-{
-	SingleSensor,
-	Frame35mm,
-};
 
 struct SensorUnitData
 {
@@ -129,27 +119,44 @@ struct SensorUnitData
 	uint16_t maxAdcVal;
 };
 
-const uint8_t sensorsDataArraySize = 2;
-
 const SensorUnitData sensorsData[sensorsDataArraySize] = {
-		{
-				SensorType::SingleSensor,
-				-1,
-				-1,
-				-1,
-				-1,
-				970,
-				985
-		},
 		{
 				SensorType::Frame35mm,
 				36,
 				24,
 				16.0,
 				10.6,
+				700,
+				840
+		},
+		{
+				SensorType::Frame6x45,
+				60,
+				45,
+				26.67,
+				20.0,
 				900,
 				940
-		}};
+		},
+		{
+				SensorType::Frame6x6,
+				60,
+				60,
+				26.67,
+				26.67,
+				900,
+				940
+		},
+		{
+				SensorType::Frame6x7,
+				70,
+				60,
+				31.11,
+				26.67,
+				900,
+				940
+		}
+};
 
 ISR(ADC_vect)
 {
@@ -381,47 +388,6 @@ bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 	}
 }
 
-uint8_t getSavedLightBrightness()
-{
-	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
-	{
-		uint8_t eepromVal = EEPROM.read(i);
-
-		if (eepromVal != EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL)//if data has been written
-		{
-			return EEPROM.read(i);
-		}
-	}
-
-	return 0;//if all cells are failed
-}
-
-bool saveLightBrightness(uint8_t brightness)
-{
-	for (size_t i = EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i >= EEPROM_LIGHT_BRIGHTNESS_START_INDEX; i--)
-	{
-		uint8_t eepromVal = EEPROM.read(i);
-
-		if (eepromVal != EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL) // if data has been written
-		{
-			bool writeRes = verifiedEEPROMPut(i, brightness);
-
-			if (writeRes)
-			{
-				return true;
-			}
-
-			// if cell is failed and we do not reach last cell yet - move value to next cell
-			if (!writeRes && i != EEPROM_LIGHT_BRIGHTNESS_END_INDEX) 
-			{
-				return verifiedEEPROMPut(i + 1, brightness);
-			}
-		}
-	}
-
-	halt("Halted. Program should not get here");
-}
-
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
 	StoredMeasuredResult tempMeasRes;
@@ -516,7 +482,6 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 
 	savedMeasRes.recordNumber = numberOfLast + 1;
 	savedMeasRes.isDeleted = false;
-	savedMeasRes.curtainMovementDirection = res.curtainMovementDirection;
 	savedMeasRes.sensor0Time = res.sensor0Time;
 	savedMeasRes.sensor1Time = res.sensor1Time;
 	savedMeasRes.curtain1spanAspeed = res.curtain1spanAspeed;
@@ -528,6 +493,8 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 	savedMeasRes.slitWidthSensor0 = res.slitWidthSensor0;
 	savedMeasRes.slitWidthSensor1 = res.slitWidthSensor1;
 	savedMeasRes.slitWidthAverage = res.slitWidthAverage;
+	savedMeasRes.usedSensorType = res.usedSensorType;
+	savedMeasRes.selectedCurtainMovement = res.selectedCurtainMovement;
 
 	if (numberOfLast == 0) // if there is no records at all in the EEPROM
 	{
@@ -668,7 +635,7 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 double getCorrectedSensorValue(long rawSensorTime, uint8_t maxSensorValue)
 {
 	// #pragma GCC diagnostic ignored "-fpermissive"
-	double correction = Interpolation::Linear(adcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
+	double correction = Interpolation::Linear(sensorMaxAdcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
 	// #pragma GCC diagnostic pop
 	double resSensorTime = rawSensorTime + correction;
 	return resSensorTime;
@@ -884,49 +851,46 @@ void drawMeasuredScreen()
 
 	bool sensor0DataOk = false;
 	bool sensor1DataOk = false;
-	double sensor0TimeTakenUs = -1;
-	double sensor1TimeTakenUs = -1;
+	double rawSensor0TimeTakenUs = -1;
+	double rawSensor1TimeTakenUs = -1;
+	double correctedSensor0TimeTakenUs = -1;
+	double correctedSensor1TimeTakenUs = -1;
 
 	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
 	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
 
 	MeasuredResult res;
+	res.selectedCurtainMovement = curtainMovement;
 
-	if (pin0shutterOpenEndTime == -1 || sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	if (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL)
 	{
-		if (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL)
-		{
-			res.sensor0Time = SENSOR_LIGHT_IS_TOO_DIM;
-		}
-
-		if (sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL)
-		{
-			res.sensor0Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
-		}
+		res.sensor0Time = SENSOR_LIGHT_IS_TOO_DIM;
+	}
+	else if (sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor0Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
 	}
 	else
 	{
-		sensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime; // in microseconds
-		res.sensor0Time = sensor0TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
+		rawSensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime; // in microseconds
+		correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
+		res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
 		sensor0DataOk = true;
 	}
 
-	if (pin1shutterOpenEndTime == -1 || sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	if (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL)
 	{
-		if (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL)
-		{
-			res.sensor1Time = SENSOR_LIGHT_IS_TOO_DIM;
-		}
-
-		if (sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL)
-		{
-			res.sensor1Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
-		}
+		res.sensor1Time = SENSOR_LIGHT_IS_TOO_DIM;
+	} 
+	else if (sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor1Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
 	}
 	else
 	{
-		sensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime; // in microseconds
-		res.sensor1Time = sensor1TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
+		rawSensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime; // in microseconds
+		correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
+		res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
 		sensor1DataOk = true;
 	}
 
@@ -940,8 +904,8 @@ void drawMeasuredScreen()
 	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
 	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
 	setupADC();//resetup ADC
-	// Serial.print("Sensor unit code: ");
-	// Serial.println(curSensorCode);
+	Serial.print("Sensor unit code: ");
+	Serial.println(curSensorCode);
 
 
 	int8_t curSensorDataIndex = -1;
@@ -951,6 +915,7 @@ void drawMeasuredScreen()
 		if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
 		{
 			curSensorDataIndex = i;
+			break;
 		}
 	}
 
@@ -962,8 +927,9 @@ void drawMeasuredScreen()
 	if (sensor0DataOk && sensor1DataOk)//if both sensors data is valid
 	{
 		SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
+		res.usedSensorType = curSensorData.Type;
 
-		if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
+ 		if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
 		{
 			if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
 			{
@@ -996,7 +962,7 @@ void drawMeasuredScreen()
 			//for leaf shutters
 		}
 
-		calculateResults(res, curtainTimings, sensorDistance, frameSize, sensor0TimeTakenUs, sensor1TimeTakenUs);
+		calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
 	}
 	else
 	{
@@ -1033,7 +999,11 @@ void drawMeasuredScreen()
 
 		if (button.isClicked())
 		{
-			drawMeasurementSaveScreen(res);
+			if (sensor0DataOk || sensor1DataOk)
+			{
+				drawMeasurementSaveScreen(res);
+			}
+			
 			return;
 		}
 	}
@@ -1075,14 +1045,29 @@ void drawMeasuringScreen()
 
 void drawCurtainMovementSelectionScreen()
 {
+	int16_t startEncoderVal = AlexEncoder::counter;
+
 	while (true)
 	{
-		uint8_t curMenuItem = abs(AlexEncoder::counter) % CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT;
-		displayManager.drawCurtainMovementSelectionScreen(curMenuItem);
+		int16_t resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (resultMenuItemIndex > CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1);
+			resultMenuItemIndex = CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1;
+		}
+
+		if (resultMenuItemIndex < 0)
+		{
+			resultMenuItemIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		displayManager.drawCurtainMovementSelectionScreen(resultMenuItemIndex);
 
 		if (button.isClicked())
 		{
-			curtainMovement = (CurtainMovement)curMenuItem;
+			curtainMovement = (CurtainMovement)resultMenuItemIndex;
 			drawMeasuringScreen();
 			return;
 		}
@@ -1195,7 +1180,6 @@ void drawViewRecordsScreen()
 		MeasuredResult resultToDisplay = {};
 		resultToDisplay.sensor0Time = selectedResult.sensor0Time;
 		resultToDisplay.sensor1Time = selectedResult.sensor1Time;
-		resultToDisplay.curtainMovementDirection = selectedResult.curtainMovementDirection;
 		resultToDisplay.curtain1spanAspeed = selectedResult.curtain1spanAspeed;
 		resultToDisplay.curtain1spanAtime = selectedResult.curtain1spanAtime;
 		resultToDisplay.curtain1TotalTime = selectedResult.curtain1TotalTime;
@@ -1205,6 +1189,8 @@ void drawViewRecordsScreen()
 		resultToDisplay.slitWidthSensor0 = selectedResult.slitWidthSensor0;
 		resultToDisplay.slitWidthSensor1 = selectedResult.slitWidthSensor1;
 		resultToDisplay.slitWidthAverage = selectedResult.slitWidthAverage;
+		resultToDisplay.usedSensorType = selectedResult.usedSensorType;
+		resultToDisplay.selectedCurtainMovement = selectedResult.selectedCurtainMovement;
 
 		int16_t startEncoderVal = AlexEncoder::counter;
 
@@ -1360,18 +1346,10 @@ void setup()
 		// write first run value/need to run once befor device shipping
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
-		// if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
-		// for (size_t i = 0; i < EEPROM.length(); i++)
-		// {
-		// 	EEPROM.update(i, 0);
-		// }
-
-		// init light brightness section in EEPROM
-		EEPROM.write(EEPROM_LIGHT_BRIGHTNESS_START_INDEX, EEPROM_LIGHT_BRIGHTNESS_START_VAL);
-
-		for (size_t i = EEPROM_LIGHT_BRIGHTNESS_START_INDEX + 1; i <= EEPROM_LIGHT_BRIGHTNESS_END_INDEX; i++)
+		if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
+		for (size_t i = 0; i < EEPROM.length(); i++)
 		{
-			EEPROM.write(i, EEPROM_LIGHT_BRIGHTNESS_EMPTY_VAL);
+			EEPROM.update(i, 0);
 		}
 
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);

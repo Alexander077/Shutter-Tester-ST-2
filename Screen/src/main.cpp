@@ -46,6 +46,14 @@ const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COU
   "Leaf"
  };
 
+const char* SensorTypeStr[sensorsDataArraySize] =
+{
+  "35mm",
+  "6x4.5",
+  "6x6",
+  "6x7"
+ };
+
 const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
 {
   "No",
@@ -139,7 +147,7 @@ void i2cReceiveEvent(int howMany)
 }
 
 void parseInputData(){
-  Serial.println(inputCmdStr.buf);
+  // Serial.println(inputCmdStr.buf);
   char* strings[inputCmdStr.splitAmount(':')];
   int amount = inputCmdStr.split(strings, ':');
 
@@ -313,55 +321,6 @@ void drawCreditsScreen()
   }
 }
 
-void drawLightStatusBar(int16_t y, int16_t lightTemp)
-{
-  #define BAR_COLOR RGB565(90, 90, 90)
-  drawStringHCentered("Light temp. status", y + 5);
-
-  double rate = (lightTemp - START_LIGHT_TEMP_C) / (double)(MAX_LIGHT_TEMP_C - START_LIGHT_TEMP_C);
-  rate = constrain(rate, 0.01, 1.0);
-  // Serial.printf("New temp: %i\n", newTemp);
-  // Serial.printf("Rate: %f\n", rate);
-  int16_t barWidth = 145;
-  int16_t barHeight = 15;
-  int16_t barX = (display->width() - barWidth) / 2.0; // draw centered
-  int16_t barY = y + 10;
-  display->fillRect(barX, barY, barWidth, barHeight, BLACK); // erase old bar
-  display->drawRect(barX, barY, barWidth, barHeight, BAR_COLOR);
-  display->fillRect(barX + 1, barY + 1, (barWidth - 2) * rate, barHeight - 2, BAR_COLOR);
-
-  const char *status;
-
-  if (rate < 0.4)
-  {
-    status = "Ok";
-  }
-  else if (rate < 0.99)
-  {
-    status = "Warm";
-  }
-  else // more than 0.99
-  {
-    status = "Off(prevent overheat)";
-  }
-
-  if (lightTemp == NO_TEMP_READING)
-  {
-    status = "Getting light status";
-  }
-
-  if (lightTemp == DISCONNECTED_LIGHT_TEMP_VALUE)
-  {
-    status = "Disconnected";
-  }
-
-  display->setFont();
-  display->setTextSize(1);
-  display->setTextColor(WHITE);
-  drawStringHCentered(status, barY + 4);
-  display->setFont(u8g2_font_6x13_tf);
-}
-
 void drawMeasuringScreen()
 {
   display->fillScreen(BLACK);
@@ -444,7 +403,7 @@ void drawMeasuredScreen()
       if (sensorTime > 0)//if any data taken
       {
         display->setCursor(5, 35);
-        
+
         if (sensorTime  < 1.0)
         {
           display->printf("Time: %.3f ms", sensorTime);
@@ -571,34 +530,53 @@ void drawMeasuredScreen()
     {
       display->fillScreen(BLACK);
 
-      if (getInputParamsArrayFloat(2) == -1)//no slit data
+      mString<30> title;
+      title += "Estimated slit width";
+
+      drawStringHCentered(title, 15);
+      const uint8_t lineSpacing = 11;
+      uint8_t curPos = 22;
+
+      display->setFont();
+
+      display->setCursor(0, curPos);
+      if (getInputParamsArrayFloat(2) == -1)
       {
-        drawStringHCentered("No slit width data", 30);
-        drawStringHCentered("Measurements from both", 55);
-        drawStringHCentered("sensors are required", 70);
+        display->print(" By sensor 1: no data");
+        curPos += lineSpacing;
+        display->setCursor(0, curPos);
+        display->print(" By sensor 2: no data");
+        curPos += lineSpacing;
+        display->setCursor(0, curPos);
+        display->print(" On average: no data");
       }
       else
       {
-        mString<30> title;
-        title += "Estimated slit width";
-
-        drawStringHCentered(title, 15);
-        const uint8_t lineSpacing = 11;
-        uint8_t curPos = 27;
-
-        display->setFont();
-
-        display->setCursor(0, curPos);
-        display->printf("  By sensor 1: %1.2f mm", getInputParamsArrayFloat(2));
+        display->printf(" By sensor 1: %1.2f mm", getInputParamsArrayFloat(2));
         curPos += lineSpacing;
         display->setCursor(0, curPos);
-        display->printf("  By sensor 2: %1.2f mm", getInputParamsArrayFloat(3));
+        display->printf(" By sensor 2: %1.2f mm", getInputParamsArrayFloat(3));
         curPos += lineSpacing;
         display->setCursor(0, curPos);
-        display->printf("   On average: %1.2f mm", getInputParamsArrayFloat(4));
-
-        display->setFont(u8g2_font_6x13_tf);
+        display->printf(" On average: %1.2f mm", getInputParamsArrayFloat(4));
       }
+
+      curPos += lineSpacing + 10;
+
+      title = "Other data";
+      display->setFont(u8g2_font_6x13_tf);
+      drawStringHCentered(title, curPos + 5);
+      display->setFont();
+
+      curPos += lineSpacing + 3;
+      display->setCursor(0, curPos);
+      display->printf(" Used sensor.: %s", SensorTypeStr[getInputParamsArrayInt(5)]);
+
+      curPos += lineSpacing;
+      display->setCursor(0, curPos);
+      display->printf(" Sel.curt.mov.: %s", CurtainMovementItemsStr[getInputParamsArrayInt(6)]);
+
+      display->setFont(u8g2_font_6x13_tf);
 
       prevPageIndex = resultPageIndex;
       drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
@@ -669,7 +647,7 @@ void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint
 
   int8_t sensorStatus = 0;
 
-  if (curSensorValue < MIN_ALLOWED_SIGNAL_LEVEL)
+  if (curSensorValue <= MIN_ALLOWED_SIGNAL_LEVEL)
   {
     sensorStatus = 0;
   }
