@@ -20,13 +20,7 @@
 
 #define BUTTON_PIN 4
 #define TEST_PIN 5
-// #define TEMP_SENSOR_PIN 7
 
-// #define TEMP_SENSOR_POLLING_INTERVAL_MS 700
-
-
-// #define SHUTTER_OPEN_LEVEL 70
-// #define SHUTTER_CLOSED_LEVEL 70
 #define USER_INPUT_POLLING_FREQ_HZ 100
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
@@ -35,12 +29,9 @@
 #define US_IN_SECOND 1000000
 #define US_IN_MILLISECOND 1000
 
-#define HW_VERSION "1.0"
-#define SW_VERSION "1.0"
-
 #define SENSOR_TYPE_CODE_PIN A7
 
-//EEPROM memory layout: |saved measures (0-1012)|saved brightness value(1013-1022)|first run value(1023)|
+// EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
 #define EEPROM_FIRST_RUN_VAL_INDEX 1023
 #define EEPROM_FIRST_RUN_VAL 22
 
@@ -69,6 +60,12 @@ struct MeasurementRecordSaveResult
 {
 	bool isSuccess;
 	int32_t newRecordNumber;
+};
+
+enum class MeasurementSaveScreenResult
+{
+	OK,
+	CANCEL
 };
 
 volatile long pin0shutterOpenStartTime = -1,
@@ -120,43 +117,34 @@ struct SensorUnitData
 };
 
 const SensorUnitData sensorsData[sensorsDataArraySize] = {
-		{
-				SensorType::Frame35mm,
-				36,
-				24,
-				16.0,
-				10.6,
-				700,
-				840
-		},
-		{
-				SensorType::Frame6x45,
-				60,
-				45,
-				26.67,
-				20.0,
-				900,
-				940
-		},
-		{
-				SensorType::Frame6x6,
-				60,
-				60,
-				26.67,
-				26.67,
-				900,
-				940
-		},
-		{
-				SensorType::Frame6x7,
-				70,
-				60,
-				31.11,
-				26.67,
-				900,
-				940
-		}
-};
+		{SensorType::Frame35mm,
+		 36,
+		 24,
+		 16.0,
+		 10.6,
+		 700,
+		 840},
+		{SensorType::Frame6x45,
+		 60,
+		 45,
+		 26.67,
+		 20.0,
+		 200,
+		 300},
+		{SensorType::Frame6x6,
+		 60,
+		 60,
+		 26.67,
+		 26.67,
+		 900,
+		 940},
+		{SensorType::Frame6x7,
+		 70,
+		 60,
+		 31.11,
+		 26.67,
+		 500,
+		 600}};
 
 ISR(ADC_vect)
 {
@@ -709,11 +697,11 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 	return _drawMessageScreen(false, title, optionsCount, options);
 }
 
-void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
 	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
 	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
-	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? 2 : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? 3 : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 	int16_t startEncoderVal = AlexEncoder::counter;
 
 	while (true)
@@ -741,7 +729,7 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 			{
 				case MeasurementSaveMenuItems::NO:
 				{
-					return;//do not save the result
+					return MeasurementSaveScreenResult::OK; // do not save the result
 					break;
 				}
 				case MeasurementSaveMenuItems::YES:
@@ -783,6 +771,11 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 					saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
 					break;
 				}
+				case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+				{
+					return MeasurementSaveScreenResult::CANCEL;
+					break;
+				}
 				default:
 					halt(F("Halted. Unknown measurement save option"));
 					break;
@@ -804,7 +797,7 @@ void drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 			}
 			const char *option[] = {"OK"};
 			drawMessageScreen(resMessage, 1, option);
-			return;
+			return MeasurementSaveScreenResult::OK;
 		}
 	}
 }
@@ -897,9 +890,8 @@ void drawMeasuredScreen()
 	CurtainTimings curtainTimings;
 	double sensorDistance;
 	double frameSize;
-	// CurtainMovementDirection curtainMovementDirection = CurtainMovementDirection::TopToBottom;
 
-	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128);//need to correctly read the sensor code
+	setADCprescaler(ADCPrescaler::ADC_PRESCALER_128); // needed to correctly read the sensor code
 	delay(100);
 	uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
 	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove 
@@ -924,58 +916,104 @@ void drawMeasuredScreen()
 		halt(F("Sensor data not found. Program halted"));
 	}
 
-	if (sensor0DataOk && sensor1DataOk)//if both sensors data is valid
+	SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
+	res.usedSensorType = curSensorData.Type;
+
+	if (curtainMovement == CurtainMovement::LEAF)
 	{
-		SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
-		res.usedSensorType = curSensorData.Type;
-
- 		if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
+		res.curtain1spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain1spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain1TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthSensor0 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthSensor1 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthAverage = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+	}
+	else // for focal plane shutters
+	{
+		if (sensor0DataOk && sensor1DataOk) // if both sensors data is valid
 		{
-			if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
+			if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
 			{
-				curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
-				curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
-				// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-				// 															CurtainMovementDirection::LeftToRight : CurtainMovementDirection::TopToBottom;
-			}
-			else // right to left or bottom to top curtans movement
-			{
-				curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
-				curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
-				// curtainMovementDirection = curtainMovement == CurtainMovement::HORISONTAL ? 
-				// 														CurtainMovementDirection::RightToLeft : CurtainMovementDirection::BottomToTop;
+				if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
+				{
+					curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
+					curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
+				}
+				else // right to left or bottom to top curtans movement
+				{
+					curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
+					curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
+				}
+
+				if (curtainMovement == CurtainMovement::HORISONTAL)
+				{
+					frameSize = curSensorData.FrameWidth;										 // in millimiters
+					sensorDistance = curSensorData.HorisontalSensorDistance; // in millimiters
+				}
+				else
+				{
+					frameSize = curSensorData.FrameHeight;								 // in millimiters
+					sensorDistance = curSensorData.VerticalSensorDistance; // in millimiters
+				}
 			}
 
-			if (curtainMovement == CurtainMovement::HORISONTAL)
-			{
-				frameSize = curSensorData.FrameWidth;										// in millimiters
-				sensorDistance = curSensorData.HorisontalSensorDistance;// in millimiters
-			}
-			else
-			{
-				frameSize = curSensorData.FrameHeight;								 // in millimiters
-				sensorDistance = curSensorData.VerticalSensorDistance; // in millimiters
+			calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
+
+			if (res.curtain1spanAspeed < 0 ||
+					res.curtain1spanAtime < 0 ||
+					res.curtain1TotalTime < 0 ||
+					res.curtain2spanAspeed < 0 ||
+					res.curtain2spanAtime < 0 ||
+					res.curtain2TotalTime < 0 ||
+					res.sensor0Time < 0 ||
+					res.sensor1Time < 0 ||
+					res.slitWidthSensor0 < 0 ||
+					res.slitWidthSensor1 < 0 ||
+					res.slitWidthAverage < 0)
+			{ // mark data as invalid
+				res.sensor0Time = MEASUREMENTS_IS_INVALID_VAL;
+				res.sensor1Time = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1spanAtime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1TotalTime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2spanAtime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2TotalTime = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthSensor0 = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthSensor1 = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthAverage = MEASUREMENTS_IS_INVALID_VAL;
+				sensor0DataOk = false;
+				sensor1DataOk = false;
 			}
 		}
 		else
 		{
-			//for leaf shutters
+			res.curtain1spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain1spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain1TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthSensor0 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthSensor1 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthAverage = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
 		}
+	}
 
-		calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
-	}
-	else
-	{
-		res.curtain1spanAtime = -1;
-		res.curtain1spanAspeed = -1;
-		res.curtain1TotalTime = -1;
-		res.curtain2spanAtime = -1;
-		res.curtain2spanAspeed = -1;
-		res.curtain2TotalTime = -1;
-		res.slitWidthSensor0 = -1;
-		res.slitWidthSensor1 = -1; 
-		res.slitWidthAverage = -1;
-	}
+	// Serial.println(res.curtain1spanAspeed);
+	// Serial.println(res.curtain1spanAtime);
+	// Serial.println(res.curtain1TotalTime);
+	// Serial.println(res.curtain2spanAspeed);
+	// Serial.println(res.curtain2spanAtime);
+	// Serial.println(res.curtain2TotalTime);
+	// Serial.println(res.sensor0Time);
+	// Serial.println(res.sensor1Time);
+	// Serial.println(res.slitWidthSensor0);
+	// Serial.println(res.slitWidthSensor1);
+	// Serial.println(res.slitWidthAverage);
 
 	int16_t startEncoderVal = AlexEncoder::counter;
 
@@ -1001,7 +1039,13 @@ void drawMeasuredScreen()
 		{
 			if (sensor0DataOk || sensor1DataOk)
 			{
-				drawMeasurementSaveScreen(res);
+				auto screenRes = drawMeasurementSaveScreen(res);
+
+				if (screenRes == MeasurementSaveScreenResult::CANCEL)
+				{
+					startEncoderVal = AlexEncoder::counter;
+					continue;
+				}
 			}
 			
 			return;
@@ -1145,12 +1189,11 @@ void drawLightCheckScreen()
 	}
 }
 
-void drawCreditsScreen()
+void drawAboutScreen()
 {
 	while (true)
 	{
-		int8_t curMenuItem = abs(AlexEncoder::counter) % MAIN_MENU_ITEMS_COUNT;
-		displayManager.drawCreditsScreen();
+		displayManager.drawAboutScreen();
 
 		if (button.isClicked())
 		{
@@ -1303,7 +1346,7 @@ void drawMainMenu()
 					}
 					case MainMenuItems::CREDITS:
 					{
-						drawCreditsScreen();
+						drawAboutScreen();
 						break;
 					}
 					case MainMenuItems::MEASURMENT_HISTORY:
@@ -1338,7 +1381,7 @@ void sendRawEncoder()
 
 void setup()
 {
-	delay(1000);
+	delay(200);
 	Serial.begin(115200);
 
 	if (button.isDown()) // factory reset
@@ -1346,13 +1389,11 @@ void setup()
 		// write first run value/need to run once befor device shipping
 		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
-		if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL)//init EEPROM on first run
+		// erase EEPROM
 		for (size_t i = 0; i < EEPROM.length(); i++)
 		{
 			EEPROM.update(i, 0);
 		}
-
-		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 
 		while (button.isDown());
 	}
@@ -1368,9 +1409,6 @@ void setup()
 
 	AlexEncoder::init(2, 3);
 	displayManager.Init();
-
-	// tempSensor.setResolution(9);
-	// tempSensor.setWaitForConversion(false);
 }
 
 void loop()

@@ -78,10 +78,10 @@ public:
     sendBuf();
   }
 
-  void drawCreditsScreen()
+  void drawAboutScreen()
   {
     mainBuf.clear();
-    mainBuf += (char)Screens::CREDITS;
+    mainBuf += (char)Screens::ABOUT;
 
     sendBuf();
   }
@@ -281,7 +281,7 @@ public:
 
     for (int16_t i = 0; i < optionsCount; i++)
     {
-      if (strchr_P(options[i], ':'))
+      if ((useProgmem && strchr_P(options[i], ':')) || (!useProgmem && strchr(options[i], ':')))
       {
         halt(F("Halted. Not allowed character in options: ':'"));
       }
