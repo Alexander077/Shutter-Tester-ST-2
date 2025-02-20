@@ -1,0 +1,18 @@
+espsecure.py generate_flash_encryption_key my_flash_encryption_key.bin
+
+espefuse.py --port COM16 --chip esp32s2 burn_efuse SPI_BOOT_CRYPT_CNT 0x1 //for production instead of '0x1' burn '7'
+
+//For production use cases, it is highly recommended to burn all the eFuses listed below.
+espefuse.py burn_efuse --port COM16 DIS_BOOT_REMAP 0x1 //Disable capability to Remap ROM to RAM address space
+espefuse.py burn_efuse --port COM16 DIS_DOWNLOAD_ICACHE 0x1 //Disable UART cache
+espefuse.py burn_efuse --port COM16 DIS_DOWNLOAD_DCACHE 0x1 //Disable UART cache
+espefuse.py burn_efuse --port COM16 HARD_DIS_JTAG 0x1 //Hard disable JTAG peripheral
+espefuse.py burn_efuse --port COM16 DIS_LEGACY_SPI_BOOT 0x1 //Disable legacy SPI boot mode
+espefuse.py burn_efuse --port COM16 DIS_DOWNLOAD_MANUAL_ENCRYPT 0x1 //Disable UART bootloader encryption access
+espefuse.py --port COM16 write_protect_efuse DIS_ICACHE //Write protect security eFuses
+
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash encription key\my_flash_encryption_key.bin" --address 0x1000 --output "crypted binaries\bootloader-enc.bin" .pio\build\esp32doit-devkit-v1\bootloader.bin
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash encription key\my_flash_encryption_key.bin" --address 0x8000 --output "crypted binaries\partitions-enc.bin" .pio\build\esp32doit-devkit-v1\partitions.bin
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash encription key\my_flash_encryption_key.bin" --address 0x10000 --output "crypted binaries\firmware-enc.bin" .pio\build\esp32doit-devkit-v1\firmware.bin
+
+esptool.py --chip esp32s2 --port COM16 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 "crypted binaries\bootloader-enc.bin" 0x8000 "crypted binaries\partitions-enc.bin" 0x10000 "crypted binaries\firmware-enc.bin"

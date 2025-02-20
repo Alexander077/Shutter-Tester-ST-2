@@ -868,7 +868,15 @@ void drawMeasuredScreen()
 		rawSensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime; // in microseconds
 		correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
 		res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
-		sensor0DataOk = true;
+
+		if (res.sensor0Time < TOO_SHORT_SENSOR_TIME)
+		{
+			res.sensor0Time = SENSOR_TIME_IS_TOO_SHORT;
+		}
+		else
+		{
+			sensor0DataOk = true;
+		}
 	}
 
 	if (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL)
@@ -884,7 +892,15 @@ void drawMeasuredScreen()
 		rawSensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime; // in microseconds
 		correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
 		res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND; // in milliseconds
-		sensor1DataOk = true;
+
+		if (res.sensor1Time < TOO_SHORT_SENSOR_TIME)
+		{
+			res.sensor1Time = SENSOR_TIME_IS_TOO_SHORT;
+		}
+		else
+		{
+			sensor1DataOk = true;
+		}
 	}
 
 	CurtainTimings curtainTimings;
@@ -1413,6 +1429,44 @@ void setup()
 
 void loop()
 {
+	//--------------- sensor time, speed and speed graph display test
+	// MeasuredResult res;
+	// res.sensor0Time = 0.100;
+	// res.sensor1Time = 1;
+	// res.curtain1spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.curtain1spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.curtain1TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.curtain2spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.curtain2spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.curtain2TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.slitWidthSensor0 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.slitWidthSensor1 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+	// res.slitWidthAverage = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+
+	// double startSensorTime = 0.100;
+	// double sensorTimeIncrement = 10;
+	// int16_t startEncoderVal = AlexEncoder::counter;
+	// int16_t oldResMult = startEncoderVal;
+
+	// while (true)
+	// {
+
+	// 	int16_t resultMult = AlexEncoder::counter - startEncoderVal;
+
+	// 	if (oldResMult != resultMult)
+	// 	{
+	// 		res.sensor0Time = startSensorTime +  resultMult * sensorTimeIncrement;
+	// 		displayManager.drawAboutScreen();
+	// 		oldResMult = resultMult;
+	// 	}
+		
+	// 	displayManager.drawMeasuredScreen(0 /* , curtainMovementDirection */, res);
+
+	// 	// res.sensor0Time += sensorTimeIncrement;
+	// 	// delay(2000);
+	// }
+	//	-----------------------------
+
 	// MeasuredResult r = {
 	// 		Direction::Left,
 	// 		3,
@@ -1430,8 +1484,22 @@ void loop()
 	// int32_t selectedRecordIndex = drawMeasurementResultRecordSelectionScreen();
 	// Serial.println(selectedRecordIndex);
 	// halt();
+
+	//
+	//------------------------- short sensor time test
+	// pin0shutterOpenStartTime = 16599544;
+	// pin0shutterOpenEndTime = pin0shutterOpenStartTime + 50;
+	// pin1shutterOpenStartTime = -1;
+	// pin1shutterOpenEndTime = -1;
+	// sensor0Max = 163;
+	// sensor1Max = 20;
+	// curtainMovement = CurtainMovement::HORISONTAL;
+
 	// drawMeasuredScreen();
+	// --------------------------
+
 	drawMainMenu();
+
 	// char buf[40];
 	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
 	// drawMessageScreen(buf);
