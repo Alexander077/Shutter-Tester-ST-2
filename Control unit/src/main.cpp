@@ -122,29 +122,29 @@ const SensorUnitData sensorsData[sensorsDataArraySize] = {
 		 24,
 		 16.0,
 		 10.6,
-		 700,
+		 700,//3.3 kOhm
 		 840},
 		{SensorType::Frame6x45,
 		 60,
 		 45,
 		 26.67,
 		 20.0,
-		 200,
-		 300},
+		 160,//47 kOhm
+		 196},
 		{SensorType::Frame6x6,
 		 60,
 		 60,
 		 26.67,
 		 26.67,
-		 900,
+		 900,//1 kOhm
 		 940},
 		{SensorType::Frame6x7,
 		 70,
 		 60,
 		 31.11,
 		 26.67,
-		 500,
-		 600}};
+		 82,//100 kOhm
+		 100}};
 
 ISR(ADC_vect)
 {
@@ -1429,6 +1429,14 @@ void setup()
 
 void loop()
 {
+	// while (1)
+	// {
+		// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128); // needed to correctly read the sensor code
+		// delay(700);
+		// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+		// Serial.println(curSensorCode);
+	// }
+	
 	//--------------- sensor time, speed and speed graph display test
 	// MeasuredResult res;
 	// res.sensor0Time = 0.100;

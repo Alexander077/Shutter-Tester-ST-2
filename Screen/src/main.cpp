@@ -1114,7 +1114,7 @@ void loop()
   //   delay(1000);
   // }
   
-  Serial.println("Starting main loop");
+  Serial.println("Starting main loop"); 
 
   while (true)
   {
