@@ -10,6 +10,7 @@
 #define MAIN_MENU_ITEMS_COUNT 4
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
 #define SAVE_MEASUREMENT_MENU_ITEMS_COUNT 6
+#define SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT 3
 
 #define TOO_SHORT_SENSOR_TIME 0.125 //in milliseconds
 #define SENSOR_LIGHT_IS_TOO_DIM -1
@@ -21,6 +22,14 @@
 #define SENSOR_TIME_IS_TOO_SHORT -6
 
 const uint8_t sensorsDataArraySize = 4;
+
+const char *SensorTypeStr[sensorsDataArraySize] =
+{
+  "35mm",
+  "6x4.5",
+  "6x6",
+  "6x7"
+};
 
 enum class SensorType : uint8_t
 {
@@ -52,6 +61,13 @@ enum class MeasurementSaveMenuItems
   OVERWRITE_OLDEST,
   OVERWRITE_NEWEST,
   CHOOSE_RECORD_TO_OVERWRITE,
+  BACK_TO_MEASUREMENT_RESULT
+};
+
+enum class ZeroRecordsMeasurementSaveMenuItems
+{
+  NO,
+  YES,
   BACK_TO_MEASUREMENT_RESULT
 };
 

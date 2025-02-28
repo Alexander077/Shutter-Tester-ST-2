@@ -48,14 +48,6 @@ const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COU
   "Leaf"
  };
 
-const char* SensorTypeStr[sensorsDataArraySize] =
-{
-  "35mm",
-  "6x4.5",
-  "6x6",
-  "6x7"
- };
-
 const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
 {
   "No",
@@ -63,6 +55,13 @@ const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
   "Overwrite oldest",
   "Overwrite newest",
   "Sel. rec. to overwrite",
+  "Return to result",
+};
+
+const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
+{
+  "No",
+  "Yes",
   "Return to result",
 };
 
@@ -97,9 +96,16 @@ const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
   return CurtainMovementItemsStr[(uint8_t)menuItem];
 }
 
-const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem)
+const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
 {
-  return MeasurementSaveItemsStr[(uint8_t)menuItem];
+  if (useForZeroRecords)
+  {
+    return ZeroRecordsMeasurementSaveItemsStr[(uint8_t)menuItem];
+  }
+  else
+  {
+    return MeasurementSaveItemsStr[(uint8_t)menuItem];
+  }
 }
 
 void i2cReceiveEvent(int howMany)
@@ -980,7 +986,7 @@ void drawMeasurementSaveScreen()
   drawStringHCentered("Save measurement result?", 20);
   int16_t freeSlotsLeft = getInputParamsArrayInt(2);
   bool drawMoreThanZeroRecordsMenuItems = getInputParamsArrayInt(3);
-  int16_t menuItemsCount = drawMoreThanZeroRecordsMenuItems ? SAVE_MEASUREMENT_MENU_ITEMS_COUNT : 2;
+  int16_t menuItemsCount = drawMoreThanZeroRecordsMenuItems ? SAVE_MEASUREMENT_MENU_ITEMS_COUNT : SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT;
 
   for (uint8_t i = 0; i < menuItemsCount; i++)
   {
@@ -991,17 +997,17 @@ void drawMeasurementSaveScreen()
       if (freeSlotsLeft == 0)
       {
         display->setTextColor(DARKGREY);
-        display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+        display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
         display->setTextColor(WHITE);
       }
       else
       {
-        display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i), freeSlotsLeft);
+        display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems), freeSlotsLeft);
       }
     }
     else
     {
-      display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i));
+      display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
     }
   }
 

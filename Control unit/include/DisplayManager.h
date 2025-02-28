@@ -134,19 +134,19 @@ public:
 
     switch (resultPageIndex)
     {
-      case 0:
+      case 0://sensor 0
       {
         dtostrf(results.sensor0Time, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
         break;
       }
-      case 1:
+      case 1://sensor 1
       {
         dtostrf(results.sensor1Time, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf += tmpBuf;
         break;
       }
-      case 2:
+      case 2://curtains
       {
         dtostrf(results.curtain1spanAspeed, FLOAT_WIDTH, FLOAT_DECIMAL_WIDTH, tmpBuf);
         mainBuf +=  tmpBuf;

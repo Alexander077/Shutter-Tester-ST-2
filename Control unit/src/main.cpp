@@ -33,7 +33,7 @@
 
 // EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
 #define EEPROM_FIRST_RUN_VAL_INDEX 1023
-#define EEPROM_FIRST_RUN_VAL 22
+#define EEPROM_FIRST_RUN_VAL 123
 
 #define EEPROM_MEASURED_RES_START_INDEX 0
 #define EEPROM_MEASURED_RES_END_INDEX 1012
@@ -701,8 +701,9 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 {
 	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
 	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
-	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? 3 : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 	int16_t startEncoderVal = AlexEncoder::counter;
+	bool drawMoreThanZeroRecordsMenuItems = menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 
 	while (true)
 	{
@@ -720,13 +721,16 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 			startEncoderVal = AlexEncoder::counter;
 		}
 
-		displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT);
+		displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, drawMoreThanZeroRecordsMenuItems);
 
 		if (button.isClicked())
 		{
 			MeasurementRecordSaveResult saveRes;
-			switch ((MeasurementSaveMenuItems)resultIndex)
+
+			if (drawMoreThanZeroRecordsMenuItems)
 			{
+				switch ((MeasurementSaveMenuItems)resultIndex)
+				{
 				case MeasurementSaveMenuItems::NO:
 				{
 					return MeasurementSaveScreenResult::OK; // do not save the result
@@ -743,7 +747,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 					{
 						continue;
 					}
-					
+
 					break;
 				}
 				case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
@@ -762,7 +766,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 				{
 					int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
 
-					if (selectedMesurementRecordNumber == 0)//user selected "Back" option
+					if (selectedMesurementRecordNumber == 0) // user selected "Back" option
 					{
 						continue;
 					}
@@ -779,6 +783,40 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 				default:
 					halt(F("Halted. Unknown measurement save option"));
 					break;
+				}
+			}
+			else
+			{
+				switch ((ZeroRecordsMeasurementSaveMenuItems)resultIndex)
+				{
+					case ZeroRecordsMeasurementSaveMenuItems::NO:
+					{
+						return MeasurementSaveScreenResult::OK; // do not save the result
+						break;
+					}
+					case ZeroRecordsMeasurementSaveMenuItems::YES:
+					{
+						if (freeSlotsCount > 0)
+						{
+							Serial.println("Saving record...");
+							saveRes = saveMesurementResult(measurementRes);
+						}
+						else
+						{
+							continue;
+						}
+
+						break;
+					}
+					case ZeroRecordsMeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+					{
+						return MeasurementSaveScreenResult::CANCEL;
+						break;
+					}
+					default:
+						halt(F("Halted. Unknown measurement save option"));
+						break;
+				}
 			}
 
 			char resMessage[50];
@@ -903,6 +941,12 @@ void drawMeasuredScreen()
 		}
 	}
 
+	Serial.print("Sensor 0 max: ");
+	Serial.println(sensor0Max);
+
+	Serial.print("Sensor 1 max: ");
+	Serial.println(sensor1Max);
+
 	CurtainTimings curtainTimings;
 	double sensorDistance;
 	double frameSize;
@@ -934,6 +978,9 @@ void drawMeasuredScreen()
 
 	SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
 	res.usedSensorType = curSensorData.Type;
+
+	Serial.print("Sensor unit name: ");
+	Serial.println(SensorTypeStr[(uint8_t)curSensorData.Type]);
 
 	if (curtainMovement == CurtainMovement::LEAF)
 	{
@@ -1397,21 +1444,32 @@ void sendRawEncoder()
 
 void setup()
 {
-	delay(200);
+	delay(1000);
 	Serial.begin(115200);
 
-	if (button.isDown()) // factory reset
+	if (button.isDown())
 	{
-		// write first run value/need to run once befor device shipping
-		// EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
+		// reset first run value so next logic below will do factory reset.
+		EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, 0xFF);
 
-		// erase EEPROM
-		for (size_t i = 0; i < EEPROM.length(); i++)
-		{
-			EEPROM.update(i, 0);
-		}
+		// // erase EEPROM
+		// for (size_t i = 0; i < EEPROM.length(); i++)
+		// {
+		// 	EEPROM.update(i, 0);
+		// }
 
 		while (button.isDown());
+	}
+
+	//fresh EEPROM contains value 255. We need 0 - rewrite
+	if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) != EEPROM_FIRST_RUN_VAL)
+	{
+		for (size_t i = 0; i < EEPROM.length(); i++)
+		{
+			EEPROM.write(i, 0);
+		}
+
+		EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, EEPROM_FIRST_RUN_VAL);
 	}
 
 	setupADC();
@@ -1476,7 +1534,6 @@ void loop()
 	//	-----------------------------
 
 	// MeasuredResult r = {
-	// 		Direction::Left,
 	// 		3,
 	// 		4,
 	// 		3,
@@ -1496,11 +1553,11 @@ void loop()
 	//
 	//------------------------- short sensor time test
 	// pin0shutterOpenStartTime = 16599544;
-	// pin0shutterOpenEndTime = pin0shutterOpenStartTime + 50;
+	// pin0shutterOpenEndTime = pin0shutterOpenStartTime + 500;
 	// pin1shutterOpenStartTime = -1;
 	// pin1shutterOpenEndTime = -1;
 	// sensor0Max = 163;
-	// sensor1Max = 20;
+	// sensor1Max = 150;
 	// curtainMovement = CurtainMovement::HORISONTAL;
 
 	// drawMeasuredScreen();
