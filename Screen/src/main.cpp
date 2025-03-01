@@ -156,7 +156,7 @@ void i2cReceiveEvent(int howMany)
 }
 
 void parseInputData(){
-  Serial.println(inputCmdStr.buf);
+  // Serial.println(inputCmdStr.buf);
   char* strings[inputCmdStr.splitAmount(':')];
   int amount = inputCmdStr.split(strings, ':');
 
@@ -1095,13 +1095,13 @@ void drawMessageScreen()
 
 void setup(void)
 {
-  Serial.begin(115200);
+  // Serial.begin(115200);
 
   display->begin();
   display->fillScreen(BLACK);
   
-  Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
   Wire.onReceive(i2cReceiveEvent); 
+  Wire.begin(DISPLAY_I2C_ADDRESS); // join i2c bus with address #4
 
 
   display->setTextColor(WHITE);
@@ -1126,7 +1126,7 @@ void loop()
   {
     while (dataProcessed)//Wait until new data is available
     {
-      // Serial.println("No new data. Skipping");
+      Serial.println("No new data. Skipping");
     }
 
     parseInputData();

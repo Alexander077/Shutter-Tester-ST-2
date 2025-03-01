@@ -1443,9 +1443,11 @@ void sendRawEncoder()
 }
 
 void setup()
-{
-	delay(1000);
+{ 
+	delay(2000);
 	Serial.begin(115200);
+
+	// halt();
 
 	if (button.isDown())
 	{
@@ -1567,6 +1569,6 @@ void loop()
 
 	// char buf[40];
 	// sprintf_P(buf, (const char *)F("Record saved as '%i'"), 1234);
-	// drawMessageScreen(buf);
+	// drawMessageScreen(buf);00
 	// drawViewRecordsScreen();
 }
