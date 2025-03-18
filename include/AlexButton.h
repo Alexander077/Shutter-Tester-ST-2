@@ -1,7 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
-#include <digitalWriteFast.h>
+// #include <digitalWriteFast.h>
 
 class AlexButton
 {
@@ -26,7 +26,7 @@ public:
 
 	void tick()
 	{
-		bool isButtonPressed = digitalReadFast(_buttonPinNum);
+		bool isButtonPressed = digitalRead(_buttonPinNum);
 
 		if (_InputPullUp)
 		{
@@ -103,7 +103,7 @@ public:
 
 	bool isDown()
 	{
-		bool isButtonPressed = digitalReadFast(_buttonPinNum);
+		bool isButtonPressed = digitalRead(_buttonPinNum);
 
 		if (_InputPullUp)
 		{

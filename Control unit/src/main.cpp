@@ -9,12 +9,13 @@
 // #include "../../include/LibPrintf/src/LibPrintf.h"
 // #include "../../include/LibPrintf/extras/printf/printf.h"
 #include "utils.h"
-#include "AlexButton.h"
 #include "../../include/AlexEncoder.h"
+#include "../../include/AlexButton.h"
 #include "DisplayManager.h"
 #include "MeasuredResult.h"
 #include "StoredMeasuredResult.h"
 #include "CurtainMovementDirection.h"
+#include "digitalWriteFast.h"
 
 // #define SHUTTER_TESTER_DEBUG
 
