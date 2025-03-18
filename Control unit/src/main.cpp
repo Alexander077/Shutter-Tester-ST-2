@@ -1445,23 +1445,21 @@ void sendRawEncoder()
 void setup()
 { 
 	delay(2000);
-	Serial.begin(115200);
+	// Serial.begin(115200);
 
-	// halt();
+	// if ( button.isDown())
+	// {
+	// 	// reset first run value so next logic below will do factory reset.
+	// 	EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, 0xFF);
 
-	if (button.isDown())
-	{
-		// reset first run value so next logic below will do factory reset.
-		EEPROM.write(EEPROM_FIRST_RUN_VAL_INDEX, 0xFF);
+	// 	// // erase EEPROM
+	// 	// for (size_t i = 0; i < EEPROM.length(); i++)
+	// 	// {
+	// 	// 	EEPROM.update(i, 0);
+	// 	// }
 
-		// // erase EEPROM
-		// for (size_t i = 0; i < EEPROM.length(); i++)
-		// {
-		// 	EEPROM.update(i, 0);
-		// }
-
-		while (button.isDown());
-	}
+	// 	while (button.isDown());
+	// }
 
 	//fresh EEPROM contains value 255. We need 0 - rewrite
 	if (EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) != EEPROM_FIRST_RUN_VAL)

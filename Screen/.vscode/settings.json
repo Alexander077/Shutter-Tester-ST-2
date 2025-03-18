@@ -3,6 +3,6 @@
         "string": "cpp",
         "algorithm": "cpp"
     },
-    "idf.portWin": "COM17",
+    "idf.portWin": "COM16",
     "idf.openOcdConfigs": ["board/esp32s2-kaluga-1.cfg"]
 }

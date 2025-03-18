@@ -1,1 +1,3 @@
-"C:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17\bin\avrdude" "-CC:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/etc/avrdude.conf" -v -patmega328p -cstk500v1 -PCOM11 -b19200 "-Uflash:w:D:\Programming\Shutter Tester ST-2\Control unit\.pio\build\nanoatmega328\firmware.hex:i" 
+"C:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17\bin\avrdude" "-CC:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/etc/avrdude.conf" -v -patmega328p -cstk500v1 -PCOM13 -b19200 "-Uflash:w:D:\Programming\Shutter Tester ST-2\Control unit\.pio\build\nanoatmega328\firmware.hex:i"
+"C:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17\bin\avrdude" "-CC:\Users\Alex\AppData\Local\Arduino15\packages\arduino\tools\avrdude\6.3.0-arduino17/etc/avrdude.conf" -v -patmega328p -cstk500v1 -PCOM13 -b19200 -U lock:w:0x3C:m
+pause 
