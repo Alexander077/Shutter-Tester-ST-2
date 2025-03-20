@@ -28,8 +28,8 @@
 
 #define ENCODER_B_PIN 12
 #define ENCODER_A_PIN 13
-
 #define BUTTON_PIN 14
+
 #define TEST_PIN 5
 
 #define USER_INPUT_POLLING_FREQ_HZ 100
@@ -1118,7 +1118,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   }
 } */
 
-/* void drawMeasuringScreen()
+void drawMeasuringScreen()
 {
   pin0shutterOpenStartTime = -1;
   pin0shutterOpenEndTime = -1;
@@ -1127,9 +1127,9 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   sensor0Max = 0;
   sensor1Max = 0;
 
-  adcISRFlow = AdcISRFlow::MEASURING;
-  setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
-  startADCconversion(); // start first ADC conversion
+  // adcISRFlow = AdcISRFlow::MEASURING;
+  // setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
+  // startADCconversion(); // start first ADC conversion
 
   while (true)
   {
@@ -1150,11 +1150,30 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       return;
     }
   }
-} */
+}
 
-/* void drawCurtainMovementSelectionScreen()
+void drawCurtainMovementSelectionScreen()
 {
+  display->fillScreen(BLACK);
+  drawStringHCentered("Select curtain movement", 20);
+  
   int16_t startEncoderVal = AlexEncoder::counter;
+  uint8_t xMargin = 50;
+  uint8_t yMargin = 55;
+  uint8_t ySpacing = 15;
+  uint8_t arrowXmargin = 15;
+
+  for (uint8_t i = 0; i < CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT; i++)
+  {
+    display->setCursor(xMargin, yMargin + (ySpacing * i));
+    display->println(GetCurtainMovementItemTitle((CurtainMovement)i));
+  }
+
+  display->setCursor(xMargin - arrowXmargin, yMargin);
+  display->print("->");
+
+  int8_t resultMenuItemIndex = 0;
+  int8_t prevSelectedMenuItemIndex = 0;
 
   while (true)
   {
@@ -1172,7 +1191,20 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       startEncoderVal = AlexEncoder::counter;
     }
 
-    displayManager.drawCurtainMovementSelectionScreen(resultMenuItemIndex);
+    // displayManager.drawCurtainMovementSelectionScreen(resultMenuItemIndex);
+
+    if (prevSelectedMenuItemIndex != resultMenuItemIndex)
+    {
+      display->setTextColor(BLACK);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+      display->print("->");
+
+      display->setTextColor(WHITE);
+      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultMenuItemIndex));
+      display->print("->");
+
+      prevSelectedMenuItemIndex = resultMenuItemIndex;
+    }
 
     if (button.isClicked())
     {
@@ -1181,7 +1213,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       return;
     }
   }
-} */
+}
 
 /* void drawLightCheckScreen()
 {
@@ -1440,7 +1472,7 @@ void drawMainMenu()
         {
         case MainMenuItems::MEASURE:
         {
-          // drawCurtainMovementSelectionScreen();
+          drawCurtainMovementSelectionScreen();
           break;
         }
         case MainMenuItems::CHECK_LIGHT:
@@ -1465,7 +1497,7 @@ void drawMainMenu()
         }
 
         startEncoderVal = AlexEncoder::counter;
-        break;//breack from while loop
+        break;//break from while loop
       }
     }
   }
@@ -1475,12 +1507,12 @@ void setup() {
   // Serial.begin(115200);
   // while (!Serial);
 
-  // display->begin();
-  // display->fillScreen(BLACK);
-  // display->setTextColor(WHITE);
-  // // display->setCursor(10, 10);
-  // // display->print("Test");
-  // display->setFont(u8g2_font_6x13_tf);
+  display->begin();
+  display->fillScreen(BLACK);
+  display->setTextColor(WHITE);
+  // display->setCursor(10, 10);
+  // display->print("Test");
+  display->setFont(u8g2_font_6x13_tf);
 
   AlexEncoder::init(ENCODER_A_PIN, ENCODER_B_PIN);
 
