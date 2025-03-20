@@ -106,19 +106,19 @@ void halt(const char *message)
   if (message[0] != '\0')
   {
     // Serial.println(message);
-    ESP_LOGE("", message);
+    // ESP_LOGE("SASAD", message);
   }
 
   while (true);
 }
 
-void halt(const __FlashStringHelper *message)
-{
-  int16_t bufferSize = strlen_P((const char *)message) + 1;
-  char buffer[bufferSize];
-  strncpy_P(buffer, (const char *)message, bufferSize);
-  halt(buffer);
-}
+// void halt(const __FlashStringHelper *message)
+// {
+//   int16_t bufferSize = strlen_P((const char *)message) + 1;
+//   char buffer[bufferSize];
+//   strncpy_P(buffer, (const char *)message, bufferSize);
+//   halt(buffer);
+// }
 
 void halt()
 {

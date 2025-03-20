@@ -93,7 +93,7 @@ idf_component_register(SRCS
                         "databus/Arduino_XL9535SWSPI.cpp"
                         "databus/Arduino_XCA9554SWSPI.cpp"
                       INCLUDE_DIRS "."
-                      REQUIRES arduino-esp32
+                      REQUIRES arduino-esp32 U8g2
                       )
                       
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-error=overloaded-virtual)

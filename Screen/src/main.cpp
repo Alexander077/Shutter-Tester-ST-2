@@ -19,11 +19,6 @@
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 
-#define DAC_CH1 17
-#define DAC_CH2 18
-#define DAC_MAX 255
-
-const uint8_t thresholdDacValue = 130;
 
 struct Rect
 {
