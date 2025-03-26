@@ -105,8 +105,7 @@ void halt(const char *message)
 {
   if (message[0] != '\0')
   {
-    // Serial.println(message);
-    ESP_LOGE("", message);
+    Serial.println(message);
   }
 
   while (true);

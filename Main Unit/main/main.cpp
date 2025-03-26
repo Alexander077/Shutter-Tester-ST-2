@@ -40,6 +40,8 @@
 #define US_IN_SECOND 1000000
 #define US_IN_MILLISECOND 1000
 
+#define ONE_ADC_CONVERSION_TIME_US 24.7746
+
 #define SENSOR_TYPE_CODE_PIN A7
 
 // EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
@@ -50,7 +52,7 @@
 #define EEPROM_MEASURED_RES_END_INDEX 1012
 #define EEPROM_MEASURED_RES_TOTAL_BYTES (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX)
 
-static const char *TAG = "";
+    static const char *TAG = "";
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -95,10 +97,10 @@ enum class MeasurementSaveScreenResult
   CANCEL
 };
 
-volatile long pin0shutterOpenStartTime = -1,
-              pin0shutterOpenEndTime = -1,
-              pin1shutterOpenStartTime = -1,
-              pin1shutterOpenEndTime = -1;
+// volatile long pin0shutterOpenStartTime = -1,
+              // pin0shutterOpenEndTime = -1,
+              // pin1shutterOpenStartTime = -1,
+              // pin1shutterOpenEndTime = -1;
 
 AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 DisplayManager displayManager;
@@ -113,8 +115,8 @@ volatile uint16_t sensor1BlinkCount = 0;
 #define SENSOR_VALUES_UPDATE_INTERVAL 333
 #define SENSOR_MAX_AVG_ARRAY_SIZE 5
 #define SENSOR_MAX_BLINK_COUNT_PER_INTERVAL 4
-uint8_t sensor0Max = 0; // volatile?
-uint8_t sensor1Max = 0; // volatile?
+int16_t sensor0Max = 0; // volatile?
+int16_t sensor1Max = 0; // volatile?
 uint8_t sensor0MaxArr[SENSOR_MAX_AVG_ARRAY_SIZE] = {};
 uint8_t sensor1MaxArr[SENSOR_MAX_AVG_ARRAY_SIZE] = {};
 
@@ -132,6 +134,81 @@ double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {15, 25, 30, 0};
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
+
+#define ADC_UNIT ADC_UNIT_1
+#define _ADC_UNIT_STR(unit) #unit
+#define ADC_UNIT_STR(unit) _ADC_UNIT_STR(unit)
+#define ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
+#define ADC_ATTEN ADC_ATTEN_DB_12
+#define ADC_BIT_WIDTH SOC_ADC_DIGI_MAX_BITWIDTH
+#define ADC_READ_LEN 256
+
+#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
+#define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
+#define ADC_GET_CHANNEL(p_data) ((p_data)->type1.channel)
+#define ADC_GET_DATA(p_data) ((p_data)->type1.data)
+#else
+#define EXAMPLE_ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE2
+#define EXAMPLE_ADC_GET_CHANNEL(p_data) ((p_data)->type2.channel)
+#define EXAMPLE_ADC_GET_DATA(p_data) ((p_data)->type2.data)
+#endif
+
+
+#if CONFIG_IDF_TARGET_ESP32
+static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
+#else
+static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
+#endif
+
+static TaskHandle_t s_task_handle;
+adc_continuous_handle_t handle = NULL;
+
+static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
+{
+  BaseType_t mustYield = pdFALSE;
+  // Notify that ADC continuous driver has done enough number of conversions
+  // vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+
+  return (mustYield == pdTRUE);
+}
+
+static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc_continuous_handle_t *out_handle)
+{
+  adc_continuous_handle_t handle = NULL;
+
+  adc_continuous_handle_cfg_t adc_config = {
+      .max_store_buf_size = 1024,
+      .conv_frame_size = ADC_READ_LEN,
+  };
+  ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
+
+  adc_continuous_config_t dig_cfg = {
+      .sample_freq_hz = 80 * 1000,
+      // .sample_freq_hz = SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
+      .conv_mode = ADC_CONV_MODE,
+      .format = ADC_OUTPUT_TYPE,
+  };
+
+  adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
+  dig_cfg.pattern_num = channel_num;
+
+  for (int i = 0; i < channel_num; i++)
+  {
+    adc_pattern[i].atten = ADC_ATTEN;
+    adc_pattern[i].channel = channel[i] & 0x7;
+    adc_pattern[i].unit = ADC_UNIT;
+    adc_pattern[i].bit_width = ADC_BIT_WIDTH;
+
+    ESP_LOGI(TAG, "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
+    ESP_LOGI(TAG, "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
+    ESP_LOGI(TAG, "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
+  }
+  
+  dig_cfg.adc_pattern = adc_pattern;
+  ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
+
+  *out_handle = handle;
+}
 
 struct SensorUnitData
 {
@@ -843,7 +920,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   }
 } */
 
-/* void drawMeasuredScreen()
+/* void drawMeasuredScreen(double rawSensor0TimeTakenUs, double rawSensor1TimeTakenUs)
 {
     // ---------------------------------------------------------------
     // Shutter result screen
@@ -885,8 +962,8 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 
     bool sensor0DataOk = false;
     bool sensor1DataOk = false;
-    double rawSensor0TimeTakenUs = -1;
-    double rawSensor1TimeTakenUs = -1;
+    // double rawSensor0TimeTakenUs = -1;
+    // double rawSensor1TimeTakenUs = -1;
     double correctedSensor0TimeTakenUs = -1;
     double correctedSensor1TimeTakenUs = -1;
 
@@ -906,7 +983,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   }
   else
   {
-    rawSensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime;                // in microseconds
+    // rawSensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime;                // in microseconds
     correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
     res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND;                        // in milliseconds
 
@@ -930,7 +1007,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   }
   else
   {
-    rawSensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime;                // in microseconds
+    // rawSensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime;                // in microseconds
     correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
     res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND;                        // in milliseconds
 
@@ -955,30 +1032,30 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   double frameSize;
 
   // setADCprescaler(ADCPrescaler::ADC_PRESCALER_128); // needed to correctly read the sensor code
-  delay(100);
-  uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+  // delay(100);
+  // uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
   // uint16_t curSensorCode = 927;//TODO: mocked, comment or remove
   // setupADC(); // resetup ADC
-  Serial.print("Sensor unit code: ");
-  Serial.println(curSensorCode);
+  // Serial.print("Sensor unit code: ");
+  // Serial.println(curSensorCode);
 
-  int8_t curSensorDataIndex = -1;
+  // int8_t curSensorDataIndex = -1;
 
-  for (size_t i = 0; i < sensorsDataArraySize; i++)
-  {
-    if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
-    {
-      curSensorDataIndex = i;
-      break;
-    }
-  }
+  // for (size_t i = 0; i < sensorsDataArraySize; i++)
+  // {
+  //   if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
+  //   {
+  //     curSensorDataIndex = i;
+  //     break;
+  //   }
+  // }
 
-  if (curSensorDataIndex == -1)
-  {
-    halt("Sensor data not found. Program halted");
-  }
+  // if (curSensorDataIndex == -1)
+  // {
+  //   halt("Sensor data not found. Program halted");
+  // }
 
-  SensorUnitData curSensorData = sensorsData[curSensorDataIndex];
+  SensorUnitData curSensorData = sensorsData[0];//TODO: make sensor selection functionality
   res.usedSensorType = curSensorData.Type;
 
   Serial.print("Sensor unit name: ");
@@ -1104,13 +1181,13 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
     {
       if (sensor0DataOk || sensor1DataOk)
       {
-        auto screenRes = drawMeasurementSaveScreen(res);
+        // auto screenRes = drawMeasurementSaveScreen(res);
 
-        if (screenRes == MeasurementSaveScreenResult::CANCEL)
-        {
-          startEncoderVal = AlexEncoder::counter;
-          continue;
-        }
+        // if (screenRes == MeasurementSaveScreenResult::CANCEL)
+        // {
+          // startEncoderVal = AlexEncoder::counter;
+          // continue;
+        // }
       }
 
       return;
@@ -1120,36 +1197,226 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 
 void drawMeasuringScreen()
 {
-  pin0shutterOpenStartTime = -1;
-  pin0shutterOpenEndTime = -1;
-  pin1shutterOpenStartTime = -1;
-  pin1shutterOpenEndTime = -1;
+  // pin0shutterOpenStartTime = -1;
+  // pin0shutterOpenEndTime = -1;
+  // pin1shutterOpenStartTime = -1;
+  // pin1shutterOpenEndTime = -1;
   sensor0Max = 0;
   sensor1Max = 0;
 
-  // adcISRFlow = AdcISRFlow::MEASURING;
+  uint32_t sensor1ADCSamplesCounter = 0;
+  bool isSensor1Opened = false;
+  bool isSensor1Closed = false;
+  uint32_t sensor2ADCSamplesCounter = 0;
+  bool isSensor2Opened = false;
+  bool isSensor2Closed = false;
+  uint32_t time = 0;
+  
+  esp_err_t adcReadRes;
+  uint32_t retNum = 0;
+  uint8_t result[ADC_READ_LEN] = {0};
+  memset(result, 0xcc, ADC_READ_LEN);
+
+  const uint8_t resArrLength = UINT8_MAX + 1;
+  uint16_t sensor1ResArr[resArrLength] = {};
+  uint16_t sensor2ResArr[resArrLength] = {};
+  uint8_t sensor1ResArrInd = 0;
+  uint8_t sensor2ResArrInd = 0;
+  uint32_t curtain1ADCSamplesCounter = 0;
+  uint32_t curtain2ADCSamplesCounter = 0;
+
+    // adcISRFlow = AdcISRFlow::MEASURING;
   // setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
   // startADCconversion(); // start first ADC conversion
+  
+  display->fillScreen(BLACK);
+  display->setTextSize(2);
+  drawStringHCentered("MEASURING", 40);
+  display->setTextSize(1);
+  drawStringHCentered("Release camera shutter", 60);
+
+  ESP_ERROR_CHECK(adc_continuous_start(handle));
+
+  // int16_t lastVal = 0;
+
+  // s_task_handle = xTaskGetCurrentTaskHandle();
+
+  // while (1)
+  // {
+
+  /**
+   * This is to show you the way to use the ADC continuous mode driver event callback.
+   * This `ulTaskNotifyTake` will block when the data processing in the task is fast.
+   * However in this example, the data processing (print) is slow, so you barely block here.
+   *
+   * Without using this event callback (to notify this task), you can still just call
+   * `adc_continuous_read()` here in a loop, with/without a certain block timeout.
+   */
+  // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+  // char unit[] = ADC_UNIT_STR(ADC_UNIT);
 
   while (true)
   {
-    displayManager.drawMeasuringScreen();
+    adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
+
+    if (adcReadRes == ESP_OK)
+    {
+      // ESP_LOGI("TASK", "ret is %x, ret_num is %" PRIu32 " bytes", ret, ret_num);
+      for (int i = 0; i < retNum; i += SOC_ADC_DIGI_RESULT_BYTES)
+      {
+        adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
+        uint32_t chan_num = ADC_GET_CHANNEL(p);
+        uint16_t adcVal = ADC_GET_DATA(p);
+
+        if (chan_num == ADC_CHANNEL_1) // senosor 1
+        {
+          if (adcVal > sensor0Max)
+          {
+            sensor0Max = adcVal;
+          }
+
+          if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor1Opened)
+          {
+            // pin0shutterOpenStartTime = micros();
+            isSensor1Opened = true;
+            // isSensor1ADCSamplesCounterSet = true;
+            // ESP_LOGI("", "On");
+          }
+
+          if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
+          {
+            isSensor1Closed = true;
+            // pin0shutterOpenEndTime = micros();
+            // ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
+          }
+
+          if (isSensor1Opened && !isSensor1Closed)
+          {
+            sensor1ADCSamplesCounter++;
+          }
+
+          sensor1ResArr[sensor1ResArrInd] = adcVal;
+          sensor1ResArrInd++;
+        }
+        else // sensor 2
+        {
+          if (adcVal > sensor1Max)
+          {
+            sensor1Max = adcVal;
+          }
+
+          if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor2Opened)
+          {
+            // pin0shutterOpenStartTime = micros();
+            isSensor2Opened = true;
+            // isSensor1ADCSamplesCounterSet = true;
+            // ESP_LOGI("", "On");
+          }
+
+          if (adcVal < sensor1Max - SHUTTER_OPEN_LEVEL && !isSensor2Closed)
+          {
+            isSensor2Closed = true;
+            // pin0shutterOpenEndTime = micros();
+            // ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
+          }
+
+          if (isSensor2Opened && !isSensor2Closed)
+          {
+            sensor2ADCSamplesCounter++;
+          }
+
+          sensor2ResArr[sensor2ResArrInd] = adcVal;
+          sensor2ResArrInd++;
+        }
+
+        if (isSensor1Opened && !isSensor2Opened)
+        {
+          curtain1ADCSamplesCounter++;
+        }
+
+        if (!isSensor1Opened && isSensor2Opened)
+        {
+          curtain1ADCSamplesCounter++;
+        }
+
+        if (isSensor1Closed && !isSensor2Closed)
+        {
+          curtain2ADCSamplesCounter++;
+        }
+
+        if (!isSensor1Closed && isSensor2Closed)
+        {
+          curtain1ADCSamplesCounter++;
+        }
+
+        // /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
+        // if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
+        // {
+        // ESP_LOGI(TAG, "Unit: %s, Channel: %" PRIu32 ", Value: %" PRIu32, unit, chan_num, data);
+        // }
+        // else
+        // {
+        //   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
+        // }
+      }
+
+      /*
+      if ((resArrInd > 0 && lastVal < 450) || resArrInd > resArrLength)
+      {
+        break;
+      } */
+
+      /**
+       * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
+       * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
+       * usually you don't need this delay (as this task will block for a while).
+       */
+      // vTaskDelay(1);
+    }
+    else if (adcReadRes == ESP_ERR_TIMEOUT)
+    {
+      // We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
+      ESP_LOGW("", "ADC timed out");
+      break;
+    }
 
     if (button.isClicked())
     {
-      adcISRFlow = AdcISRFlow::NONE;
+      // adcISRFlow = AdcISRFlow::NONE;
+      ESP_ERROR_CHECK(adc_continuous_stop(handle));
       return;
     }
-    else if (adcISRFlow == AdcISRFlow::MEASURING &&
-             ((pin0shutterOpenStartTime != -1 && pin0shutterOpenEndTime != -1) ||
-              (pin1shutterOpenStartTime != -1 && pin1shutterOpenEndTime != -1))) // Check if at least one sensor has data
+    else if (((isSensor1Opened && isSensor1Closed) ||
+              (isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
     {
-      delay(500); // wait for other sensors to get data
-      adcISRFlow = AdcISRFlow::NONE;
-      drawMeasuredScreen();
-      return;
+      // ESP_LOGI("", "Done");
+
+      if (time == 0)
+      {
+        time = millis();
+      }
+
+      // wait for other sensors to get data
+      if (millis() - time > 500)
+      {
+        ESP_ERROR_CHECK(adc_continuous_stop(handle));
+        ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+        ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+
+        for (uint8_t i = 0; i < resArrLength; i++)
+        {
+          ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
+        }
+
+        // halt();
+        // drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US, 
+        //                     sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US);
+        return;
+      }
     }
   }
+  // ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
 
 void drawCurtainMovementSelectionScreen()
@@ -1503,6 +1770,16 @@ void drawMainMenu()
   }
 }
 
+void initADC()
+{
+  continuous_adc_init(channel, sizeof(channel) / sizeof(adc_channel_t), &handle);
+
+  adc_continuous_evt_cbs_t cbs = {
+      .on_conv_done = s_conv_done_cb,
+  };
+  ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
+}
+
 void setup() {
   // Serial.begin(115200);
   // while (!Serial);
@@ -1519,6 +1796,8 @@ void setup() {
   auto timer = timerBegin(1000000);
   timerAttachInterrupt(timer, &onTimer);
   timerAlarm(timer, US_IN_SECOND / USER_INPUT_POLLING_FREQ_HZ, true, 0);
+
+  initADC();
 
   // while (true){
 

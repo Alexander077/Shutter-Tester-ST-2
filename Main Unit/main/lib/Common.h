@@ -2,10 +2,10 @@
 
 #define RESULT_PAGES_COUNT 4
 
-#define SHUTTER_OPEN_LEVEL 70
-#define MIN_ALLOWED_SIGNAL_LEVEL 80
-#define MAX_ALLOWED_SIGNAL_LEVEL 230
-#define MAX_SIGNAL_LEVEL 249
+#define SHUTTER_OPEN_LEVEL 1120
+#define MIN_ALLOWED_SIGNAL_LEVEL 1280
+#define MAX_ALLOWED_SIGNAL_LEVEL 3680
+#define MAX_SIGNAL_LEVEL 3984
 
 #define MAIN_MENU_ITEMS_COUNT 4
 #define CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT 3
@@ -106,7 +106,7 @@ void halt(const char *message)
   if (message[0] != '\0')
   {
     // Serial.println(message);
-    // ESP_LOGE("SASAD", message);
+    ESP_LOGE("", "%s", message);
   }
 
   while (true);
