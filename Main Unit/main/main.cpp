@@ -23,7 +23,7 @@
 #include "lib/About.h"
 #include "lib/Images.h"
 
-#define DISPLAY_I2C_ADDRESS 4
+// #define DISPLAY_I2C_ADDRESS 4
 // #define DISPLAY_CS SS
 #define DISPLAY_RESET 18
 #define DISPLAY_DC 33
@@ -71,15 +71,11 @@ Arduino_GFX *display = new Arduino_ST7735(
 
 AlexButton button(BUTTON_PIN);
 
-enum class AdcISRFlow
+enum class LightQualityStatus
 {
-  NONE,
-  MEASURING,
-  // MEASURED,
-  SENSOR_READINGS_CHECK,
-  // PWM_LIGHT_CHECK,
-  // FAST_MEASURING,
-  // FAST_MEASURED
+  UNKNOWN,
+  OK,
+  BAD,
 };
 
 struct CurtainTimings
@@ -105,7 +101,7 @@ enum class MeasurementSaveScreenResult
               // pin1shutterOpenStartTime = -1,
               // pin1shutterOpenEndTime = -1;
 
-AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
+// AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 DisplayManager displayManager;
 
 bool curADCpinNumber = true;
@@ -1443,8 +1439,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 void drawMeasuringScreen()
 {
-	while (true)
-	{
+	// while (true)
+	// {
 		// pin0shutterOpenStartTime = -1;
 		// pin0shutterOpenEndTime = -1;
 		// pin1shutterOpenStartTime = -1;
@@ -1460,8 +1456,8 @@ void drawMeasuringScreen()
 		bool isSensor2Closed = false;
 		uint32_t time = 0;
 
-		uint32_t oneTurnSamplesCount = 0;
-		double rpm = 0;
+		// uint32_t oneTurnSamplesCount = 0;
+		// double rpm = 0;
 
 		esp_err_t adcReadRes;
 		uint32_t retNum = 0;
@@ -1535,9 +1531,11 @@ void drawMeasuringScreen()
 							isSensor1Opened = true;
 							// isSensor1ADCSamplesCounterSet = true;
 							// ESP_LOGI("", "On");
+							/* 
 							double turnTimeUs = oneTurnSamplesCount * ONE_ADC_CONVERSION_TIME_US;
 							rpm = ((double)US_IN_MINUTE) / turnTimeUs;
-							oneTurnSamplesCount = 0;
+							oneTurnSamplesCount = 0; 
+							*/
 						}
 
 						if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
@@ -1558,7 +1556,7 @@ void drawMeasuringScreen()
 							sensor1ResArrInd++;
 						}
 
-						oneTurnSamplesCount++;
+						// oneTurnSamplesCount++;
 					}
 					else // sensor 2
 					{
@@ -1700,10 +1698,10 @@ void drawMeasuringScreen()
 			else if (((isSensor1Opened && isSensor1Closed) ||
 								(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
 			{
-				const uint8_t  arrSize = 15;
+				/* const uint8_t  arrSize = 15;
 				static uint32_t arr[arrSize] = {};
 				static int16_t ind = 0;
-				
+
 				uint32_t time = (uint32_t)(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US);
 				double correctedTime = getCorrectedSensorValue(time, sensor0Max);
 				arr[ind] = time;
@@ -1716,9 +1714,8 @@ void drawMeasuringScreen()
 				{
 					sum += arr[i];
 				}
-				
 
-				// ESP_ERROR_CHECK(adc_continuous_stop(handle));
+
 				ESP_LOGI("", "RAWT: %" PRIu32 ", CT: %" PRIu32 ", T: %" PRIu32 ", max: %" PRIu16 ", RPM: %4.2f",
 								 time, (uint32_t)correctedTime, (uint32_t)((double)sum / (double)arrSize), sensor0Max, rpm);
 
@@ -1727,36 +1724,37 @@ void drawMeasuringScreen()
 				isSensor1Opened = false;
 				isSensor1Closed = false;
 				continue;
+				*/
 
-				// if (time == 0)
-				// {
-				// 	time = millis();
-				// }
+				if (time == 0)
+				{
+					time = millis();
+				}
 
-				// // wait for other sensors to get data
-				// if (millis() - time > 500)
-				// {
-				// 	ESP_ERROR_CHECK(adc_continuous_stop(handle));
-				// 	ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
-				// 	ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+				// wait for other sensors to get data
+				if (millis() - time > 500)
+				{
+					ESP_ERROR_CHECK(adc_continuous_stop(handle));
+					ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+					ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-				// 	// halt();
-				// 	drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-				// 										 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-				// 										 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-				// 										 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+					// halt();
+					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+														 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+														 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
-				// 	for (uint8_t i = 0; i < resArrLength - 1; i++)
-				// 	{
-				// 		ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-				// 	}
+					for (uint8_t i = 0; i < resArrLength - 1; i++)
+					{
+						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
+					}
 
-				// 	return;
-				// }
+					return;
+				}
 			}
 		}
 		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
-	}
+	// }
 }
 
 void drawCurtainMovementSelectionScreen()
@@ -1822,76 +1820,280 @@ void drawCurtainMovementSelectionScreen()
   }
 }
 
-/* void drawLightCheckScreen()
+void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
 {
-  uint32_t lastTime = millis();
+	static int8_t prevSensor1SignalStatus = -1;
+	static int8_t prevSensor2SignalStatus = -1;
+	static int8_t prevSensor1ActualBarWidth = 0;
+	static int8_t prevSensor2ActualBarWidth = 0;
+	static const char *sensorStatuses[3] = {
+			"Too dim",
+			"Too bright",
+			"OK"};
+	const uint8_t barWidthPx = 80;
+	const uint8_t barX = 10;
+	double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
+	sensorValueRate = sensorValueRate > 1.0 ? 1.0 : sensorValueRate;
+	x = 15;
+	y += 20;
+	display->setCursor(x, y);
+	display->printf("Sensor %i signal level", sensorNumber);
+	y += 5;
+	display->drawRect(barX, y, barWidthPx, 10, WHITE);
+	int16_t newBarWidth = (barWidthPx - 2) * sensorValueRate;
 
-  sensor0BlinkCount = 0;
-  sensor1BlinkCount = 0;
-  bool isLightGood = false;
-  uint16_t sensor0ResSignalLevel = 0;
-  uint16_t sensor1ResSignalLevel = 0;
+	if (sensorNumber == 1 && newBarWidth != prevSensor1ActualBarWidth)
+	{
+		if (newBarWidth > prevSensor1ActualBarWidth) // add to what we have
+		{
+			display->fillRect(barX + 1 + prevSensor1ActualBarWidth, y + 1, newBarWidth - prevSensor1ActualBarWidth, 8, WHITE);
+		}
+		else // draw black upon what we have
+		{
+			display->fillRect(barX + 1 + prevSensor1ActualBarWidth - (prevSensor1ActualBarWidth - newBarWidth),
+												y + 1, prevSensor1ActualBarWidth - newBarWidth, 8, BLACK);
+		}
 
-  adcISRFlow = AdcISRFlow::SENSOR_READINGS_CHECK;
-  setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
-  startADCconversion(); // start first ADC conversion
+		prevSensor1ActualBarWidth = newBarWidth;
+	}
 
-  while (true)
-  {
-    if ((int64_t)millis() - (int64_t)lastTime > SENSOR_VALUES_UPDATE_INTERVAL)
+	if (sensorNumber == 2 && newBarWidth != prevSensor2ActualBarWidth)
+	{
+		if (newBarWidth > prevSensor2ActualBarWidth) // add to what we have
+		{
+			display->fillRect(barX + 1 + prevSensor2ActualBarWidth, y + 1, newBarWidth - prevSensor2ActualBarWidth, 8, WHITE);
+		}
+		else // draw black upon what we have
+		{
+			display->fillRect(barX + 1 + prevSensor2ActualBarWidth - (prevSensor2ActualBarWidth - newBarWidth),
+												y + 1, prevSensor2ActualBarWidth - newBarWidth, 8, BLACK);
+		}
+
+		prevSensor2ActualBarWidth = newBarWidth;
+	}
+
+	x += barWidthPx;
+	y += 9;
+
+	int8_t sensorStatus = 0;
+
+	if (curSensorValue <= MIN_ALLOWED_SIGNAL_LEVEL)
+	{
+		sensorStatus = 0;
+	}
+	else if (curSensorValue > MAX_ALLOWED_SIGNAL_LEVEL)
+	{
+		sensorStatus = 1;
+	}
+	else
+	{
+		sensorStatus = 2;
+	}
+
+	if (sensorNumber == 1 && sensorStatus != prevSensor1SignalStatus)
+	{
+		display->setTextColor(BLACK); // erase old text
+		display->setCursor(x, y);
+		display->print(sensorStatuses[prevSensor1SignalStatus == -1 ? 0 : prevSensor1SignalStatus]);
+
+		prevSensor1SignalStatus = sensorStatus;
+	}
+
+	if (sensorNumber == 2 && sensorStatus != prevSensor2SignalStatus)
+	{
+		display->setTextColor(BLACK); // erase old text
+		display->setCursor(x, y);
+		display->print(sensorStatuses[prevSensor2SignalStatus == -1 ? 0 : prevSensor2SignalStatus]);
+
+		prevSensor2SignalStatus = sensorStatus;
+	}
+
+	display->setCursor(x, y);
+	display->setTextColor(WHITE);
+	display->print(sensorStatuses[sensorStatus]);
+}
+
+void drawLightCheckScreen()
+{
+	uint32_t sensor1TotalADCSamplesCounter = 0;
+	uint32_t sensor1OpenADCSamplesCounter = 0;
+	uint32_t sensor2TotalADCSamplesCounter = 0;
+	uint32_t sensor2OpenADCSamplesCounter = 0;
+	const uint16_t displayUpdateSamplesCount = 8000;//200ms interval
+
+	esp_err_t adcReadRes;
+	uint32_t retNum = 0;
+	uint8_t result[ADC_READ_LEN] = {0};
+	memset(result, 0xcc, ADC_READ_LEN);
+
+	// const uint16_t resArrLength = UINT8_MAX + 1;
+	// uint16_t sensor1ResArr[resArrLength] = {};
+	// uint16_t sensor2ResArr[resArrLength] = {};
+	// uint8_t sensor1ResArrInd = 0;
+	// uint8_t sensor2ResArrInd = 0;
+
+	const char *lightQualityBrightnessLabel = "Light quality";
+	char *lightQualityStatusesStr[3] = {"Unknown", "Ok", "Bad"};
+	display->fillScreen(BLACK);
+	
+	while (true)
+	{
+		sensor0Max = 0;
+		sensor1Max = 0;
+		sensor1TotalADCSamplesCounter = 0;
+		sensor2TotalADCSamplesCounter = 0;
+		sensor1OpenADCSamplesCounter = 0;
+		sensor2OpenADCSamplesCounter = 0;
+		ESP_ERROR_CHECK(adc_continuous_start(handle));
+
+		while (sensor1TotalADCSamplesCounter < displayUpdateSamplesCount)
+		{
+			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
+
+			if (adcReadRes == ESP_OK)
+			{
+				for (int i = 0; i < retNum; i += SOC_ADC_DIGI_RESULT_BYTES)
+				{
+					adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
+					uint32_t chan_num = ADC_GET_CHANNEL(p);
+					uint16_t adcVal = ADC_GET_DATA(p);
+
+					if (chan_num == ADC_CHANNEL_1) // senosor 1
+					{
+						if (adcVal > sensor0Max)
+						{
+							sensor0Max = adcVal;
+						}
+
+						if (adcVal > SHUTTER_OPEN_LEVEL)
+						{
+							sensor1OpenADCSamplesCounter++;
+						}
+
+						sensor1TotalADCSamplesCounter++;
+					}
+					else // sensor 2
+					{
+						if (adcVal > sensor1Max)
+						{
+							sensor1Max = adcVal;
+						}
+
+						if (adcVal > SHUTTER_OPEN_LEVEL)
+						{
+							sensor2OpenADCSamplesCounter++;
+						}
+
+						sensor2TotalADCSamplesCounter++;
+					}
+				}
+			}
+			else if (adcReadRes == ESP_ERR_TIMEOUT)
+			{
+				// We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
+				ESP_LOGW("", "ADC timed out");
+				break;
+			}
+		}
+
+		ESP_ERROR_CHECK(adc_continuous_stop(handle));
+		ESP_LOGI("", "Sen 1: %" PRIu32 ", sen 2: %" PRIu32 ", sen 1 max: %" PRIu16 ", sen 2 max: %" PRIu16,
+						 sensor1OpenADCSamplesCounter, sensor2OpenADCSamplesCounter, sensor0Max, sensor1Max);
+
+
+		#pragma region // display interaction
+
+		static LightQualityStatus oldLightQualityStatus = LightQualityStatus::UNKNOWN;
+		LightQualityStatus resLightQualityStatus = LightQualityStatus::UNKNOWN;
+		LightQualityStatus sen1LightQualityStatus = LightQualityStatus::UNKNOWN;
+		LightQualityStatus sen2LightQualityStatus = LightQualityStatus::UNKNOWN;
+
+		if (sensor0Max > SHUTTER_OPEN_LEVEL && sensor0Max < MAX_ALLOWED_SIGNAL_LEVEL)
+		{
+			if (sensor1OpenADCSamplesCounter < displayUpdateSamplesCount - 100)
+			{
+				sen1LightQualityStatus = LightQualityStatus::BAD;
+			}
+			else
+			{
+				sen1LightQualityStatus = LightQualityStatus::OK;
+			}
+		}
+
+		if (sensor1Max > SHUTTER_OPEN_LEVEL && sensor1Max < MAX_ALLOWED_SIGNAL_LEVEL)
+		{
+			if (sensor2OpenADCSamplesCounter < displayUpdateSamplesCount - 100)
+			{
+				sen2LightQualityStatus = LightQualityStatus::BAD;
+			}
+			else
+			{
+				sen2LightQualityStatus = LightQualityStatus::OK;
+			}
+		}
+
+		if (sen1LightQualityStatus == LightQualityStatus::BAD ||
+				sen2LightQualityStatus == LightQualityStatus::BAD)
+		{
+			resLightQualityStatus = LightQualityStatus::BAD;
+		}
+		else if (sen1LightQualityStatus == LightQualityStatus::OK &&
+							sen2LightQualityStatus == LightQualityStatus::OK)
+		{
+			resLightQualityStatus = LightQualityStatus::OK;
+		}
+		else if (sen1LightQualityStatus == LightQualityStatus::OK &&
+							 sen2LightQualityStatus == LightQualityStatus::UNKNOWN)
+		{
+			resLightQualityStatus = LightQualityStatus::OK;
+		}
+		else if (sen2LightQualityStatus == LightQualityStatus::OK &&
+							 sen1LightQualityStatus == LightQualityStatus::UNKNOWN)
+		{
+			resLightQualityStatus = LightQualityStatus::OK;
+		}
+		else
+		{
+			resLightQualityStatus = LightQualityStatus::UNKNOWN;
+		}
+
+		uint8_t x = 16;
+		uint8_t y = 20;
+
+		drawStringHCentered("Light quality", y);
+		y += 30;
+
+		display->setTextSize(2);
+
+		if (oldLightQualityStatus != resLightQualityStatus)
+		{
+			display->setTextColor(BLACK);
+			drawStringHCentered(lightQualityStatusesStr[(int8_t)oldLightQualityStatus], y);
+			oldLightQualityStatus = resLightQualityStatus;
+		}
+
+		uint16_t lightQualityStatusTextColors[3] = {LIGHTGREY, GREEN, RED};
+
+		display->setCursor(x, y);
+		display->setTextColor(lightQualityStatusTextColors[(int8_t)resLightQualityStatus]);
+		drawStringHCentered(lightQualityStatusesStr[(int8_t)resLightQualityStatus], y);
+
+		x = 65;
+		y = 52;
+		
+		display->setTextColor(WHITE);
+		display->setTextSize(1);
+		drawSensorSignalLevelBar(x, y, 1, sensor0Max);
+		drawSensorSignalLevelBar(x, y, 2, sensor1Max);
+		
+		#pragma endregion //display interaction
+
+		if (button.isClicked())
     {
-      // Serial.println(sensor0BlinkCount);
-      isLightGood = sensor0BlinkCount < SENSOR_MAX_BLINK_COUNT_PER_INTERVAL &&
-                    sensor1BlinkCount < SENSOR_MAX_BLINK_COUNT_PER_INTERVAL;
-
-      if (sensor0BlinkCount >= SENSOR_MAX_BLINK_COUNT_PER_INTERVAL)
-      {
-        sensor0ResSignalLevel = 0;
-
-        for (uint8_t i = 0; i < SENSOR_MAX_AVG_ARRAY_SIZE; i++)
-        {
-          sensor0ResSignalLevel += sensor0MaxArr[i];
-        }
-
-        sensor0ResSignalLevel /= SENSOR_MAX_AVG_ARRAY_SIZE;
-      }
-      else
-      {
-        sensor0ResSignalLevel = sensor0SignalLevel;
-      }
-
-      if (sensor1BlinkCount >= SENSOR_MAX_BLINK_COUNT_PER_INTERVAL)
-      {
-        sensor1ResSignalLevel = 0;
-
-        for (uint8_t i = 0; i < SENSOR_MAX_AVG_ARRAY_SIZE; i++)
-        {
-          sensor1ResSignalLevel += sensor1MaxArr[i];
-        }
-
-        sensor1ResSignalLevel /= SENSOR_MAX_AVG_ARRAY_SIZE;
-      }
-      else
-      {
-        sensor1ResSignalLevel = sensor1SignalLevel;
-      }
-
-      sensor0BlinkCount = 0;
-      sensor1BlinkCount = 0;
-
-      lastTime = millis();
-    }
-
-    displayManager.drawLightCheckScreen(isLightGood, sensor0ResSignalLevel, sensor1ResSignalLevel);
-    // Serial.println(sensor0Readings);
-
-    if (button.isClicked())
-    {
-      adcISRFlow = AdcISRFlow::NONE;
       return;
     }
-  }
-} */
+	}
+}
 
 void drawAboutScreen()
 {
@@ -2084,7 +2286,7 @@ void drawMainMenu()
         }
         case MainMenuItems::CHECK_LIGHT:
         {
-          // drawLightCheckScreen();
+          drawLightCheckScreen();
           break;
         }
         case MainMenuItems::CREDITS:
@@ -2153,7 +2355,7 @@ void loop() {
   drawMainMenu();
 }
 
-//---------------------------ADC test code
+#pragma region //ADC test code
 
 // #define EXAMPLE_ADC_UNIT ADC_UNIT_1
 // #define _EXAMPLE_ADC_UNIT_STR(unit) #unit
@@ -2343,4 +2545,4 @@ void loop() {
 //   ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 // }
 
-// ---------------------------ADC test code end
+#pragma endregion //ADC test code end
