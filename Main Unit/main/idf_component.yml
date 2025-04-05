@@ -2,3 +2,5 @@ dependencies:
   espressif/arduino-esp32:
     pre_release: true
     version: '*'
+  joltwallet/littlefs: 
+    "~=1.14.8"

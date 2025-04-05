@@ -124,3 +124,12 @@ void halt()
 {
   halt("\0");
 }
+
+// template <typename T>
+// bool verifiedEEPROMPut(const uint16_t index, const T &data)
+// {
+//   EEPROM.put(index, data);
+//   T dataForVerification;
+//   EEPROM.get(index, dataForVerification);
+//   return data == dataForVerification;
+// }

@@ -14,6 +14,7 @@
 #include <InterpolationLib.h>
 // #include "lib/InterpolationLib/src/InterpolationLib.h"
 #include "lib/AceSorting/src/AceSorting.h"
+#include "esp_littlefs.h"
 
 #include "lib/AlexEncoder.h"
 #include "lib/AlexButton.h"
@@ -45,17 +46,23 @@
 
 #define ONE_ADC_CONVERSION_TIME_US 24.7746
 
-#define SENSOR_TYPE_CODE_PIN A7
+// #define SENSOR_TYPE_CODE_PIN A7
 
 // EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
-#define EEPROM_FIRST_RUN_VAL_INDEX 1023
-#define EEPROM_FIRST_RUN_VAL 123
+// #define EEPROM_FIRST_RUN_VAL_INDEX 1023
+// #define EEPROM_FIRST_RUN_VAL 123
+// 
+// #define EEPROM_MEASURED_RES_START_INDEX 0
+// #define EEPROM_MEASURED_RES_END_INDEX 1012
+// #define EEPROM_MEASURED_RES_TOTAL_BYTES (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX)
 
-#define EEPROM_MEASURED_RES_START_INDEX 0
-#define EEPROM_MEASURED_RES_END_INDEX 1012
-#define EEPROM_MEASURED_RES_TOTAL_BYTES (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX)
+#define TOTAL_RECORDS_COUNT 100
 
-    static const char *TAG = "";
+const char *TAG = "";
+
+#define LITTLEFS_PARTITION_NAME "littlefs"
+#define RECORDS_FILE_NAME "records.bin"
+#define RECORDS_FILE_PATH "/" LITTLEFS_PARTITION_NAME "/" RECORDS_FILE_NAME
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -397,7 +404,8 @@ int16_t getMeasurementSaveRecordSize()
 
 int16_t getTotalMeasurementSaveSlotsCount()
 {
-  return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
+	// return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
+	return TOTAL_RECORDS_COUNT;
 }
 
 /* int16_t getFreeMeasurementSaveSlotsCount()
@@ -521,7 +529,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
   }
 } */
 
-/* MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
   int32_t numberOfLast = -1;
   int32_t indexOfLast = -1;
@@ -531,20 +539,31 @@ int16_t getTotalMeasurementSaveSlotsCount()
   int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
   MeasurementRecordSaveResult saveRes = {false, -1};
 
-  for (int16_t i = 0; i < totalRecordsCount; i++)
-  {
-    EEPROM.get(i * blockSize, tempMeasRes);
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+");//open file for read and write
 
-    if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
+	if (recordsFile == NULL)
+	{
+		halt("Failed to open records file");
+	}
+
+	// for (int16_t i = 0; i < totalRecordsCount; i++)
+	int32_t index = 0;
+	while (fread(&tempMeasRes, sizeof(StoredMeasuredResult), 1, recordsFile) == 1)
+	{
+    // EEPROM.get(i * blockSize, tempMeasRes);
+		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
     {
       numberOfLast = tempMeasRes.recordNumber;
-      indexOfLast = i;
-    }
+			indexOfLast = index;
+		}
+
+		index++;
   }
 
   if (numberOfLast == -1)
   {
-    halt(F("Halted. numberOfLast was not defined"));
+		fclose(recordsFile);
+		halt("Halted. numberOfLast was not defined");
   }
 
   savedMeasRes.recordNumber = numberOfLast + 1;
@@ -565,18 +584,18 @@ int16_t getTotalMeasurementSaveSlotsCount()
 
   if (numberOfLast == 0) // if there is no records at all in the EEPROM
   {
-    saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+		// saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
+		fseek(recordsFile, 0, SEEK_SET);
+		saveRes.isSuccess = fwrite(&savedMeasRes, sizeof(StoredMeasuredResult), 1, recordsFile);
 
-    if (saveRes.isSuccess)
+		if (saveRes.isSuccess)
     {
       saveRes.newRecordNumber = savedMeasRes.recordNumber;
     }
 
-    Serial.print("Meas. res. savaed. Rec. num.: ");
-    Serial.print(savedMeasRes.recordNumber);
-    Serial.print(", success: ");
-    Serial.println(saveRes.isSuccess);
-    return saveRes;
+		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8, 
+							savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+		return saveRes;
   }
 
   int16_t freeSlotIndex = -1;
@@ -587,7 +606,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
     // Check for free slots
     for (int16_t i = 0; i < totalRecordsCount; i++)
     {
-      EEPROM.get(i * blockSize, tempMeasRes);
+      // EEPROM.get(i * blockSize, tempMeasRes);
 
       if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
       {
@@ -597,7 +616,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
 
     if (freeSlotIndex != -1)
     {
-      saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
+      // saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
       if (saveRes.isSuccess)
       {
         saveRes.newRecordNumber = savedMeasRes.recordNumber;
@@ -608,7 +627,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
       Serial.println(saveRes.isSuccess);
       return saveRes;
     }
-    halt(F("Halted. freeSlotIndex not found"));
+    halt("Halted. freeSlotIndex not found");
   }
 
   // if user choose to overwrite oldest record
@@ -620,7 +639,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
     // find oldest
     for (int16_t i = 0; i < totalRecordsCount; i++)
     {
-      EEPROM.get(i * blockSize, tempMeasRes);
+      // EEPROM.get(i * blockSize, tempMeasRes);
 
       if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
       {
@@ -631,10 +650,10 @@ int16_t getTotalMeasurementSaveSlotsCount()
 
     if (indexOfOldest == -1)
     {
-      halt(F("Halted. indexOfOldest not found"));
+      halt("Halted. indexOfOldest not found");
     }
 
-    saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+    // saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
 
     if (saveRes.isSuccess)
     {
@@ -653,10 +672,10 @@ int16_t getTotalMeasurementSaveSlotsCount()
   {
     if (indexOfLast == -1)
     {
-      halt(F("Halted. indexOfLast not found"));
+      halt("Halted. indexOfLast not found");
     }
 
-    saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+    // saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
 
     if (saveRes.isSuccess)
     {
@@ -674,11 +693,11 @@ int16_t getTotalMeasurementSaveSlotsCount()
   {
     for (int16_t i = 0; i < totalRecordsCount; i++)
     {
-      EEPROM.get(i * blockSize, tempMeasRes);
+      // EEPROM.get(i * blockSize, tempMeasRes);
 
       if (tempMeasRes.recordNumber == recordNumberToOverwrite)
       {
-        saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
+        // saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
 
         if (saveRes.isSuccess)
         {
@@ -693,11 +712,12 @@ int16_t getTotalMeasurementSaveSlotsCount()
       }
     }
 
-    halt(F("Halted. recordNumberToOverwrite not found"));
+    halt("Halted. recordNumberToOverwrite not found");
   }
 
-  halt(F("Halted. Program should not get here"));
-} */
+  halt("Halted. Program should not get here");
+	return saveRes;//just to suppress warning
+}
 
 double getCorrectedSensorValue(long rawSensorTime, uint16_t maxSensorValue)
 {
@@ -2322,6 +2342,129 @@ void initADC()
   ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
 }
 
+void initLittleFs()
+{
+	ESP_LOGI(TAG, "Initializing LittleFS");
+
+	esp_vfs_littlefs_conf_t conf = {
+			.base_path = "/littlefs",
+			.partition_label = "storage",
+			.format_if_mount_failed = true,
+			.dont_mount = false,
+	};
+
+	// Use settings defined above to initialize and mount LittleFS filesystem.
+	// Note: esp_vfs_littlefs_register is an all-in-one convenience function.
+	esp_err_t ret = esp_vfs_littlefs_register(&conf);
+
+	if (ret != ESP_OK)
+	{
+		if (ret == ESP_FAIL)
+		{
+			ESP_LOGE(TAG, "Failed to mount or format filesystem");
+		}
+		else if (ret == ESP_ERR_NOT_FOUND)
+		{
+			ESP_LOGE(TAG, "Failed to find LittleFS partition");
+		}
+		else
+		{
+			ESP_LOGE(TAG, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+		}
+		return;
+	}
+
+	size_t total = 0, used = 0;
+	ret = esp_littlefs_info(conf.partition_label, &total, &used);
+
+	if (ret != ESP_OK)
+	{
+		ESP_LOGE(TAG, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
+		esp_littlefs_format(conf.partition_label);
+	}
+	else
+	{
+		ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
+	}
+
+	// Use POSIX and C standard library functions to work with files.
+	// First create a file.
+	ESP_LOGI(TAG, "Opening file");
+	FILE *f = fopen("/littlefs/hello.txt", "w");
+
+	if (f == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to open file for writing");
+		return;
+	}
+
+	fprintf(f, "Hello World!\n");
+	fclose(f);
+	ESP_LOGI(TAG, "File written");
+
+	// Check if destination file exists before renaming
+	
+	struct stat st;
+
+	if (stat("/littlefs/foo.txt", &st) == 0)
+	{
+		// Delete it if it exists
+		unlink("/littlefs/foo.txt");
+	}
+	
+	// Rename original file
+	ESP_LOGI(TAG, "Renaming file");
+	
+	if (rename("/littlefs/hello.txt", "/littlefs/foo.txt") != 0)
+	{
+		ESP_LOGE(TAG, "Rename failed");
+		return;
+	}
+
+	// Open renamed file for reading
+	ESP_LOGI(TAG, "Reading file");
+	f = fopen("/littlefs/foo.txt", "r");
+	if (f == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to open file for reading");
+		return;
+	}
+
+	char line[128] = {0};
+	fgets(line, sizeof(line), f);
+	fclose(f);
+	// strip newline
+	char *pos = strpbrk(line, "\r\n");
+
+	if (pos)
+	{
+		*pos = '\0';
+	}
+	
+	ESP_LOGI(TAG, "Read from file: '%s'", line);
+
+	/* ESP_LOGI(TAG, "Reading from flashed filesystem example.txt");
+	f = fopen("/littlefs/example.txt", "r");
+	if (f == NULL)
+	{
+		ESP_LOGE(TAG, "Failed to open file for reading");
+		return;
+	}
+	fgets(line, sizeof(line), f);
+	fclose(f);
+	// strip newline
+	pos = strpbrk(line, "\r\n");
+	if (pos)
+	{
+		*pos = '\0';
+	}
+	ESP_LOGI(TAG, "Read from file: '%s'", line); */
+
+	// All done, unmount partition and disable LittleFS
+	esp_vfs_littlefs_unregister(conf.partition_label);
+	ESP_LOGI(TAG, "LittleFS unmounted");
+}
+
 void setup() {
   // Serial.begin(115200);
   // while (!Serial);
@@ -2348,6 +2491,9 @@ void setup() {
 
   //   delay(200);
   // }
+	delay(5000);
+
+	initLittleFs();
 }
 
 void loop() {
