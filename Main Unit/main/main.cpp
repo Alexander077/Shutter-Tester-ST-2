@@ -60,9 +60,11 @@
 
 const char *TAG = "";
 
+#define LITTLEFS_PARTITION_LABEL "storage"
 #define LITTLEFS_PARTITION_NAME "littlefs"
+#define LITTLEFS_BASE_PATH "/" LITTLEFS_PARTITION_NAME
 #define RECORDS_FILE_NAME "records.bin"
-#define RECORDS_FILE_PATH "/" LITTLEFS_PARTITION_NAME "/" RECORDS_FILE_NAME
+#define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -408,24 +410,33 @@ int16_t getTotalMeasurementSaveSlotsCount()
 	return TOTAL_RECORDS_COUNT;
 }
 
-/* int16_t getFreeMeasurementSaveSlotsCount()
+int16_t getFreeMeasurementSaveSlotsCount()
 {
   int16_t totalCount = getTotalMeasurementSaveSlotsCount();
   int16_t blockSize = getMeasurementSaveRecordSize();
   int16_t freeCount = 0;
   StoredMeasuredResult tempMeasRes;
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r");
 
-  for (int16_t i = 0; i < totalCount; i++)
+	for (int16_t i = 0; i < totalCount; i++)
   {
-    EEPROM.get(i * blockSize, tempMeasRes);
+    // EEPROM.get(i * blockSize, tempMeasRes);
+		int16_t readRes = fread(&tempMeasRes, blockSize, 1, recordsFile);
 
-    if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+		if (readRes != 1)
+		{
+			halt("Halted. Failed to read record");
+		}
+
+		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
     {
       freeCount++;
     }
   }
-  return freeCount;
-} */
+
+	fclose(recordsFile);
+	return freeCount;
+}
 
 /* StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
@@ -463,7 +474,7 @@ int16_t getTotalMeasurementSaveSlotsCount()
   }
 } */
 
-/* int32_t drawMeasurementResultRecordSelectionScreen()
+int32_t drawMeasurementResultRecordSelectionScreen()
 {
   StoredMeasuredResult tempMeasRes;
   int16_t blockSize = getMeasurementSaveRecordSize();
@@ -474,18 +485,24 @@ int16_t getTotalMeasurementSaveSlotsCount()
   int32_t recordNumbers[totalArraySaize];
   recordNumbers[0] = 0; //"Back" option
   // char *recordTitles[totalArraySaize];
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); // open file for read and write
+	int32_t index = 0;
+	int32_t r = 1;
 
-  for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
+	// for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
+	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
   {
-    EEPROM.get(i * blockSize, tempMeasRes);
-
+    // EEPROM.get(i * blockSize, tempMeasRes);
     if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
     {
-
       recordNumbers[r] = tempMeasRes.recordNumber;
       r++;
     }
+
+		index++;
   }
+
+	fclose(recordsFile);
 
   // recordNumbers[0] = 0;
   // recordNumbers[1] = 89345;
@@ -503,8 +520,55 @@ int16_t getTotalMeasurementSaveSlotsCount()
   ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
 
   int16_t startEncoderVal = AlexEncoder::counter;
+	display->fillScreen(BLACK);
 
-  while (true)
+	uint8_t xMargin = 30;
+	uint8_t yMargin = 40;
+	uint8_t ySpacing = 15;
+	uint8_t arrowXmargin = 15;
+	uint8_t curPageLabelY = 120;
+	mString<30> pageLabel;
+	const int16_t pageSize = 5;
+	int16_t prevPage = 1;
+	int16_t curPage = 1;
+	const int16_t recTitleBufSize = 30;
+	int16_t totalPagesCount = ceil((double)totalSlotsCount / (double)pageSize);
+	drawStringHCentered("Select record", 20);
+	int8_t itemsCountToPrint = min(pageSize, totalSlotsCount);
+
+	for (uint8_t i = 0; i < itemsCountToPrint; i++)
+	{
+		display->setCursor(xMargin, yMargin + (ySpacing * i));
+
+		// int32_t recordNumber = getInputParamsArrayInt(i + 3);
+		int32_t recordNumber = recordNumbers[i];
+
+		if (recordNumber == 0) //"Back" option
+		{
+			display->print("Back");
+			continue;
+		}
+
+		char recTitle[recTitleBufSize];
+		formatRecordName(recordNumber, recTitle);
+		display->print(recTitle);
+
+		pageLabel.clear();
+		pageLabel += "Page ";
+		pageLabel.add(curPage);
+		pageLabel += " of ";
+		pageLabel.add(totalPagesCount);
+		drawStringHCentered(pageLabel, curPageLabelY);
+	}
+
+	display->setCursor(xMargin - arrowXmargin, yMargin);
+	display->print("->");
+
+	int8_t prevSelectedRecordIndex = 0;
+	int8_t topRecordIndex = 0;
+	int8_t prevTopRecordIndex = 0;
+
+	while (true)
   {
     int16_t curIndex = AlexEncoder::counter - startEncoderVal;
 
@@ -520,14 +584,96 @@ int16_t getTotalMeasurementSaveSlotsCount()
       startEncoderVal = AlexEncoder::counter;
     }
 
-    displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, totalArraySaize);
+		// ----------------------------
+    // displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, totalArraySaize);
+
+		if (prevSelectedRecordIndex != curIndex)
+		{
+			display->setTextColor(BLACK);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * (prevSelectedRecordIndex % pageSize)));
+			display->print("->");
+
+			display->setTextColor(WHITE);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * (curIndex % pageSize)));
+			display->print("->");
+
+			prevSelectedRecordIndex = curIndex;
+
+			curPage = ceil((curIndex + 1) / (double)pageSize);
+
+			if (prevPage != curPage)
+			{
+				display->setTextColor(BLACK);
+
+				int16_t prevPageMaxIndex = pageSize * (prevPage - 1) + pageSize;
+				int16_t prevPageLimit = min(prevPageMaxIndex, totalSlotsCount);
+
+				// erase cur page
+				for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++)
+				{
+					display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
+					// int32_t recordNumber = getInputParamsArrayInt(i + 3);
+					int32_t recordNumber = recordNumbers[i];
+					char recTitle[recTitleBufSize];
+					formatRecordName(recordNumber, recTitle);
+
+					if (recordNumber == 0) //"Back" option
+					{
+						display->print("Back");
+						continue;
+					}
+
+					display->print(recTitle);
+				}
+
+				pageLabel.clear();
+				pageLabel += "Page ";
+				pageLabel.add(prevPage);
+				pageLabel += " of ";
+				pageLabel.add(totalPagesCount);
+				drawStringHCentered(pageLabel, curPageLabelY);
+
+				display->setTextColor(WHITE);
+				int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
+				int16_t limit = min(nextPageMaxIndex, totalSlotsCount);
+
+				// draw new page records
+				for (int16_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++)
+				{
+					display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
+					// int32_t recordNumber = getInputParamsArrayInt(i + 3);
+					int32_t recordNumber = recordNumbers[i];
+
+					if (recordNumber == 0) //"Back" option
+					{
+						display->print("Back");
+						continue;
+					}
+
+					char recTitle[recTitleBufSize];
+					formatRecordName(recordNumber, recTitle);
+					display->print(recTitle);
+				}
+
+				pageLabel.clear();
+				pageLabel += "Page ";
+				pageLabel.add(curPage);
+				pageLabel += " of ";
+				pageLabel.add(totalPagesCount);
+				drawStringHCentered(pageLabel, curPageLabelY);
+
+				prevPage = curPage;
+			}
+		}
+
+		// ----------------------------
 
     if (button.isClicked())
     {
       return recordNumbers[curIndex];
     }
   }
-} */
+}
 
 MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
@@ -548,7 +694,7 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 
 	// for (int16_t i = 0; i < totalRecordsCount; i++)
 	int32_t index = 0;
-	while (fread(&tempMeasRes, sizeof(StoredMeasuredResult), 1, recordsFile) == 1)
+	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
 	{
     // EEPROM.get(i * blockSize, tempMeasRes);
 		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
@@ -585,8 +731,8 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   if (numberOfLast == 0) // if there is no records at all in the EEPROM
   {
 		// saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
-		fseek(recordsFile, 0, SEEK_SET);
-		saveRes.isSuccess = fwrite(&savedMeasRes, sizeof(StoredMeasuredResult), 1, recordsFile);
+		rewind(recordsFile);
+		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
 		if (saveRes.isSuccess)
     {
@@ -595,38 +741,48 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 
 		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8, 
 							savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+		fclose(recordsFile);
 		return saveRes;
   }
 
-  int16_t freeSlotIndex = -1;
-
+	
   // save to free slot
   if (!overwriteNewest && !overwriteOldest && recordNumberToOverwrite == -1)
   {
+		int16_t freeSlotIndex = -1;
+		int32_t index = 0;
+		rewind(recordsFile);
+
     // Check for free slots
-    for (int16_t i = 0; i < totalRecordsCount; i++)
+    // for (int16_t i = 0; i < totalRecordsCount; i++)
+		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
     {
       // EEPROM.get(i * blockSize, tempMeasRes);
-
       if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
       {
-        freeSlotIndex = i;
-      }
-    }
+				freeSlotIndex = index;
+			}
+
+			index++;
+		}
 
     if (freeSlotIndex != -1)
     {
       // saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
-      if (saveRes.isSuccess)
+			fseek(recordsFile, freeSlotIndex * blockSize, SEEK_SET);
+			saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
+
+			if (saveRes.isSuccess)
       {
         saveRes.newRecordNumber = savedMeasRes.recordNumber;
       }
-      Serial.print("Meas. res. savaed. Rec. num.: ");
-      Serial.print(savedMeasRes.recordNumber);
-      Serial.print(", success: ");
-      Serial.println(saveRes.isSuccess);
-      return saveRes;
+
+			ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
+							 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+			fclose(recordsFile);
+			return saveRes;
     }
+
     halt("Halted. freeSlotIndex not found");
   }
 
@@ -634,19 +790,24 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   if (overwriteOldest)
   {
     int32_t numberOfOldest = INT32_MAX;
-    int16_t indexOfOldest = -1;
+    int32_t indexOfOldest = -1;
+		int32_t index = 0;
+		rewind(recordsFile);
 
-    // find oldest
-    for (int16_t i = 0; i < totalRecordsCount; i++)
-    {
+		// find oldest
+    // for (int16_t i = 0; i < totalRecordsCount; i++)
+		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+		{
       // EEPROM.get(i * blockSize, tempMeasRes);
 
       if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
       {
         numberOfOldest = tempMeasRes.recordNumber;
-        indexOfOldest = i;
-      }
-    }
+				indexOfOldest = index;
+			}
+
+			index++;
+		}
 
     if (indexOfOldest == -1)
     {
@@ -654,17 +815,18 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
     }
 
     // saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+		fseek(recordsFile, indexOfOldest * blockSize, SEEK_SET);
+		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
-    if (saveRes.isSuccess)
+		if (saveRes.isSuccess)
     {
       saveRes.newRecordNumber = savedMeasRes.recordNumber;
     }
 
-    Serial.print("Meas. res. savaed. Rec. num.: ");
-    Serial.print(savedMeasRes.recordNumber);
-    Serial.print(", success: ");
-    Serial.println(saveRes.isSuccess);
-    return saveRes;
+		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
+						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+		fclose(recordsFile);
+		return saveRes;
   }
 
   // if user choose to overwrite newest record
@@ -675,47 +837,57 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
       halt("Halted. indexOfLast not found");
     }
 
-    // saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+		// saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
+		fseek(recordsFile, indexOfLast * blockSize, SEEK_SET);
+		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
     if (saveRes.isSuccess)
     {
       saveRes.newRecordNumber = savedMeasRes.recordNumber;
     }
 
-    Serial.print("Meas. res. savaed. Rec. num.: ");
-    Serial.print(savedMeasRes.recordNumber);
-    Serial.print(", success: ");
-    Serial.println(saveRes.isSuccess);
-    return saveRes;
+		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
+						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+
+		fclose(recordsFile);
+		return saveRes;
   }
 
   if (recordNumberToOverwrite != -1)
   {
-    for (int16_t i = 0; i < totalRecordsCount; i++)
-    {
-      // EEPROM.get(i * blockSize, tempMeasRes);
+		int32_t index = 0;
+		rewind(recordsFile);
 
+		// for (int16_t i = 0; i < totalRecordsCount; i++)
+		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+		{
+      // EEPROM.get(i * blockSize, tempMeasRes);
       if (tempMeasRes.recordNumber == recordNumberToOverwrite)
       {
         // saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
+				fseek(recordsFile, index * blockSize, SEEK_SET);
+				saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
-        if (saveRes.isSuccess)
+				if (saveRes.isSuccess)
         {
           saveRes.newRecordNumber = savedMeasRes.recordNumber;
         }
 
-        Serial.print("Meas. res. savaed. Rec. num.: ");
-        Serial.print(savedMeasRes.recordNumber);
-        Serial.print(", success: ");
-        Serial.println(saveRes.isSuccess);
-        return saveRes;
+				ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
+								 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+
+				fclose(recordsFile);
+				return saveRes;
       }
-    }
+
+			index++;
+		}
 
     halt("Halted. recordNumberToOverwrite not found");
   }
 
-  halt("Halted. Program should not get here");
+	fclose(recordsFile);
+	halt("Halted. Program should not get here");
 	return saveRes;//just to suppress warning
 }
 
@@ -756,12 +928,31 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
   res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0;                                           // in mm
 }
 
-int16_t _drawMessageScreen(bool useProgMem, const char *title, int16_t optionsCount = 0, const char *options[] = {})
+int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
   int16_t startEncoderVal = AlexEncoder::counter;
-  int32_t messageScreenId = random(INT32_MAX);
+  // int32_t messageScreenId = random(INT32_MAX);
+	int8_t prevSelectedMenuItemIndex = 0;
+	uint8_t xMargin = 35;
+	uint8_t yMargin = 50;
+	uint8_t ySpacing = 15;
+	uint8_t arrowXmargin = 15;
 
-  while (true)
+	display->fillScreen(BLACK);
+	drawStringHCentered(title, 25);
+
+	for (int16_t i = 0; i < optionsCount; i++)
+	{
+		display->setCursor(xMargin, yMargin + (ySpacing * i));
+		// mString<50> optionStr;
+		// getInputParamsArrayString(i + 5, optionStr);
+		display->print(options[i]);
+	}
+
+	display->setCursor(xMargin - arrowXmargin, yMargin);
+	display->print("->");
+
+	while (true)
   {
     int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
 
@@ -777,7 +968,22 @@ int16_t _drawMessageScreen(bool useProgMem, const char *title, int16_t optionsCo
       startEncoderVal = AlexEncoder::counter;
     }
 
-    displayManager.drawMessageScreen(messageScreenId, useProgMem, title, options, optionsCount, resultOptionIndex);
+		// -------------------------------
+    // displayManager.drawMessageScreen(messageScreenId, useProgMem, title, options, optionsCount, resultOptionIndex);
+
+		if (prevSelectedMenuItemIndex != resultOptionIndex)
+		{
+			display->setTextColor(BLACK);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+			display->print("->");
+
+			display->setTextColor(WHITE);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultOptionIndex));
+			display->print("->");
+
+			prevSelectedMenuItemIndex = resultOptionIndex;
+		}
+		// -------------------------------
 
     if (button.isClicked())
     {
@@ -786,25 +992,63 @@ int16_t _drawMessageScreen(bool useProgMem, const char *title, int16_t optionsCo
   }
 }
 
-int16_t drawMessageScreen_P(const char *title, int16_t optionsCount = 0, const char *options[] = {})
+/* int16_t drawMessageScreen_P(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
   return _drawMessageScreen(true, title, optionsCount, options);
 }
+*/
 
-int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
+/* int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
   return _drawMessageScreen(false, title, optionsCount, options);
-}
+} 
+*/
 
-/* MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
-  int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
-  int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
+	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
+	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
   int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
   int16_t startEncoderVal = AlexEncoder::counter;
   bool drawMoreThanZeroRecordsMenuItems = menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 
-  while (true)
+	uint8_t xMargin = 20;
+	uint8_t yMargin = 40;
+	uint8_t ySpacing = 15;
+	uint8_t arrowXmargin = 15;
+
+	display->fillScreen(BLACK);
+	drawStringHCentered("Save measurement result?", 20);
+	
+	for (uint8_t i = 0; i < menuItemsCount; i++)
+	{
+		display->setCursor(xMargin, yMargin + (ySpacing * i));
+
+		if (i == (uint8_t)MeasurementSaveMenuItems::YES)
+		{
+			if (freeSlotsCount == 0)
+			{
+				display->setTextColor(DARKGREY);
+				display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
+				display->setTextColor(WHITE);
+			}
+			else
+			{
+				display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems), freeSlotsCount);
+			}
+		}
+		else
+		{
+			display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
+		}
+	}
+
+	display->setCursor(xMargin - arrowXmargin, yMargin);
+	display->print("->");
+
+	int8_t prevSelectedMenuItemIndex = 0;
+
+	while (true)
   {
     int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
 
@@ -820,7 +1064,23 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       startEncoderVal = AlexEncoder::counter;
     }
 
-    displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, drawMoreThanZeroRecordsMenuItems);
+		//-------------------------
+    // displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, drawMoreThanZeroRecordsMenuItems);
+
+		if (prevSelectedMenuItemIndex != resultIndex)
+		{
+			display->setTextColor(BLACK);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+			display->print("->");
+
+			display->setTextColor(WHITE);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultIndex));
+			display->print("->");
+
+			prevSelectedMenuItemIndex = resultIndex;
+		}
+
+		//-----------------------------
 
     if (button.isClicked())
     {
@@ -830,59 +1090,59 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       {
         switch ((MeasurementSaveMenuItems)resultIndex)
         {
-        case MeasurementSaveMenuItems::NO:
-        {
-          return MeasurementSaveScreenResult::OK; // do not save the result
-          break;
-        }
-        case MeasurementSaveMenuItems::YES:
-        {
-          if (freeSlotsCount > 0)
-          {
-            Serial.println("Saving record...");
-            saveRes = saveMesurementResult(measurementRes);
-          }
-          else
-          {
-            continue;
-          }
+					case MeasurementSaveMenuItems::NO:
+					{
+						return MeasurementSaveScreenResult::OK; // do not save the result
+						break;
+					}
+					case MeasurementSaveMenuItems::YES:
+					{
+						if (freeSlotsCount > 0)
+						{
+							ESP_LOGI("","Saving record...");
+							saveRes = saveMesurementResult(measurementRes);
+						}
+						else
+						{
+							continue;
+						}
 
-          break;
-        }
-        case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
-        {
-          Serial.println("Saving record...");
-          saveRes = saveMesurementResult(measurementRes, false, true);
-          break;
-        }
-        case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
-        {
-          Serial.println("Saving record...");
-          saveRes = saveMesurementResult(measurementRes, true);
-          break;
-        }
-        case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
-        {
-          int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
+						break;
+					}
+					case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
+					{
+						ESP_LOGI("","Saving record...");
+						saveRes = saveMesurementResult(measurementRes, false, true);
+						break;
+					}
+					case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
+					{
+						ESP_LOGI("","Saving record...");
+						saveRes = saveMesurementResult(measurementRes, true);
+						break;
+					}
+					case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
+					{
+						int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
 
-          if (selectedMesurementRecordNumber == 0) // user selected "Back" option
-          {
-            continue;
-          }
+						if (selectedMesurementRecordNumber == 0) // user selected "Back" option
+						{
+							continue;
+						}
 
-          Serial.println("Saving record...");
-          saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
-          break;
-        }
-        case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
-        {
-          return MeasurementSaveScreenResult::CANCEL;
-          break;
-        }
-        default:
-          halt(F("Halted. Unknown measurement save option"));
-          break;
-        }
+						ESP_LOGI("","Saving record...");
+						saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
+						break;
+					}
+					case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+					{
+						return MeasurementSaveScreenResult::CANCEL;
+						break;
+					}
+					default:
+						halt("Halted. Unknown measurement save option");
+						break;
+				}
       }
       else
       {
@@ -897,7 +1157,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
         {
           if (freeSlotsCount > 0)
           {
-            Serial.println("Saving record...");
+            ESP_LOGI("","Saving record...");
             saveRes = saveMesurementResult(measurementRes);
           }
           else
@@ -913,7 +1173,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
           break;
         }
         default:
-          halt(F("Halted. Unknown measurement save option"));
+          halt("Halted. Unknown measurement save option");
           break;
         }
       }
@@ -924,9 +1184,9 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       {
         char buf[30];
         formatRecordName(saveRes.newRecordNumber, buf);
-#pragma GCC diagnostic ignored "-Wformat"
+				#pragma GCC diagnostic ignored "-Wformat"
         sprintf(resMessage, "Record saved as '%s'", buf);
-#pragma GCC diagnostic pop
+				#pragma GCC diagnostic pop		
       }
       else
       {
@@ -937,7 +1197,7 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
       return MeasurementSaveScreenResult::OK;
     }
   }
-} */
+}
 
 void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
 {
@@ -2342,13 +2602,13 @@ void initADC()
   ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
 }
 
-void initLittleFs()
+void initStorage()
 {
 	ESP_LOGI(TAG, "Initializing LittleFS");
 
 	esp_vfs_littlefs_conf_t conf = {
-			.base_path = "/littlefs",
-			.partition_label = "storage",
+			.base_path = LITTLEFS_BASE_PATH,
+			.partition_label = LITTLEFS_PARTITION_LABEL,
 			.format_if_mount_failed = true,
 			.dont_mount = false,
 	};
@@ -2361,15 +2621,16 @@ void initLittleFs()
 	{
 		if (ret == ESP_FAIL)
 		{
-			ESP_LOGE(TAG, "Failed to mount or format filesystem");
+			halt("Failed to mount or format filesystem");
 		}
 		else if (ret == ESP_ERR_NOT_FOUND)
 		{
-			ESP_LOGE(TAG, "Failed to find LittleFS partition");
+			halt("Failed to find LittleFS partition");
 		}
 		else
 		{
 			ESP_LOGE(TAG, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+			halt();
 		}
 		return;
 	}
@@ -2379,16 +2640,15 @@ void initLittleFs()
 
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Failed to get LittleFS partition information (%s)", esp_err_to_name(ret));
+		ESP_LOGE(TAG, "Failed to get LittleFS partition information: (%s). Formatting...", esp_err_to_name(ret));
 		esp_littlefs_format(conf.partition_label);
 	}
 	else
 	{
-		ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
+		ESP_LOGI(TAG, "Storage partition size: total: %d, used: %d", total, used);
 	}
 
-	// Use POSIX and C standard library functions to work with files.
-	// First create a file.
+	/* 	// First create a file.
 	ESP_LOGI(TAG, "Opening file");
 	FILE *f = fopen("/littlefs/hello.txt", "w");
 
@@ -2442,6 +2702,7 @@ void initLittleFs()
 	}
 	
 	ESP_LOGI(TAG, "Read from file: '%s'", line);
+	*/
 
 	/* ESP_LOGI(TAG, "Reading from flashed filesystem example.txt");
 	f = fopen("/littlefs/example.txt", "r");
@@ -2461,11 +2722,55 @@ void initLittleFs()
 	ESP_LOGI(TAG, "Read from file: '%s'", line); */
 
 	// All done, unmount partition and disable LittleFS
-	esp_vfs_littlefs_unregister(conf.partition_label);
-	ESP_LOGI(TAG, "LittleFS unmounted");
+	// esp_vfs_littlefs_unregister(conf.partition_label);
+	// ESP_LOGI(TAG, "LittleFS unmounted");
+
+	struct stat st;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	uint8_t data[blockSize] = {};
+
+	if (stat(RECORDS_FILE_PATH, &st) != 0) // if no records.bin file found
+	{
+		ESP_LOGI(TAG, "No '" RECORDS_FILE_NAME "' file found. Initializing...");
+
+		FILE *recordsFile = fopen(RECORDS_FILE_PATH, "w");
+
+		for (int32_t i = 0; i < TOTAL_RECORDS_COUNT; i++)
+		{
+			size_t res = fwrite(data, blockSize, 1, recordsFile);
+
+			if (res == 0)
+			{
+				halt("Halted. Failed to write inital data to '" RECORDS_FILE_NAME "'");
+			}
+		}
+
+		ESP_LOGI(TAG, "'" RECORDS_FILE_NAME "' initialized");
+		fclose(recordsFile);
+
+		ESP_LOGI(TAG, "Verifing writen data...");
+
+		recordsFile = fopen(RECORDS_FILE_PATH, "r");
+
+		uint8_t buf[1] = {};
+
+		for (int32_t i = 0; i < TOTAL_RECORDS_COUNT * blockSize; i++)
+		{
+			fread(buf, 1, 1, recordsFile);
+
+			if (buf[0] != 0)
+			{
+				halt("Invalid data");
+			}
+		}
+
+		fclose(recordsFile);
+		ESP_LOGI(TAG, "Data OK");
+	}
 }
 
-void setup() {
+void setup() 
+{
   // Serial.begin(115200);
   // while (!Serial);
 
@@ -2483,22 +2788,30 @@ void setup() {
   timerAlarm(timer, US_IN_SECOND / USER_INPUT_POLLING_FREQ_HZ, true, 0);
 
   initADC();
-
-  // while (true){
-
-  //   // Serial.println(AlexEncoder::counter);
-  //   ESP_LOGI(TAG, "Counter: %i, button: %i", AlexEncoder::counter, (uint8_t)button.isClicked());
-
-  //   delay(200);
-  // }
-	delay(5000);
-
-	initLittleFs();
+	// delay(4000);
+	initStorage();
 }
 
-void loop() {
+void loop() 
+{
+	MeasuredResult r = {
+			3,
+			4,
+			3,
+			4,
+			5,
+			6,
+			7,
+			8,
+			9,
+			12,
+			12};
+	drawMeasurementSaveScreen(r);
+	// int32_t selectedRecordIndex = drawMeasurementResultRecordSelectionScreen();
+	// Serial.println(selectedRecordIndex);
+	halt();
 
-  drawMainMenu();
+	drawMainMenu();
 }
 
 #pragma region //ADC test code
