@@ -91,6 +91,12 @@ enum class MeasurementSaveScreenResult
   CANCEL
 };
 
+enum class CurtainMovementSelectionScreenResult
+{
+	GO_BACK,
+	GO_TO_MAIN_MENU
+};
+
 DisplayManager displayManager;
 
 uint16_t sensor0Max = 0;
@@ -107,6 +113,7 @@ double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {40, 40, 30, 20, 15};
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
+int8_t curSensorIndex = -1;
 
 #define ADC_UNIT ADC_UNIT_1
 #define _ADC_UNIT_STR(unit) #unit
@@ -1535,27 +1542,12 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	double sensorDistance = 0;
 	double frameSize = 0;
 
-	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove
+	if (curSensorIndex == -1)
+	{
+		halt("Sensor index is not set");
+	}
 
-	// int8_t curSensorDataIndex = -1;
-
-	// for (size_t i = 0; i < sensorsDataArraySize; i++)
-	// {
-	//   if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
-	//   {
-	//     curSensorDataIndex = i;
-	//     break;
-	//   }
-	// }
-
-	// if (curSensorDataIndex == -1)
-	// {
-	//   halt("Sensor data not found. Program halted");
-	// }
-
-	int8_t curSensorIndex = 0;//TODO: change to actual sensor
-	SensorUnitData curSensorData = sensorsData[curSensorIndex]; // TODO: make sensor selection functionality
+	SensorUnitData curSensorData = sensorsData[curSensorIndex];
 	res.usedSensorType = curSensorData.Type;
 
 	ESP_LOGI("", "Sensor unit name: %s", SensorTypeStr[(uint8_t)curSensorData.Type]);
@@ -1860,7 +1852,7 @@ void drawMeasuringScreen()
 		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
 
-void drawCurtainMovementSelectionScreen()
+CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
   display->fillScreen(BLACK);
   drawStringHCentered("Select curtain movement", 20);
@@ -1870,11 +1862,20 @@ void drawCurtainMovementSelectionScreen()
   uint8_t yMargin = 55;
   uint8_t ySpacing = 15;
   uint8_t arrowXmargin = 15;
+	const uint8_t totalMenuItemsCount = CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT + 1;//+1 for 'Go back' item
 
-  for (uint8_t i = 0; i < CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT; i++)
-  {
-    display->setCursor(xMargin, yMargin + (ySpacing * i));
-    display->println(GetCurtainMovementItemTitle((CurtainMovement)i));
+	for (uint8_t i = 0; i < totalMenuItemsCount; i++)
+	{
+		display->setCursor(xMargin, yMargin + (ySpacing * i));
+
+		if (i == totalMenuItemsCount - 1)
+		{
+			display->println("Go Back");
+		}
+		else
+		{
+			display->println(GetCurtainMovementItemTitle((CurtainMovement)i));
+		}
   }
 
   display->setCursor(xMargin - arrowXmargin, yMargin);
@@ -1887,11 +1888,11 @@ void drawCurtainMovementSelectionScreen()
   {
     int16_t resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
 
-    if (resultMenuItemIndex > CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1)
-    {
-      startEncoderVal = AlexEncoder::counter - (CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1);
-      resultMenuItemIndex = CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT - 1;
-    }
+		if (resultMenuItemIndex > totalMenuItemsCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (totalMenuItemsCount - 1);
+			resultMenuItemIndex = totalMenuItemsCount - 1;
+		}
 
     if (resultMenuItemIndex < 0)
     {
@@ -1916,11 +1917,52 @@ void drawCurtainMovementSelectionScreen()
 
     if (button.isClicked())
     {
+			if (resultMenuItemIndex == totalMenuItemsCount - 1)//'Go back' selected
+			{
+				return CurtainMovementSelectionScreenResult::GO_BACK;
+			}
+			
       curtainMovement = (CurtainMovement)resultMenuItemIndex;
       drawMeasuringScreen();
-      return;
-    }
+			return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU;
+		}
   }
+}
+
+void drawSensorSelectionScreen()
+{
+	const char *options[sensorsDataArraySize + 1] = {};
+
+	for (size_t i = 0; i < sensorsDataArraySize; i++)
+	{
+		options[i] = SensorTypeStr[i];
+	}
+
+	options[sensorsDataArraySize] = "Go Back";
+
+	while (true)
+	{
+		int16_t selectedOptionIndex = drawMessageScreen("Select sensor type", sensorsDataArraySize + 1, options);
+		ESP_LOGI("", "Selected sensor index: %" PRIi16, selectedOptionIndex);
+	
+		if (selectedOptionIndex == sensorsDataArraySize) //'Go back' selected
+		{
+			return;
+		}
+	
+		curSensorIndex = selectedOptionIndex;
+		auto menuRes = drawCurtainMovementSelectionScreen();
+
+		if (menuRes == CurtainMovementSelectionScreenResult::GO_BACK)
+		{
+			continue;
+		}
+
+		if (menuRes == CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU)
+		{
+			return;
+		}
+	}
 }
 
 void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
@@ -2351,7 +2393,8 @@ void drawMainMenu()
         {
         case MainMenuItems::MEASURE:
         {
-          drawCurtainMovementSelectionScreen();
+          // drawCurtainMovementSelectionScreen();
+					drawSensorSelectionScreen();
           break;
         }
         case MainMenuItems::CHECK_LIGHT:
