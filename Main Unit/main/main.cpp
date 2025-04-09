@@ -12,7 +12,6 @@
 #include <U8g2lib.h>
 #include <mString.h>
 #include <InterpolationLib.h>
-// #include "lib/InterpolationLib/src/InterpolationLib.h"
 #include "lib/AceSorting/src/AceSorting.h"
 #include "esp_littlefs.h"
 
@@ -45,17 +44,7 @@
 
 #define ONE_ADC_CONVERSION_TIME_US 24.7746
 
-// EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
-// #define EEPROM_FIRST_RUN_VAL_INDEX 1023
-// #define EEPROM_FIRST_RUN_VAL 123
-// 
-// #define EEPROM_MEASURED_RES_START_INDEX 0
-// #define EEPROM_MEASURED_RES_END_INDEX 1012
-// #define EEPROM_MEASURED_RES_TOTAL_BYTES (EEPROM_MEASURED_RES_END_INDEX - EEPROM_MEASURED_RES_START_INDEX)
-
 #define TOTAL_RECORDS_COUNT 100
-
-const char *TAG = "";
 
 #define LITTLEFS_PARTITION_LABEL "storage"
 #define LITTLEFS_PARTITION_NAME "littlefs"
@@ -102,31 +91,10 @@ enum class MeasurementSaveScreenResult
   CANCEL
 };
 
-// volatile long pin0shutterOpenStartTime = -1,
-              // pin0shutterOpenEndTime = -1,
-              // pin1shutterOpenStartTime = -1,
-              // pin1shutterOpenEndTime = -1;
-
-// AdcISRFlow adcISRFlow = AdcISRFlow::NONE;
 DisplayManager displayManager;
 
-bool curADCpinNumber = true;
-volatile uint8_t sensor0SignalLevel = 0;
-volatile uint8_t sensor1SignalLevel = 0;
-volatile uint16_t sensor0BlinkCount = 0;
-volatile uint16_t sensor1BlinkCount = 0;
-
-// 3 times per second
-#define SENSOR_VALUES_UPDATE_INTERVAL 333
-#define SENSOR_MAX_AVG_ARRAY_SIZE 5
-#define SENSOR_MAX_BLINK_COUNT_PER_INTERVAL 4
-uint16_t sensor0Max = 0; // volatile?
-uint16_t sensor1Max = 0; // volatile?
-uint8_t sensor0MaxArr[SENSOR_MAX_AVG_ARRAY_SIZE] = {};
-uint8_t sensor1MaxArr[SENSOR_MAX_AVG_ARRAY_SIZE] = {};
-
-uint16_t sensorCheckCounter = 0;
-#define SENSOR_CHECK_COUNTER_SCREEN_UPDATE_VALUE 1000
+uint16_t sensor0Max = 0;
+uint16_t sensor1Max = 0;
 
 #define INTRPOLATION_POINTS_COUNT 5
 double sensorMaxAdcVals[INTRPOLATION_POINTS_COUNT] = {1300, 2000, 2700, 3300, 4000};
@@ -165,7 +133,7 @@ static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
 static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
 #endif
 
-static TaskHandle_t s_task_handle;
+// static TaskHandle_t s_task_handle;
 adc_continuous_handle_t handle = NULL;
 
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
@@ -204,9 +172,9 @@ static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc
     adc_pattern[i].unit = ADC_UNIT;
     adc_pattern[i].bit_width = ADC_BIT_WIDTH;
 
-    ESP_LOGI(TAG, "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
-    ESP_LOGI(TAG, "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
-    ESP_LOGI(TAG, "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
+    ESP_LOGI("", "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
+    ESP_LOGI("", "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
+    ESP_LOGI("", "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
   }
   
   dig_cfg.adc_pattern = adc_pattern;
@@ -390,11 +358,6 @@ void IRAM_ATTR onTimer()
 {
   button.tick();
 }
-
-/* bool isFirstRun()
-{
-  return EEPROM.read(EEPROM_FIRST_RUN_VAL_INDEX) == EEPROM_FIRST_RUN_VAL;
-} */
 
 int16_t getMeasurementSaveRecordSize()
 {
@@ -950,7 +913,6 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
   int16_t startEncoderVal = AlexEncoder::counter;
-  // int32_t messageScreenId = random(INT32_MAX);
 	int8_t prevSelectedMenuItemIndex = 0;
 	uint8_t xMargin = 35;
 	uint8_t yMargin = 50;
@@ -963,8 +925,6 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 	for (int16_t i = 0; i < optionsCount; i++)
 	{
 		display->setCursor(xMargin, yMargin + (ySpacing * i));
-		// mString<50> optionStr;
-		// getInputParamsArrayString(i + 5, optionStr);
 		display->print(options[i]);
 	}
 
@@ -1701,12 +1661,6 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 void drawMeasuringScreen()
 {
-	// while (true)
-	// {
-		// pin0shutterOpenStartTime = -1;
-		// pin0shutterOpenEndTime = -1;
-		// pin1shutterOpenStartTime = -1;
-		// pin1shutterOpenEndTime = -1;
 		sensor0Max = 0;
 		sensor1Max = 0;
 
@@ -1717,9 +1671,6 @@ void drawMeasuringScreen()
 		bool isSensor2Opened = false;
 		bool isSensor2Closed = false;
 		uint32_t time = 0;
-
-		// uint32_t oneTurnSamplesCount = 0;
-		// double rpm = 0;
 
 		esp_err_t adcReadRes;
 		uint32_t retNum = 0;
@@ -1736,10 +1687,6 @@ void drawMeasuringScreen()
 		int8_t curtain1firstOpenedSensor = -1;
 		int8_t curtain2firstClosedSensor = -1;
 
-		// adcISRFlow = AdcISRFlow::MEASURING;
-		// setADCprescaler(ADCPrescaler::ADC_PRESCALER_4);
-		// startADCconversion(); // start first ADC conversion
-
 		display->fillScreen(BLACK);
 		display->setTextSize(2);
 		drawStringHCentered("MEASURING", 40);
@@ -1747,8 +1694,6 @@ void drawMeasuringScreen()
 		drawStringHCentered("Release camera shutter", 60);
 
 		ESP_ERROR_CHECK(adc_continuous_start(handle));
-
-		// int16_t lastVal = 0;
 
 		// s_task_handle = xTaskGetCurrentTaskHandle();
 
@@ -1789,21 +1734,13 @@ void drawMeasuringScreen()
 
 						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor1Opened)
 						{
-							// pin0shutterOpenStartTime = micros();
 							isSensor1Opened = true;
-							// isSensor1ADCSamplesCounterSet = true;
 							// ESP_LOGI("", "On");
-							/* 
-							double turnTimeUs = oneTurnSamplesCount * ONE_ADC_CONVERSION_TIME_US;
-							rpm = ((double)US_IN_MINUTE) / turnTimeUs;
-							oneTurnSamplesCount = 0; 
-							*/
 						}
 
 						if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
 						{
 							isSensor1Closed = true;
-							// pin0shutterOpenEndTime = micros();
 							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
 						}
 
@@ -1817,8 +1754,6 @@ void drawMeasuringScreen()
 							sensor1ResArr[sensor1ResArrInd] = adcVal;
 							sensor1ResArrInd++;
 						}
-
-						// oneTurnSamplesCount++;
 					}
 					else // sensor 2
 					{
@@ -1829,16 +1764,13 @@ void drawMeasuringScreen()
 
 						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor2Opened)
 						{
-							// pin0shutterOpenStartTime = micros();
 							isSensor2Opened = true;
-							// isSensor1ADCSamplesCounterSet = true;
 							// ESP_LOGI("", "On");
 						}
 
 						if (adcVal < sensor1Max - SHUTTER_OPEN_LEVEL && !isSensor2Closed)
 						{
 							isSensor2Closed = true;
-							// pin0shutterOpenEndTime = micros();
 							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
 						}
 
@@ -1854,71 +1786,17 @@ void drawMeasuringScreen()
 						}
 					}
 
-					// #pragma region //curtain 1 samples counter
-
-					// if (chan_num == ADC_CHANNEL_1)
-					// {
-					// 	// if (isSensor1Opened && curtain1firstOpenedSensor == -1)
-					// 	// {
-					// 	// 	curtain1firstOpenedSensor = 1;
-					// 	// }
-
-					// 	// if (isSensor2Opened && curtain1firstOpenedSensor == -1)
-					// 	// {
-					// 	// 	curtain1firstOpenedSensor = 2;
-					// 	// }
-
-					// 	// if (isSensor1Opened && !isSensor2Opened && curtain1firstOpenedSensor == 1)
-					// 	// {
-					// 	// 	curtain1ADCSamplesCounter++;
-					// 	// }
-
-					// 	// if (!isSensor1Opened && isSensor2Opened && curtain1firstOpenedSensor == 2)
-					// 	// {
-					// 	// 	curtain1ADCSamplesCounter++;
-					// 	// }
-
-					// }
 					if ((isSensor1Opened && !isSensor2Opened) ||
 							(!isSensor1Opened && isSensor2Opened))
 					{
 						curtain1ADCSamplesCounter++;
 					}
 
-					// #pragma endregion
-
-					// #pragma region //curtain 2 samples counter
-
-					// if (chan_num == ADC_CHANNEL_2)
-					// {
-					// 	if (isSensor1Closed && curtain2firstClosedSensor == -1)
-					// 	{
-					// 		curtain2firstClosedSensor = 1;
-					// 	}
-
-					// 	if (isSensor2Closed && curtain2firstClosedSensor == -1)
-					// 	{
-					// 		curtain2firstClosedSensor = 2;
-					// 	}
-
-					// 	if (isSensor1Closed && !isSensor2Closed && curtain2firstClosedSensor == 1)
-					// 	{
-					// 		curtain2ADCSamplesCounter++;
-					// 	}
-
-					// 	if (!isSensor1Closed && isSensor2Closed && curtain2firstClosedSensor == 2)
-					// 	{
-					// 		curtain2ADCSamplesCounter++;
-					// 	}
-					// }
-
 					if ((!isSensor1Closed && isSensor2Closed) ||
 								(isSensor1Closed && !isSensor2Closed))
 					{
 						curtain2ADCSamplesCounter++;
 					}
-
-					// #pragma endregion
 
 					// /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
 					// if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
@@ -1930,12 +1808,6 @@ void drawMeasuringScreen()
 					//   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
 					// }
 				}
-
-				/*
-				if ((resArrInd > 0 && lastVal < 450) || resArrInd > resArrLength)
-				{
-					break;
-				} */
 
 				/**
 				 * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
@@ -1953,41 +1825,12 @@ void drawMeasuringScreen()
 
 			if (button.isClicked())
 			{
-				// adcISRFlow = AdcISRFlow::NONE;
 				ESP_ERROR_CHECK(adc_continuous_stop(handle));
 				return;
 			}
 			else if (((isSensor1Opened && isSensor1Closed) ||
 								(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
 			{
-				/* const uint8_t  arrSize = 15;
-				static uint32_t arr[arrSize] = {};
-				static int16_t ind = 0;
-
-				uint32_t time = (uint32_t)(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US);
-				double correctedTime = getCorrectedSensorValue(time, sensor0Max);
-				arr[ind] = time;
-				ind++;
-				ind = ind == arrSize ? 0 : ind;
-
-				uint32_t sum = 0;
-
-				for (size_t i = 0; i < arrSize; i++)
-				{
-					sum += arr[i];
-				}
-
-
-				ESP_LOGI("", "RAWT: %" PRIu32 ", CT: %" PRIu32 ", T: %" PRIu32 ", max: %" PRIu16 ", RPM: %4.2f",
-								 time, (uint32_t)correctedTime, (uint32_t)((double)sum / (double)arrSize), sensor0Max, rpm);
-
-				sensor0Max = 0;
-				sensor1ADCSamplesCounter = 0;
-				isSensor1Opened = false;
-				isSensor1Closed = false;
-				continue;
-				*/
-
 				if (time == 0)
 				{
 					time = millis();
@@ -2000,23 +1843,21 @@ void drawMeasuringScreen()
 					ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
 					ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-					// halt();
 					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
 														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
 														 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
 														 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
-					for (uint8_t i = 0; i < resArrLength - 1; i++)
+					/* for (uint8_t i = 0; i < resArrLength - 1; i++)
 					{
 						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-					}
+					} */
 
 					return;
 				}
 			}
 		}
 		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
-	// }
 }
 
 void drawCurtainMovementSelectionScreen()
@@ -2187,12 +2028,6 @@ void drawLightCheckScreen()
 	uint32_t retNum = 0;
 	uint8_t result[ADC_READ_LEN] = {0};
 	memset(result, 0xcc, ADC_READ_LEN);
-
-	// const uint16_t resArrLength = UINT8_MAX + 1;
-	// uint16_t sensor1ResArr[resArrLength] = {};
-	// uint16_t sensor2ResArr[resArrLength] = {};
-	// uint8_t sensor1ResArrInd = 0;
-	// uint8_t sensor2ResArrInd = 0;
 
 	const char *lightQualityBrightnessLabel = "Light quality";
 	char *lightQualityStatusesStr[3] = {"Unknown", "Ok", "Bad"};
@@ -2559,7 +2394,7 @@ void initADC()
 
 void initStorage()
 {
-	ESP_LOGI(TAG, "Initializing LittleFS");
+	ESP_LOGI("", "Initializing LittleFS");
 
 	esp_vfs_littlefs_conf_t conf = {
 			.base_path = LITTLEFS_BASE_PATH,
@@ -2568,8 +2403,6 @@ void initStorage()
 			.dont_mount = false,
 	};
 
-	// Use settings defined above to initialize and mount LittleFS filesystem.
-	// Note: esp_vfs_littlefs_register is an all-in-one convenience function.
 	esp_err_t ret = esp_vfs_littlefs_register(&conf);
 
 	if (ret != ESP_OK)
@@ -2584,7 +2417,7 @@ void initStorage()
 		}
 		else
 		{
-			ESP_LOGE(TAG, "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
+			ESP_LOGE("", "Failed to initialize LittleFS (%s)", esp_err_to_name(ret));
 			halt();
 		}
 		return;
@@ -2595,88 +2428,14 @@ void initStorage()
 
 	if (ret != ESP_OK)
 	{
-		ESP_LOGE(TAG, "Failed to get LittleFS partition information: (%s). Formatting...", esp_err_to_name(ret));
+		ESP_LOGE("", "Failed to get LittleFS partition information: (%s). Formatting...", esp_err_to_name(ret));
 		esp_littlefs_format(conf.partition_label);
 	}
 	else
 	{
-		ESP_LOGI(TAG, "Storage partition size: total: %d, used: %d", total, used);
+		ESP_LOGI("", "Storage partition size: total: %d, used: %d", total, used);
 	}
 
-	/* 	// First create a file.
-	ESP_LOGI(TAG, "Opening file");
-	FILE *f = fopen("/littlefs/hello.txt", "w");
-
-	if (f == NULL)
-	{
-		ESP_LOGE(TAG, "Failed to open file for writing");
-		return;
-	}
-
-	fprintf(f, "Hello World!\n");
-	fclose(f);
-	ESP_LOGI(TAG, "File written");
-
-	// Check if destination file exists before renaming
-	
-	struct stat st;
-
-	if (stat("/littlefs/foo.txt", &st) == 0)
-	{
-		// Delete it if it exists
-		unlink("/littlefs/foo.txt");
-	}
-	
-	// Rename original file
-	ESP_LOGI(TAG, "Renaming file");
-	
-	if (rename("/littlefs/hello.txt", "/littlefs/foo.txt") != 0)
-	{
-		ESP_LOGE(TAG, "Rename failed");
-		return;
-	}
-
-	// Open renamed file for reading
-	ESP_LOGI(TAG, "Reading file");
-	f = fopen("/littlefs/foo.txt", "r");
-	if (f == NULL)
-	{
-		ESP_LOGE(TAG, "Failed to open file for reading");
-		return;
-	}
-
-	char line[128] = {0};
-	fgets(line, sizeof(line), f);
-	fclose(f);
-	// strip newline
-	char *pos = strpbrk(line, "\r\n");
-
-	if (pos)
-	{
-		*pos = '\0';
-	}
-	
-	ESP_LOGI(TAG, "Read from file: '%s'", line);
-	*/
-
-	/* ESP_LOGI(TAG, "Reading from flashed filesystem example.txt");
-	f = fopen("/littlefs/example.txt", "r");
-	if (f == NULL)
-	{
-		ESP_LOGE(TAG, "Failed to open file for reading");
-		return;
-	}
-	fgets(line, sizeof(line), f);
-	fclose(f);
-	// strip newline
-	pos = strpbrk(line, "\r\n");
-	if (pos)
-	{
-		*pos = '\0';
-	}
-	ESP_LOGI(TAG, "Read from file: '%s'", line); */
-
-	// All done, unmount partition and disable LittleFS
 	// esp_vfs_littlefs_unregister(conf.partition_label);
 	// ESP_LOGI(TAG, "LittleFS unmounted");
 
@@ -2686,7 +2445,7 @@ void initStorage()
 
 	if (stat(RECORDS_FILE_PATH, &st) != 0) // if no records.bin file found
 	{
-		ESP_LOGI(TAG, "No '" RECORDS_FILE_NAME "' file found. Initializing...");
+		ESP_LOGI("", "No '" RECORDS_FILE_NAME "' file found. Initializing...");
 
 		FILE *recordsFile = fopen(RECORDS_FILE_PATH, "w");
 
@@ -2700,10 +2459,10 @@ void initStorage()
 			}
 		}
 
-		ESP_LOGI(TAG, "'" RECORDS_FILE_NAME "' initialized");
+		ESP_LOGI("", "'" RECORDS_FILE_NAME "' initialized");
 		fclose(recordsFile);
 
-		ESP_LOGI(TAG, "Verifing writen data...");
+		ESP_LOGI("", "Verifing writen data...");
 
 		recordsFile = fopen(RECORDS_FILE_PATH, "r");
 
@@ -2720,7 +2479,7 @@ void initStorage()
 		}
 
 		fclose(recordsFile);
-		ESP_LOGI(TAG, "Data OK");
+		ESP_LOGI("", "Data OK");
 	}
 }
 
@@ -2768,195 +2527,3 @@ void loop()
 
 	drawMainMenu();
 }
-
-#pragma region //ADC test code
-
-// #define EXAMPLE_ADC_UNIT ADC_UNIT_1
-// #define _EXAMPLE_ADC_UNIT_STR(unit) #unit
-// #define EXAMPLE_ADC_UNIT_STR(unit) _EXAMPLE_ADC_UNIT_STR(unit)
-// #define EXAMPLE_ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
-// #define EXAMPLE_ADC_ATTEN ADC_ATTEN_DB_11
-// #define EXAMPLE_ADC_BIT_WIDTH SOC_ADC_DIGI_MAX_BITWIDTH
-
-// #if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
-// #define EXAMPLE_ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
-// #define EXAMPLE_ADC_GET_CHANNEL(p_data) ((p_data)->type1.channel)
-// #define EXAMPLE_ADC_GET_DATA(p_data) ((p_data)->type1.data)
-// #else
-// #define EXAMPLE_ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE2
-// #define EXAMPLE_ADC_GET_CHANNEL(p_data) ((p_data)->type2.channel)
-// #define EXAMPLE_ADC_GET_DATA(p_data) ((p_data)->type2.data)
-// #endif
-
-// #define EXAMPLE_READ_LEN 256
-
-// #if CONFIG_IDF_TARGET_ESP32
-// static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
-// #else
-// static adc_channel_t channel[2] = {ADC_CHANNEL_2, ADC_CHANNEL_3};
-// #endif
-
-// static TaskHandle_t s_task_handle;
-// static const char *TAG = "EXAMPLE";
-
-// static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
-// {
-//   BaseType_t mustYield = pdFALSE;
-//   // Notify that ADC continuous driver has done enough number of conversions
-//   vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
-
-//   return (mustYield == pdTRUE);
-// }
-
-// static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc_continuous_handle_t *out_handle)
-// {
-//   adc_continuous_handle_t handle = NULL;
-
-//   adc_continuous_handle_cfg_t adc_config = {
-//       .max_store_buf_size = 1024,
-//       .conv_frame_size = EXAMPLE_READ_LEN,
-//   };
-//   ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
-
-//   adc_continuous_config_t dig_cfg = {
-//       .sample_freq_hz = 80 * 1000,
-//       .conv_mode = EXAMPLE_ADC_CONV_MODE,
-//       .format = EXAMPLE_ADC_OUTPUT_TYPE,
-//   };
-
-//   adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
-//   dig_cfg.pattern_num = channel_num;
-//   for (int i = 0; i < channel_num; i++)
-//   {
-//     adc_pattern[i].atten = EXAMPLE_ADC_ATTEN;
-//     adc_pattern[i].channel = channel[i] & 0x7;
-//     adc_pattern[i].unit = EXAMPLE_ADC_UNIT;
-//     adc_pattern[i].bit_width = EXAMPLE_ADC_BIT_WIDTH;
-
-//     ESP_LOGI(TAG, "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
-//     ESP_LOGI(TAG, "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
-//     ESP_LOGI(TAG, "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
-//   }
-//   dig_cfg.adc_pattern = adc_pattern;
-//   ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
-
-//   *out_handle = handle;
-// }
-
-// void setup()
-// {
-  
-// }
-
-// void loop()
-// {
-//   esp_err_t ret;
-//   uint32_t ret_num = 0;
-//   uint8_t result[EXAMPLE_READ_LEN] = {0};
-//   memset(result, 0xcc, EXAMPLE_READ_LEN);
-
-//   const uint16_t resArrLength = 1000;
-//   int16_t resArr[resArrLength] = {};
-//   int16_t resArrInd = 0;
-//   int16_t lastVal = 0;
-
-//   s_task_handle = xTaskGetCurrentTaskHandle();
-
-//   adc_continuous_handle_t handle = NULL;
-//   continuous_adc_init(channel, sizeof(channel) / sizeof(adc_channel_t), &handle);
-
-//   adc_continuous_evt_cbs_t cbs = {
-//       .on_conv_done = s_conv_done_cb,
-//   };
-//   ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
-//   ESP_ERROR_CHECK(adc_continuous_start(handle));
-
-//   while (1)
-//   {
-
-//     /**
-//      * This is to show you the way to use the ADC continuous mode driver event callback.
-//      * This `ulTaskNotifyTake` will block when the data processing in the task is fast.
-//      * However in this example, the data processing (print) is slow, so you barely block here.
-//      *
-//      * Without using this event callback (to notify this task), you can still just call
-//      * `adc_continuous_read()` here in a loop, with/without a certain block timeout.
-//      */
-//     // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-
-//     char unit[] = EXAMPLE_ADC_UNIT_STR(EXAMPLE_ADC_UNIT);
-
-//     while (1)
-//     {
-//       ret = adc_continuous_read(handle, result, EXAMPLE_READ_LEN, &ret_num, 20000000);
-//       if (ret == ESP_OK)
-//       {
-//         // ESP_LOGI("TASK", "ret is %x, ret_num is %" PRIu32 " bytes", ret, ret_num);
-//         for (int i = 0; i < ret_num; i += SOC_ADC_DIGI_RESULT_BYTES)
-//         {
-//           adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
-//           uint32_t chan_num = EXAMPLE_ADC_GET_CHANNEL(p);
-//           uint32_t data = EXAMPLE_ADC_GET_DATA(p);
-//           // /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
-//           // if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
-//           // {
-//           // ESP_LOGI(TAG, "Unit: %s, Channel: %" PRIu32 ", Value: %" PRIu32, unit, chan_num, data);
-//           // }
-//           // else
-//           // {
-//           //   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
-//           // }
-
-//           if (chan_num == ADC_CHANNEL_2)
-//           {
-//             // printf("$%d;\n", p->type1.data);
-
-//             lastVal = data;
-
-//             if (data > 500)
-//             {
-//               resArr[resArrInd] = data;
-//               resArrInd++;
-
-//               if (resArrInd > resArrLength)
-//               {
-//                 break;
-//               }
-//             }
-//           }
-//         }
-
-//         if ((resArrInd > 0 && lastVal < 450) || resArrInd > resArrLength)
-//         {
-//           break;
-//         }
-
-//         /**
-//          * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
-//          * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
-//          * usually you don't need this delay (as this task will block for a while).
-//          */
-//         vTaskDelay(1);
-//       }
-//       else if (ret == ESP_ERR_TIMEOUT)
-//       {
-//         // We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
-//         break;
-//       }
-//     }
-
-//     for (size_t i = 0; i < resArrInd; i++)
-//     {
-//       printf("$%d;\n", resArr[i]);
-//     }
-
-//     while (1)
-//     {
-//     }
-//   }
-
-//   ESP_ERROR_CHECK(adc_continuous_stop(handle));
-//   ESP_ERROR_CHECK(adc_continuous_deinit(handle));
-// }
-
-#pragma endregion //ADC test code end
