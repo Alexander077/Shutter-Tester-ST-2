@@ -24,7 +24,6 @@
 #include "lib/About.h"
 #include "lib/Images.h"
 
-// #define DISPLAY_I2C_ADDRESS 4
 // #define DISPLAY_CS SS
 #define DISPLAY_RESET 18
 #define DISPLAY_DC 33
@@ -45,8 +44,6 @@
 #define US_IN_MILLISECOND 1000
 
 #define ONE_ADC_CONVERSION_TIME_US 24.7746
-
-// #define SENSOR_TYPE_CODE_PIN A7
 
 // EEPROM memory layout: |saved measures (0-1012)|first run value(1023)|
 // #define EEPROM_FIRST_RUN_VAL_INDEX 1023
@@ -438,41 +435,57 @@ int16_t getFreeMeasurementSaveSlotsCount()
 	return freeCount;
 }
 
-/* StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
+StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   int16_t totalCount = getTotalMeasurementSaveSlotsCount();
   int16_t blockSize = getMeasurementSaveRecordSize();
   StoredMeasuredResult measRes = {-1};
 
-  for (int16_t i = 0; i < totalCount; i++)
-  {
-    EEPROM.get(i * blockSize, measRes);
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); 
+
+	// for (int16_t i = 0; i < totalCount; i++)
+	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
+	{
+    // EEPROM.get(i * blockSize, measRes);
 
     if (measRes.recordNumber == recordNumber)
     {
-      return measRes;
+      break;
     }
   }
-  return measRes;
-} */
 
-/* bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
+	fclose(recordsFile);
+  return measRes;
+}
+
+bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   int16_t totalCount = getTotalMeasurementSaveSlotsCount();
   int16_t blockSize = getMeasurementSaveRecordSize();
   StoredMeasuredResult measRes = {-1};
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+"); 
+	int32_t index = 0;
+	bool res = false;
 
-  for (int16_t i = 0; i < totalCount; i++)
+  // for (int16_t i = 0; i < totalCount; i++)
+	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
   {
-    EEPROM.get(i * blockSize, measRes);
+    // EEPROM.get(i * blockSize, measRes);
 
     if (measRes.recordNumber == recordNumber)
     {
       measRes.isDeleted = true;
-      return verifiedEEPROMPut(i * blockSize, measRes);
-    }
+			// return verifiedEEPROMPut(i * blockSize, measRes);
+    	fseek(recordsFile, index * blockSize, SEEK_SET);
+			res = fwrite(&measRes, blockSize, 1, recordsFile) == 1;
+		}
+
+		index++;
   }
-} */
+
+	fclose(recordsFile);
+	return res;
+}
 
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
@@ -489,6 +502,8 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int32_t index = 0;
 	int32_t r = 1;
 
+	// ESP_LOGI("", "Rec count: %" PRIi16, existingRecordsCount);
+
 	// for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
 	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
   {
@@ -497,7 +512,8 @@ int32_t drawMeasurementResultRecordSelectionScreen()
     {
       recordNumbers[r] = tempMeasRes.recordNumber;
       r++;
-    }
+			// ESP_LOGI("", "Rec. num: %" PRIi32, tempMeasRes.recordNumber);
+		}
 
 		index++;
   }
@@ -532,9 +548,9 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int16_t prevPage = 1;
 	int16_t curPage = 1;
 	const int16_t recTitleBufSize = 30;
-	int16_t totalPagesCount = ceil((double)totalSlotsCount / (double)pageSize);
+	int16_t totalPagesCount = ceil((double)totalArraySaize / (double)pageSize);
 	drawStringHCentered("Select record", 20);
-	int8_t itemsCountToPrint = min(pageSize, totalSlotsCount);
+	int8_t itemsCountToPrint = min(pageSize, totalArraySaize);
 
 	for (uint8_t i = 0; i < itemsCountToPrint; i++)
 	{
@@ -600,15 +616,16 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 			prevSelectedRecordIndex = curIndex;
 
 			curPage = ceil((curIndex + 1) / (double)pageSize);
+			// ESP_LOGI("", "Cur. page: %" PRIi16, curPage);
 
 			if (prevPage != curPage)
 			{
+				// ------------------ erase cur page
 				display->setTextColor(BLACK);
 
 				int16_t prevPageMaxIndex = pageSize * (prevPage - 1) + pageSize;
-				int16_t prevPageLimit = min(prevPageMaxIndex, totalSlotsCount);
+				int16_t prevPageLimit = min(prevPageMaxIndex, totalArraySaize);
 
-				// erase cur page
 				for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++)
 				{
 					display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
@@ -632,10 +649,11 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 				pageLabel += " of ";
 				pageLabel.add(totalPagesCount);
 				drawStringHCentered(pageLabel, curPageLabelY);
+				//--------------------------- end of erase cur page
 
 				display->setTextColor(WHITE);
 				int16_t nextPageMaxIndex = pageSize * (curPage - 1) + pageSize;
-				int16_t limit = min(nextPageMaxIndex, totalSlotsCount);
+				int16_t limit = min(nextPageMaxIndex, totalArraySaize);
 
 				// draw new page records
 				for (int16_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++)
@@ -652,6 +670,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 					char recTitle[recTitleBufSize];
 					formatRecordName(recordNumber, recTitle);
+					// ESP_LOGI("", "%" PRIi32, recordNumber);
 					display->print(recTitle);
 				}
 
@@ -992,18 +1011,6 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
   }
 }
 
-/* int16_t drawMessageScreen_P(const char *title, int16_t optionsCount = 0, const char *options[] = {})
-{
-  return _drawMessageScreen(true, title, optionsCount, options);
-}
-*/
-
-/* int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
-{
-  return _drawMessageScreen(false, title, optionsCount, options);
-} 
-*/
-
 MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
 	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
@@ -1017,428 +1024,196 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 	uint8_t ySpacing = 15;
 	uint8_t arrowXmargin = 15;
 
-	display->fillScreen(BLACK);
-	drawStringHCentered("Save measurement result?", 20);
-	
-	for (uint8_t i = 0; i < menuItemsCount; i++)
-	{
-		display->setCursor(xMargin, yMargin + (ySpacing * i));
-
-		if (i == (uint8_t)MeasurementSaveMenuItems::YES)
-		{
-			if (freeSlotsCount == 0)
-			{
-				display->setTextColor(DARKGREY);
-				display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
-				display->setTextColor(WHITE);
-			}
-			else
-			{
-				display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems), freeSlotsCount);
-			}
-		}
-		else
-		{
-			display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
-		}
-	}
-
-	display->setCursor(xMargin - arrowXmargin, yMargin);
-	display->print("->");
-
-	int8_t prevSelectedMenuItemIndex = 0;
-
 	while (true)
-  {
-    int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
-
-    if (resultIndex > menuItemsCount - 1)
-    {
-      startEncoderVal = AlexEncoder::counter - (menuItemsCount - 1);
-      resultIndex = menuItemsCount - 1;
-    }
-
-    if (resultIndex < 0)
-    {
-      resultIndex = 0;
-      startEncoderVal = AlexEncoder::counter;
-    }
-
-		//-------------------------
-    // displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, drawMoreThanZeroRecordsMenuItems);
-
-		if (prevSelectedMenuItemIndex != resultIndex)
+	{
+		display->fillScreen(BLACK);
+		drawStringHCentered("Save measurement result?", 20);
+		
+		for (uint8_t i = 0; i < menuItemsCount; i++)
 		{
-			display->setTextColor(BLACK);
-			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
-			display->print("->");
+			display->setCursor(xMargin, yMargin + (ySpacing * i));
 
-			display->setTextColor(WHITE);
-			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultIndex));
-			display->print("->");
-
-			prevSelectedMenuItemIndex = resultIndex;
-		}
-
-		//-----------------------------
-
-    if (button.isClicked())
-    {
-      MeasurementRecordSaveResult saveRes;
-
-      if (drawMoreThanZeroRecordsMenuItems)
-      {
-        switch ((MeasurementSaveMenuItems)resultIndex)
-        {
-					case MeasurementSaveMenuItems::NO:
-					{
-						return MeasurementSaveScreenResult::OK; // do not save the result
-						break;
-					}
-					case MeasurementSaveMenuItems::YES:
-					{
-						if (freeSlotsCount > 0)
-						{
-							ESP_LOGI("","Saving record...");
-							saveRes = saveMesurementResult(measurementRes);
-						}
-						else
-						{
-							continue;
-						}
-
-						break;
-					}
-					case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
-					{
-						ESP_LOGI("","Saving record...");
-						saveRes = saveMesurementResult(measurementRes, false, true);
-						break;
-					}
-					case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
-					{
-						ESP_LOGI("","Saving record...");
-						saveRes = saveMesurementResult(measurementRes, true);
-						break;
-					}
-					case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
-					{
-						int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
-
-						if (selectedMesurementRecordNumber == 0) // user selected "Back" option
-						{
-							continue;
-						}
-
-						ESP_LOGI("","Saving record...");
-						saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
-						break;
-					}
-					case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
-					{
-						return MeasurementSaveScreenResult::CANCEL;
-						break;
-					}
-					default:
-						halt("Halted. Unknown measurement save option");
-						break;
-				}
-      }
-      else
-      {
-        switch ((ZeroRecordsMeasurementSaveMenuItems)resultIndex)
-        {
-        case ZeroRecordsMeasurementSaveMenuItems::NO:
-        {
-          return MeasurementSaveScreenResult::OK; // do not save the result
-          break;
-        }
-        case ZeroRecordsMeasurementSaveMenuItems::YES:
-        {
-          if (freeSlotsCount > 0)
-          {
-            ESP_LOGI("","Saving record...");
-            saveRes = saveMesurementResult(measurementRes);
-          }
-          else
-          {
-            continue;
-          }
-
-          break;
-        }
-        case ZeroRecordsMeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
-        {
-          return MeasurementSaveScreenResult::CANCEL;
-          break;
-        }
-        default:
-          halt("Halted. Unknown measurement save option");
-          break;
-        }
-      }
-
-      char resMessage[50];
-
-      if (saveRes.isSuccess)
-      {
-        char buf[30];
-        formatRecordName(saveRes.newRecordNumber, buf);
-				#pragma GCC diagnostic ignored "-Wformat"
-        sprintf(resMessage, "Record saved as '%s'", buf);
-				#pragma GCC diagnostic pop		
-      }
-      else
-      {
-        sprintf(resMessage, "Failed to save record");
-      }
-      const char *option[] = {"OK"};
-      drawMessageScreen(resMessage, 1, option);
-      return MeasurementSaveScreenResult::OK;
-    }
-  }
-}
-
-void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
-{
-	// ---------------------------------------------------------------
-	// Shutter result screen
-	//   shutter time im us/ms (e.g. 1.55 ms)
-	//   shutter speed in fraction of a sec. (e.g. 1/750 sec)
-	//   Distance from closest shutter speeds graphically
-
-	// Total result screen
-	//   1 to 2 sensor first curtain travel time in ms
-	//   1 to 2 sensor second curtain travel time in ms
-
-	//   1 to 2 sensor first curtain speed in m/s
-	//   1 to 2 sensor second curtain speed in m/s
-
-	//   1-st curtain est. total travel time in ms
-	//   2-st curtain est. total travel time in ms
-
-	//   Slit size for first and second sensor in mm (e.g. 1.5mm)
-	// ---------------------------------------------------------------
-
-	// Sensor 0 timecodes: 16599544|16601460
-	// Sensor 1 timecodes: 16590476|16592600
-	// Sensor 0 max val.: 163
-	// Sensor 1 max val.: 167
-
-	// pin0shutterOpenStartTime = 16599544;
-	// pin0shutterOpenEndTime = 16601460;
-	// pin1shutterOpenStartTime = -1;
-	// pin1shutterOpenEndTime = -1;
-	// sensor0Max = 163;
-	// sensor1Max = 20;
-	// curtainMovement = CurtainMovement::HORISONTAL;
-
-	// Serial.println(String("Sensor 0 timecodes: ") + pin0shutterOpenStartTime + "|" + pin0shutterOpenEndTime);
-	// Serial.println(String("Sensor 1 timecodes: ") + pin1shutterOpenStartTime + "|" + pin1shutterOpenEndTime);
-	// Serial.println(String("Sensor 0 max val.: ") + sensor0Max);
-	// Serial.println(String("Sensor 1 max val.: ") + sensor1Max);
-
-	bool sensor0DataOk = false;
-	bool sensor1DataOk = false;
-	// double rawSensor0TimeTakenUs = -1;
-	// double rawSensor1TimeTakenUs = -1;
-	double correctedSensor0TimeTakenUs = -1;
-	double correctedSensor1TimeTakenUs = -1;
-
-	// Serial.println(String("Sensor 0 time taken: ") + (sensor0CorrectedTime / 1000.0) + " ms");
-	// Serial.println(String("Sensor 1 time taken: ") + (sensor1CorrectedTime / 1000.0) + " ms");
-
-	MeasuredResult res;
-	res.selectedCurtainMovement = curtainMovement;
-
-	if (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL)
-	{
-		res.sensor0Time = SENSOR_LIGHT_IS_TOO_DIM;
-	}
-	else if (sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL)
-	{
-		res.sensor0Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
-	}
-	else
-	{
-		// rawSensor0TimeTakenUs = pin0shutterOpenEndTime - pin0shutterOpenStartTime;                // in microseconds
-		correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
-		res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
-
-		if (res.sensor0Time < TOO_SHORT_SENSOR_TIME)
-		{
-			res.sensor0Time = SENSOR_TIME_IS_TOO_SHORT;
-		}
-		else
-		{
-			sensor0DataOk = true;
-		}
-	}
-
-	if (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL)
-	{
-		res.sensor1Time = SENSOR_LIGHT_IS_TOO_DIM;
-	}
-	else if (sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL)
-	{
-		res.sensor1Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
-	}
-	else
-	{
-		// rawSensor1TimeTakenUs = pin1shutterOpenEndTime - pin1shutterOpenStartTime;                // in microseconds
-		correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
-		res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
-
-		if (res.sensor1Time < TOO_SHORT_SENSOR_TIME)
-		{
-			res.sensor1Time = SENSOR_TIME_IS_TOO_SHORT;
-		}
-		else
-		{
-			sensor1DataOk = true;
-		}
-	}
-
-	ESP_LOGI("", "Sensor 0 max: %" PRIu16, sensor0Max);
-	ESP_LOGI("", "Sensor 1 max: %" PRIu16, sensor1Max);
-	ESP_LOGI("", "Sensor 0 time: %" PRIu32, rawSensor0TimeTakenUs);
-	ESP_LOGI("", "Sensor 1 time: %" PRIu32, rawSensor1TimeTakenUs);
-	ESP_LOGI("", "Curtain 1 time: %" PRIu32, curtain1TimeUs);
-	ESP_LOGI("", "Curtain 2 time: %" PRIu32, curtain2TimeUs);
-
-	CurtainTimings curtainTimings;
-	double sensorDistance = 0;
-	double frameSize = 0;
-
-	// setADCprescaler(ADCPrescaler::ADC_PRESCALER_128); // needed to correctly read the sensor code
-	// delay(100);
-	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
-	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove
-	// setupADC(); // resetup ADC
-	// Serial.print("Sensor unit code: ");
-	// Serial.println(curSensorCode);
-
-	// int8_t curSensorDataIndex = -1;
-
-	// for (size_t i = 0; i < sensorsDataArraySize; i++)
-	// {
-	//   if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
-	//   {
-	//     curSensorDataIndex = i;
-	//     break;
-	//   }
-	// }
-
-	// if (curSensorDataIndex == -1)
-	// {
-	//   halt("Sensor data not found. Program halted");
-	// }
-
-	int8_t curSensorIndex = 0;//TODO: change to actual sensor
-	SensorUnitData curSensorData = sensorsData[curSensorIndex]; // TODO: make sensor selection functionality
-	res.usedSensorType = curSensorData.Type;
-
-	ESP_LOGI("", "Sensor unit name: %s", SensorTypeStr[(uint8_t)curSensorData.Type]);
-
-	if (curtainMovement == CurtainMovement::LEAF)
-	{
-		res.curtain1spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.curtain1spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.curtain1TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.curtain2spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.curtain2spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.curtain2TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.slitWidthSensor0 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.slitWidthSensor1 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-		res.slitWidthAverage = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
-	}
-	else // for focal plane shutters
-	{
-		if (sensor0DataOk && sensor1DataOk) // if both sensors data is valid
-		{
-			curtainTimings.curtain1spanAtime = curtain1TimeUs;
-			curtainTimings.curtain2spanAtime = curtain2TimeUs;
-
-			if (curtainMovement == CurtainMovement::HORISONTAL || curtainMovement == CurtainMovement::VERTICAL)
+			if (i == (uint8_t)MeasurementSaveMenuItems::YES)
 			{
-				// if (pin0shutterOpenStartTime < pin1shutterOpenStartTime) // left to right or top to bottom curtans movement
-				// {
-				//   curtainTimings.curtain1spanAtime = (double)(pin1shutterOpenStartTime - pin0shutterOpenStartTime);
-				//   curtainTimings.curtain2spanAtime = (double)(pin1shutterOpenEndTime - pin0shutterOpenEndTime);
-				// }
-				// else // right to left or bottom to top curtans movement
-				// {
-				//   curtainTimings.curtain1spanAtime = (double)(pin0shutterOpenStartTime - pin1shutterOpenStartTime);
-				//   curtainTimings.curtain2spanAtime = (double)(pin0shutterOpenEndTime - pin1shutterOpenEndTime);
-				// }
-
-				if (curtainMovement == CurtainMovement::HORISONTAL)
+				if (freeSlotsCount == 0)
 				{
-					frameSize = curSensorData.FrameWidth;										 // in millimiters
-					sensorDistance = curSensorData.HorisontalSensorDistance; // in millimiters
+					display->setTextColor(DARKGREY);
+					display->printf("%s(no free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
+					display->setTextColor(WHITE);
 				}
 				else
 				{
-					frameSize = curSensorData.FrameHeight;								 // in millimiters
-					sensorDistance = curSensorData.VerticalSensorDistance; // in millimiters
+					display->printf("%s(%i free slots)", GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems), freeSlotsCount);
 				}
 			}
-
-			calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
-
-			if (res.curtain1spanAspeed < 0 ||
-					res.curtain1spanAtime < 0 ||
-					res.curtain1TotalTime < 0 ||
-					res.curtain2spanAspeed < 0 ||
-					res.curtain2spanAtime < 0 ||
-					res.curtain2TotalTime < 0 ||
-					res.sensor0Time < 0 ||
-					res.sensor1Time < 0 ||
-					res.slitWidthSensor0 < 0 ||
-					res.slitWidthSensor1 < 0 ||
-					res.slitWidthAverage < 0)
-			{ // mark data as invalid
-				res.sensor0Time = MEASUREMENTS_IS_INVALID_VAL;
-				res.sensor1Time = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain1spanAtime = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain1spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain1TotalTime = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain2spanAtime = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain2spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
-				res.curtain2TotalTime = MEASUREMENTS_IS_INVALID_VAL;
-				res.slitWidthSensor0 = MEASUREMENTS_IS_INVALID_VAL;
-				res.slitWidthSensor1 = MEASUREMENTS_IS_INVALID_VAL;
-				res.slitWidthAverage = MEASUREMENTS_IS_INVALID_VAL;
-				sensor0DataOk = false;
-				sensor1DataOk = false;
+			else
+			{
+				display->println(GetSaveMasurementMenuItemTitle((MeasurementSaveMenuItems)i, !drawMoreThanZeroRecordsMenuItems));
 			}
 		}
-		else
+
+		display->setCursor(xMargin - arrowXmargin, yMargin);
+		display->print("->");
+
+		int16_t prevSelectedMenuItemIndex = 0;
+		bool runLoop = true;
+
+		while (runLoop)
 		{
-			res.curtain1spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.curtain1spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.curtain1TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.curtain2spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.curtain2spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.curtain2TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.slitWidthSensor0 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.slitWidthSensor1 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
-			res.slitWidthAverage = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
+
+			if (resultIndex > menuItemsCount - 1)
+			{
+				startEncoderVal = AlexEncoder::counter - (menuItemsCount - 1);
+				resultIndex = menuItemsCount - 1;
+			}
+
+			if (resultIndex < 0)
+			{
+				resultIndex = 0;
+				startEncoderVal = AlexEncoder::counter;
+			}
+
+			//-------------------------
+			// displayManager.drawMeasurementSaveScreen(resultIndex, freeSlotsCount, drawMoreThanZeroRecordsMenuItems);
+
+			if (prevSelectedMenuItemIndex != resultIndex)
+			{
+				display->setTextColor(BLACK);
+				display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+				display->print("->");
+
+				display->setTextColor(WHITE);
+				display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultIndex));
+				display->print("->");
+
+				prevSelectedMenuItemIndex = resultIndex;
+			}
+
+			//-----------------------------
+
+			if (button.isClicked())
+			{
+				MeasurementRecordSaveResult saveRes;
+
+				if (drawMoreThanZeroRecordsMenuItems)
+				{
+					switch ((MeasurementSaveMenuItems)resultIndex)
+					{
+						case MeasurementSaveMenuItems::NO:
+						{
+							return MeasurementSaveScreenResult::OK; // do not save the result
+							break;
+						}
+						case MeasurementSaveMenuItems::YES:
+						{
+							if (freeSlotsCount > 0)
+							{
+								ESP_LOGI("","Saving record...");
+								saveRes = saveMesurementResult(measurementRes);
+							}
+							else
+							{
+								continue;
+							}
+
+							break;
+						}
+						case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
+						{
+							ESP_LOGI("","Saving record...");
+							saveRes = saveMesurementResult(measurementRes, false, true);
+							break;
+						}
+						case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
+						{
+							ESP_LOGI("","Saving record...");
+							saveRes = saveMesurementResult(measurementRes, true);
+							break;
+						}
+						case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
+						{
+							int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
+
+							if (selectedMesurementRecordNumber == 0) // user selected "Back" option
+							{
+								runLoop = false;
+								startEncoderVal = AlexEncoder::counter - 4;//Point to same menu item
+								continue;
+							}
+
+							ESP_LOGI("","Saving record...");
+							saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
+							break;
+						}
+						case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+						{
+							return MeasurementSaveScreenResult::CANCEL;
+							break;
+						}
+						default:
+							halt("Halted. Unknown measurement save option");
+							break;
+					}
+				}
+				else
+				{
+					switch ((ZeroRecordsMeasurementSaveMenuItems)resultIndex)
+					{
+						case ZeroRecordsMeasurementSaveMenuItems::NO:
+						{
+							return MeasurementSaveScreenResult::OK; // do not save the result
+							break;
+						}
+						case ZeroRecordsMeasurementSaveMenuItems::YES:
+						{
+							if (freeSlotsCount > 0)
+							{
+								ESP_LOGI("","Saving record...");
+								saveRes = saveMesurementResult(measurementRes);
+							}
+							else
+							{
+								continue;
+							}
+
+							break;
+						}
+						case ZeroRecordsMeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+						{
+							return MeasurementSaveScreenResult::CANCEL;
+							break;
+						}
+						default:
+							halt("Halted. Unknown measurement save option");
+							break;
+					}
+				}
+
+				char resMessage[50];
+
+				if (saveRes.isSuccess)
+				{
+					char buf[30];
+					formatRecordName(saveRes.newRecordNumber, buf);
+					#pragma GCC diagnostic ignored "-Wformat"
+					sprintf(resMessage, "Record saved as '%s'", buf);
+					#pragma GCC diagnostic pop		
+				}
+				else
+				{
+					sprintf(resMessage, "Failed to save record");
+				}
+				const char *option[] = {"OK"};
+				drawMessageScreen(resMessage, 1, option);
+				return MeasurementSaveScreenResult::OK;
+			}
 		}
 	}
+}
 
-	// Serial.println(res.curtain1spanAspeed);
-	// Serial.println(res.curtain1spanAtime);
-	// Serial.println(res.curtain1TotalTime);
-	// Serial.println(res.curtain2spanAspeed);
-	// Serial.println(res.curtain2spanAtime);
-	// Serial.println(res.curtain2TotalTime);
-	// Serial.println(res.sensor0Time);
-	// Serial.println(res.sensor1Time);
-	// Serial.println(res.slitWidthSensor0);
-	// Serial.println(res.slitWidthSensor1);
-	// Serial.println(res.slitWidthAverage);
-
+void renderMeasuredResult(MeasuredResult &res)
+{
 	int16_t startEncoderVal = AlexEncoder::counter;
 	int8_t prevPageIndex = -1;
 	display->fillScreen(BLACK);
@@ -1460,7 +1235,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		}
 
 		// displayManager.drawMeasuredScreen(resultPageIndex, res);
-		#pragma region //display interaction
+		#pragma region // display interaction
 		// int8_t resultPageIndex = getInputParamsArrayInt(1);
 		bool isReadingsValid = res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL;
 
@@ -1685,7 +1460,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 				curPos += lineSpacing + 3;
 				display->setCursor(0, curPos);
-				display->printf(" Used sensor.: %s", SensorTypeStr[curSensorIndex]);
+				display->printf(" Used sensor.: %s", SensorTypeStr[(uint8_t)res.usedSensorType]);
 
 				curPos += lineSpacing;
 				display->setCursor(0, curPos);
@@ -1697,24 +1472,231 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 				drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
 			}
 		}
-		#pragma endregion //end of display interaction
+		#pragma endregion // end of display interaction
 
 		if (button.isClicked())
 		{
-			if (sensor0DataOk || sensor1DataOk)
-			{
-				// auto screenRes = drawMeasurementSaveScreen(res);
-
-				// if (screenRes == MeasurementSaveScreenResult::CANCEL)
-				// {
-				// startEncoderVal = AlexEncoder::counter;
-				// continue;
-				// }
-			}
-
 			return;
 		}
 	}
+}
+
+void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
+{
+	// ---------------------------------------------------------------
+	// Shutter result screen
+	//   shutter time im us/ms (e.g. 1.55 ms)
+	//   shutter speed in fraction of a sec. (e.g. 1/750 sec)
+	//   Distance from closest shutter speeds graphically
+
+	// Total result screen
+	//   1 to 2 sensor first curtain travel time in ms
+	//   1 to 2 sensor second curtain travel time in ms
+
+	//   1 to 2 sensor first curtain speed in m/s
+	//   1 to 2 sensor second curtain speed in m/s
+
+	//   1-st curtain est. total travel time in ms
+	//   2-st curtain est. total travel time in ms
+
+	//   Slit size for first and second sensor in mm (e.g. 1.5mm)
+	// ---------------------------------------------------------------
+
+	// sensor0Max = 163;
+	// sensor1Max = 20;
+	// curtainMovement = CurtainMovement::HORISONTAL;
+
+	bool sensor0DataOk = false;
+	bool sensor1DataOk = false;
+	// double rawSensor0TimeTakenUs = -1;
+	// double rawSensor1TimeTakenUs = -1;
+	double correctedSensor0TimeTakenUs = -1;
+	double correctedSensor1TimeTakenUs = -1;
+
+	MeasuredResult res;
+	res.selectedCurtainMovement = curtainMovement;
+
+	if (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor0Time = SENSOR_LIGHT_IS_TOO_DIM;
+	}
+	else if (sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor0Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
+	}
+	else
+	{
+		correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
+		res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+
+		if (res.sensor0Time < TOO_SHORT_SENSOR_TIME)
+		{
+			res.sensor0Time = SENSOR_TIME_IS_TOO_SHORT;
+		}
+		else
+		{
+			sensor0DataOk = true;
+		}
+	}
+
+	if (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor1Time = SENSOR_LIGHT_IS_TOO_DIM;
+	}
+	else if (sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL)
+	{
+		res.sensor1Time = SENSOR_LIGHT_IS_TOO_BRIGHT;
+	}
+	else
+	{
+		correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
+		res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+
+		if (res.sensor1Time < TOO_SHORT_SENSOR_TIME)
+		{
+			res.sensor1Time = SENSOR_TIME_IS_TOO_SHORT;
+		}
+		else
+		{
+			sensor1DataOk = true;
+		}
+	}
+
+	ESP_LOGI("", "Sensor 0 max: %" PRIu16, sensor0Max);
+	ESP_LOGI("", "Sensor 1 max: %" PRIu16, sensor1Max);
+	ESP_LOGI("", "Sensor 0 raw time: %" PRIu32, rawSensor0TimeTakenUs);
+	ESP_LOGI("", "Sensor 1 raw time: %" PRIu32, rawSensor1TimeTakenUs);
+	ESP_LOGI("", "Sensor 0 corrected time: %" PRIu32, (uint32_t)correctedSensor0TimeTakenUs);
+	ESP_LOGI("", "Sensor 1 corrected time: %" PRIu32, (uint32_t)correctedSensor1TimeTakenUs);
+	ESP_LOGI("", "Curtain 1 time: %" PRIu32, curtain1TimeUs);
+	ESP_LOGI("", "Curtain 2 time: %" PRIu32, curtain2TimeUs);
+
+	CurtainTimings curtainTimings;
+	double sensorDistance = 0;
+	double frameSize = 0;
+
+	// uint16_t curSensorCode = analogRead(SENSOR_TYPE_CODE_PIN);
+	// uint16_t curSensorCode = 927;//TODO: mocked, comment or remove
+
+	// int8_t curSensorDataIndex = -1;
+
+	// for (size_t i = 0; i < sensorsDataArraySize; i++)
+	// {
+	//   if (curSensorCode >= sensorsData[i].minAdcVal && curSensorCode <= sensorsData[i].maxAdcVal)
+	//   {
+	//     curSensorDataIndex = i;
+	//     break;
+	//   }
+	// }
+
+	// if (curSensorDataIndex == -1)
+	// {
+	//   halt("Sensor data not found. Program halted");
+	// }
+
+	int8_t curSensorIndex = 0;//TODO: change to actual sensor
+	SensorUnitData curSensorData = sensorsData[curSensorIndex]; // TODO: make sensor selection functionality
+	res.usedSensorType = curSensorData.Type;
+
+	ESP_LOGI("", "Sensor unit name: %s", SensorTypeStr[(uint8_t)curSensorData.Type]);
+
+	if (curtainMovement == CurtainMovement::LEAF)
+	{
+		res.curtain1spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain1spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain1TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2spanAtime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2spanAspeed = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.curtain2TotalTime = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthSensor0 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthSensor1 = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+		res.slitWidthAverage = NOT_AVAILABLE_FOR_LEAF_SHUTERS;
+	}
+	else // for focal plane shutters
+	{
+		if (sensor0DataOk && sensor1DataOk) // if both sensors data is valid
+		{
+			curtainTimings.curtain1spanAtime = curtain1TimeUs;
+			curtainTimings.curtain2spanAtime = curtain2TimeUs;
+
+			if (curtainMovement == CurtainMovement::HORISONTAL)
+			{
+				frameSize = curSensorData.FrameWidth;										 // in millimiters
+				sensorDistance = curSensorData.HorisontalSensorDistance; // in millimiters
+			}
+			else if (curtainMovement == CurtainMovement::VERTICAL)
+			{
+				frameSize = curSensorData.FrameHeight;								 // in millimiters
+				sensorDistance = curSensorData.VerticalSensorDistance; // in millimiters
+			}
+
+			calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
+
+			if (res.curtain1spanAspeed < 0 ||
+					res.curtain1spanAtime < 0 ||
+					res.curtain1TotalTime < 0 ||
+					res.curtain2spanAspeed < 0 ||
+					res.curtain2spanAtime < 0 ||
+					res.curtain2TotalTime < 0 ||
+					res.sensor0Time < 0 ||
+					res.sensor1Time < 0 ||
+					res.slitWidthSensor0 < 0 ||
+					res.slitWidthSensor1 < 0 ||
+					res.slitWidthAverage < 0)
+			{ // mark data as invalid
+				res.sensor0Time = MEASUREMENTS_IS_INVALID_VAL;
+				res.sensor1Time = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1spanAtime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain1TotalTime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2spanAtime = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2spanAspeed = MEASUREMENTS_IS_INVALID_VAL;
+				res.curtain2TotalTime = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthSensor0 = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthSensor1 = MEASUREMENTS_IS_INVALID_VAL;
+				res.slitWidthAverage = MEASUREMENTS_IS_INVALID_VAL;
+				sensor0DataOk = false;
+				sensor1DataOk = false;
+			}
+		}
+		else
+		{
+			res.curtain1spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain1spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain1TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2spanAtime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2spanAspeed = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.curtain2TotalTime = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthSensor0 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthSensor1 = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+			res.slitWidthAverage = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
+		}
+	}
+
+	// Serial.println(res.curtain1spanAspeed);
+	// Serial.println(res.curtain1spanAtime);
+	// Serial.println(res.curtain1TotalTime);
+	// Serial.println(res.curtain2spanAspeed);
+	// Serial.println(res.curtain2spanAtime);
+	// Serial.println(res.curtain2TotalTime);
+	// Serial.println(res.sensor0Time);
+	// Serial.println(res.sensor1Time);
+	// Serial.println(res.slitWidthSensor0);
+	// Serial.println(res.slitWidthSensor1);
+	// Serial.println(res.slitWidthAverage);
+
+	MeasurementSaveScreenResult saveScreenRes = MeasurementSaveScreenResult::OK;
+
+	do
+	{
+		renderMeasuredResult(res);
+		
+		if (sensor0DataOk || sensor1DataOk)
+		{
+			saveScreenRes = drawMeasurementSaveScreen(res);
+		} 
+
+	} while (saveScreenRes == MeasurementSaveScreenResult::CANCEL);
 }
 
 void drawMeasuringScreen()
@@ -2397,7 +2379,7 @@ void drawAboutScreen()
   }
 }
 
-/* void drawViewRecordsScreen()
+void drawViewRecordsScreen()
 {
   while (true)
   {
@@ -2412,7 +2394,7 @@ void drawAboutScreen()
 
     if (selectedResult.recordNumber == -1)
     {
-      halt(F("Halted. selectedRecordNumber is not found"));
+      halt("Halted. selectedRecordNumber is not found");
     }
 
     MeasuredResult resultToDisplay = {};
@@ -2430,76 +2412,49 @@ void drawAboutScreen()
     resultToDisplay.usedSensorType = selectedResult.usedSensorType;
     resultToDisplay.selectedCurtainMovement = selectedResult.selectedCurtainMovement;
 
-    int16_t startEncoderVal = AlexEncoder::counter;
+		renderMeasuredResult(resultToDisplay);
 
-    while (true)
-    {
-      int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+		const char *options[] = {"Go back to list", "Go to main menu", "Delete record"};
+		int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
 
-      if (resultPageIndex > RESULT_PAGES_COUNT - 1)
-      {
-        startEncoderVal = AlexEncoder::counter - (RESULT_PAGES_COUNT - 1);
-        resultPageIndex = RESULT_PAGES_COUNT - 1;
-      }
+		if (selectedOptionIndex == 0) // Go back to list
+		{
+			continue;
+		}
 
-      if (resultPageIndex < 0)
-      {
-        resultPageIndex = 0;
-        startEncoderVal = AlexEncoder::counter;
-      }
+		if (selectedOptionIndex == 1) // Go to main menu
+		{
+			return;
+		}
 
-      displayManager.drawMeasuredScreen(resultPageIndex, resultToDisplay);
+		if (selectedOptionIndex == 2) // Delete record
+		{
+			const char *options[] = {"Yes", "No"};
+			int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);
 
-      if (button.isClicked())
-      {
-        const char *options[] = {
-            (const char *)F("Go back to list"),
-            (const char *)F("Go to main menu"),
-            (const char *)F("Delete record")};
-        int16_t selectedOptionIndex = drawMessageScreen_P((const char *)F("What's next?"), 3, options);
+			if (deleteOptionIndex == 0) // Delete record
+			{
+				bool deleteRes = deleteMeasurementStoredResultByNumber(selectedResult.recordNumber);
+				char *msg;
 
-        if (selectedOptionIndex == 0) // Go back to list
-        {
-          break;
-        }
+				if (!deleteRes)
+				{
+					msg = "Failed to delete record";
+				}
+				else
+				{
+					msg = "Record deleted";
+				}
 
-        if (selectedOptionIndex == 1) // Go to main menu
-        {
-          return;
-        }
+				const char *deleteResOptions[] = {"OK"};
+				drawMessageScreen(msg, 1, deleteResOptions);
+			}
+			continue; // go to records list selection
+		}
 
-        if (selectedOptionIndex == 2) // Delete record
-        {
-          const char *options[] = {
-              (const char *)F("Yes"),
-              (const char *)F("No")};
-          int16_t deleteOptionIndex = drawMessageScreen_P((const char *)F("Really delete?"), 2, options);
-
-          if (deleteOptionIndex == 0) // Delete record
-          {
-            bool deleteRes = deleteMeasurementStoredResultByNumber(selectedResult.recordNumber);
-            char *msg;
-
-            if (!deleteRes)
-            {
-              msg = (char *)F("Failed to delete record");
-            }
-            else
-            {
-              msg = (char *)F("Record deleted");
-            }
-
-            const char *failedDeleteOptions[] = {(const char *)F("OK")};
-            drawMessageScreen_P(msg, 1, failedDeleteOptions);
-          }
-          break; // go to records list selection
-        }
-
-        return;
-      }
-    }
+		return;
   }
-} */
+}
 
 void drawMainMenu()
 {
@@ -2576,7 +2531,7 @@ void drawMainMenu()
         }
         case MainMenuItems::MEASURMENT_HISTORY:
         {
-          // drawViewRecordsScreen();
+          drawViewRecordsScreen();
           break;
         }
 
@@ -2771,14 +2726,9 @@ void initStorage()
 
 void setup() 
 {
-  // Serial.begin(115200);
-  // while (!Serial);
-
   display->begin();
   display->fillScreen(BLACK);
   display->setTextColor(WHITE);
-  // display->setCursor(10, 10);
-  // display->print("Test");
   display->setFont(u8g2_font_6x13_tf);
 
   AlexEncoder::init(ENCODER_A_PIN, ENCODER_B_PIN);
@@ -2788,13 +2738,12 @@ void setup()
   timerAlarm(timer, US_IN_SECOND / USER_INPUT_POLLING_FREQ_HZ, true, 0);
 
   initADC();
-	// delay(4000);
 	initStorage();
 }
 
 void loop() 
 {
-	MeasuredResult r = {
+	/* MeasuredResult r = {
 			3,
 			4,
 			3,
@@ -2806,10 +2755,16 @@ void loop()
 			9,
 			12,
 			12};
-	drawMeasurementSaveScreen(r);
-	// int32_t selectedRecordIndex = drawMeasurementResultRecordSelectionScreen();
-	// Serial.println(selectedRecordIndex);
-	halt();
+	drawMeasurementSaveScreen(r); */
+
+	/* sensor0Max = 2000;
+	sensor1Max = 2100;
+	curtainMovement = CurtainMovement::HORISONTAL;
+	drawMeasuredScreen(490,495, 2500, 2510); */
+
+	// drawViewRecordsScreen();
+
+	// halt();
 
 	drawMainMenu();
 }
