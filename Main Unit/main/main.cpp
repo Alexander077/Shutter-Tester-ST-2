@@ -116,29 +116,16 @@ CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
 int8_t curSensorIndex = -1;
 
 #define ADC_UNIT ADC_UNIT_1
-#define _ADC_UNIT_STR(unit) #unit
-#define ADC_UNIT_STR(unit) _ADC_UNIT_STR(unit)
 #define ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
 #define ADC_ATTEN ADC_ATTEN_DB_12
 #define ADC_BIT_WIDTH SOC_ADC_DIGI_MAX_BITWIDTH
 #define ADC_READ_LEN 256
+#define ADC_CONVERSION_FREQ_HZ 80000
 
-#if CONFIG_IDF_TARGET_ESP32 || CONFIG_IDF_TARGET_ESP32S2
 #define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
 #define ADC_GET_CHANNEL(p_data) ((p_data)->type1.channel)
 #define ADC_GET_DATA(p_data) ((p_data)->type1.data)
-#else
-#define EXAMPLE_ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE2
-#define EXAMPLE_ADC_GET_CHANNEL(p_data) ((p_data)->type2.channel)
-#define EXAMPLE_ADC_GET_DATA(p_data) ((p_data)->type2.data)
-#endif
-
-
-#if CONFIG_IDF_TARGET_ESP32
-static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
-#else
 static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
-#endif
 
 // static TaskHandle_t s_task_handle;
 adc_continuous_handle_t handle = NULL;
@@ -162,14 +149,14 @@ static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc
   };
   ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
 
-  adc_continuous_config_t dig_cfg = {
-      .sample_freq_hz = 80 * 1000,
-      // .sample_freq_hz = SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
-      .conv_mode = ADC_CONV_MODE,
-      .format = ADC_OUTPUT_TYPE,
-  };
+	adc_continuous_config_t dig_cfg = {
+			.sample_freq_hz = ADC_CONVERSION_FREQ_HZ,
+			// .sample_freq_hz = SOC_ADC_SAMPLE_FREQ_THRES_HIGH,
+			.conv_mode = ADC_CONV_MODE,
+			.format = ADC_OUTPUT_TYPE,
+	};
 
-  adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
+	adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
   dig_cfg.pattern_num = channel_num;
 
   for (int i = 0; i < channel_num; i++)
@@ -197,39 +184,39 @@ struct SensorUnitData
   double FrameHeight;              // in millimiters
   double HorisontalSensorDistance; // in millimiters
   double VerticalSensorDistance;   // in millimiters
-  uint16_t minAdcVal;
-  uint16_t maxAdcVal;
 };
 
-const SensorUnitData sensorsData[sensorsDataArraySize] = {
-    {SensorType::Frame35mm,
-     36,
-     24,
-     16.0,
-     10.6,
-     700, // 3.3 kOhm
-     840},
-    {SensorType::Frame6x45,
-     60,
-     45,
-     26.67,
-     20.0,
-     160, // 47 kOhm
-     196},
-    {SensorType::Frame6x6,
-     60,
-     60,
-     26.67,
-     26.67,
-     900, // 1 kOhm
-     940},
-    {SensorType::Frame6x7,
-     70,
-     60,
-     31.11,
-     26.67,
-     82, // 100 kOhm
-     100}};
+const SensorUnitData sensorsData[sensorsDataArraySize] = 
+{
+	{
+		SensorType::Frame35mm,
+		36,
+		24,
+		16.0,
+		10.6,
+	},
+	{
+		SensorType::Frame6x45,
+		60,
+		45,
+		16.0,
+		10.6,
+	},
+	{
+		SensorType::Frame6x6,
+		60,
+		60,
+		16.0,
+		10.6,
+	},
+	{
+		SensorType::Frame6x7,
+		70,
+		60,
+		16.0,
+		10.6,
+	}
+};
 
 struct Rect
 {
@@ -1971,10 +1958,7 @@ void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint
 	static int8_t prevSensor2SignalStatus = -1;
 	static int8_t prevSensor1ActualBarWidth = 0;
 	static int8_t prevSensor2ActualBarWidth = 0;
-	static const char *sensorStatuses[3] = {
-			"Too dim",
-			"Too bright",
-			"OK"};
+	static const char *sensorStatuses[3] = {"Too dim","Too bright","OK"};
 	const uint8_t barWidthPx = 80;
 	const uint8_t barX = 10;
 	double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
@@ -2075,6 +2059,11 @@ void drawLightCheckScreen()
 	char *lightQualityStatusesStr[3] = {"Unknown", "Ok", "Bad"};
 	display->fillScreen(BLACK);
 	
+	uint8_t barX = 65;
+	uint8_t barY = 52;
+	drawSensorSignalLevelBar(barX, barY, 1, 0); //draw zero value to force ful bar visibility
+	drawSensorSignalLevelBar(barX, barY, 2, 0); // draw zero value to force ful bar visibility
+
 	while (true)
 	{
 		sensor0Max = 0;
@@ -2217,13 +2206,13 @@ void drawLightCheckScreen()
 		display->setTextColor(lightQualityStatusTextColors[(int8_t)resLightQualityStatus]);
 		drawStringHCentered(lightQualityStatusesStr[(int8_t)resLightQualityStatus], y);
 
-		x = 65;
-		y = 52;
+		barX = 65;
+		barY = 52;
 		
 		display->setTextColor(WHITE);
 		display->setTextSize(1);
-		drawSensorSignalLevelBar(x, y, 1, sensor0Max);
-		drawSensorSignalLevelBar(x, y, 2, sensor1Max);
+		drawSensorSignalLevelBar(barX, barY, 1, sensor0Max);
+		drawSensorSignalLevelBar(barX, barY, 2, sensor1Max);
 		
 		#pragma endregion //display interaction
 

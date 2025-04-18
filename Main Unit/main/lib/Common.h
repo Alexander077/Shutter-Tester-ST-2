@@ -112,24 +112,7 @@ void halt(const char *message)
   while (true);
 }
 
-// void halt(const __FlashStringHelper *message)
-// {
-//   int16_t bufferSize = strlen_P((const char *)message) + 1;
-//   char buffer[bufferSize];
-//   strncpy_P(buffer, (const char *)message, bufferSize);
-//   halt(buffer);
-// }
-
 void halt()
 {
   halt("\0");
 }
-
-// template <typename T>
-// bool verifiedEEPROMPut(const uint16_t index, const T &data)
-// {
-//   EEPROM.put(index, data);
-//   T dataForVerification;
-//   EEPROM.get(index, dataForVerification);
-//   return data == dataForVerification;
-// }
