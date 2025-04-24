@@ -2517,7 +2517,11 @@ void initStorage()
 
 void setup() 
 {
-  display->begin();
+	// pinMode(15, OUTPUT);
+	// digitalWrite(15, HIGH);
+	// halt();
+
+	display->begin();
   display->fillScreen(BLACK);
   display->setTextColor(WHITE);
   display->setFont(u8g2_font_6x13_tf);
