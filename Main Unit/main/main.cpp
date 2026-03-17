@@ -7,7 +7,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "esp_adc/adc_continuous.h"
-#include "Arduino.h"
+#include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include <U8g2lib.h>
 #include <mString.h>
@@ -22,6 +22,33 @@
 #include "lib/StoredMeasuredResult.h"
 #include "lib/About.h"
 #include "lib/Images.h"
+
+#include "esp_ota_ops.h"
+#include "esp_partition.h"
+#include "esp_log.h"
+#include "mbedtls/aes.h"
+
+#include <stdio.h>
+#include <string.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_log.h"
+
+static const char *TAG = "SERIAL_OTA";
+
+// 32 байта для AES-256 (Симметричный ключ) - поменяйте на свои случайные числа!
+const unsigned char aes_key[32] = {
+		0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF,
+		0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88,
+		0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00};
+
+// 16 байт инициализационный вектор (IV) - поменяйте на свои!
+const unsigned char aes_iv_init[16] = {
+		0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+		0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
+
+void start_aes_serial_ota();
 
 // #define DISPLAY_CS SS
 #define DISPLAY_RESET 18
@@ -52,9 +79,9 @@
 #define RECORDS_FILE_NAME "records.bin"
 #define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
 
-/* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
-// Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
-Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, SS, SCK, MOSI);
+		/* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
+		// Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
+		Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, SS, SCK, MOSI);
 
 /* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
 Arduino_GFX *display = new Arduino_ST7735(
@@ -2378,6 +2405,8 @@ void drawMainMenu()
 
       if (button.isClicked())
       {
+				// start_aes_serial_ota();
+
         switch ((MainMenuItems)resultMenuItemIndex)
         {
         case MainMenuItems::MEASURE:
@@ -2515,11 +2544,201 @@ void initStorage()
 	}
 }
 
+void start_aes_serial_ota()
+{
+	esp_err_t err;
+	esp_ota_handle_t update_handle = 0;
+	const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+
+	if (update_partition == NULL)
+	{
+		ESP_LOGE(TAG, "OTA partition not found!");
+		return;
+	}
+
+	err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle);
+	if (err != ESP_OK)
+	{
+		ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
+		return;
+	}
+
+	// Инициализируем дешифратор AES
+	mbedtls_aes_context aes_ctx;
+	mbedtls_aes_init(&aes_ctx);
+	mbedtls_aes_setkey_dec(&aes_ctx, aes_key, 256);
+
+	// IV меняется в процессе расшифровки, поэтому делаем его рабочую копию
+	unsigned char current_iv[16];
+	memcpy(current_iv, aes_iv_init, 16);
+
+	Serial.println("READY_FOR_OTA");
+
+	const size_t CHUNK_SIZE = 1024;
+	uint8_t *rx_buf = (uint8_t *)malloc(CHUNK_SIZE);
+	uint8_t *dec_buf = (uint8_t *)malloc(CHUNK_SIZE);
+
+	size_t buffer_pos = 0;
+	uint32_t total_received = 0;
+	unsigned long last_data_time = millis();
+	bool receiving = true;
+
+	while (receiving)
+	{
+		if (Serial.available() > 0)
+		{
+			// Читаем данные так, чтобы не переполнить буфер
+			size_t to_read = CHUNK_SIZE - buffer_pos;
+			size_t bytes_read = Serial.readBytes((char *)&rx_buf[buffer_pos], to_read);
+			buffer_pos += bytes_read;
+
+			// AES-CBC требует блоки кратные 16 байтам
+			size_t process_len = (buffer_pos / 16) * 16;
+
+			if (process_len > 0)
+			{
+				// Расшифровываем process_len байт
+				mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, process_len, current_iv, rx_buf, dec_buf);
+
+				// Пишем чистый код в OTA раздел
+				err = esp_ota_write(update_handle, dec_buf, process_len);
+				if (err != ESP_OK)
+				{
+					ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
+					receiving = false;
+					break;
+				}
+
+				// Сдвигаем оставшиеся в буфере байты (от 0 до 15) в начало
+				size_t remaining = buffer_pos - process_len;
+				if (remaining > 0)
+				{
+					memmove(rx_buf, rx_buf + process_len, remaining);
+				}
+				buffer_pos = remaining;
+
+				total_received += process_len;
+				last_data_time = millis();
+			}
+		}
+
+		// Если данных нет более 3 секунд — считаем, что файл передан полностью
+		if (total_received > 0 && (millis() - last_data_time > 3000))
+		{
+			ESP_LOGI(TAG, "End of transmission");
+			break;
+		}
+	}
+
+	mbedtls_aes_free(&aes_ctx);
+	free(rx_buf);
+	free(dec_buf);
+
+	if (esp_ota_end(update_handle) != ESP_OK)
+	{
+		ESP_LOGE(TAG, "OTA end failed");
+		return;
+	}
+
+	if (esp_ota_set_boot_partition(update_partition) == ESP_OK)
+	{
+		Serial.println("OTA_SUCCESS");
+		delay(1000);
+		esp_restart();
+	}
+}
+
+static const char *TAG1 = "MAIN_APP";
+static const char *USB_TAG = "USB_TASK";
+
+/**
+ * @brief Задача FreeRTOS для чтения и обработки команд из USB CDC
+ */
+void usb_cmd_task(void *pvParameters)
+{
+	char rx_buffer[128];
+
+	// Отключаем буферизацию стандартного ввода (только внутри этой задачи)
+	setvbuf(stdin, NULL, _IONBF, 0);
+
+	ESP_LOGI(USB_TAG, "Задача приема команд запущена.");
+	printf("Доступные команды: 'ping', 'info'. Введите команду:\n");
+
+	while (1)
+	{
+		// Задача заблокируется здесь и не будет тратить процессорное время,
+		// пока по USB не придет символ новой строки.
+		char *line = fgets(rx_buffer, sizeof(rx_buffer), stdin);
+
+		if (line != NULL)
+		{
+			// Очищаем от символов возврата каретки и переноса строки
+			size_t len = strlen(rx_buffer);
+			while (len > 0 && (rx_buffer[len - 1] == '\n' || rx_buffer[len - 1] == '\r'))
+			{
+				rx_buffer[len - 1] = '\0';
+				len--;
+			}
+
+			if (len > 0)
+			{
+				ESP_LOGI(USB_TAG, "Команда получена: '%s'", rx_buffer);
+
+				// Обработка команд
+				if (strcmp(rx_buffer, "ping") == 0)
+				{
+					printf(">> pong\n");
+				}
+				else if (strcmp(rx_buffer, "info") == 0)
+				{
+					printf(">> Плата: ESP32-S2 Mini\n");
+					printf(">> Свободная память (Heap): %lu байт\n", esp_get_free_heap_size());
+				}
+				else
+				{
+					printf(">> Ошибка: Неизвестная команда '%s'\n", rx_buffer);
+				}
+
+				printf("\nВведите команду: ");
+			}
+		}
+
+		// Обязательная задержка для корректной работы планировщика
+		vTaskDelay(pdMS_TO_TICKS(10));
+	}
+}
+
 void setup() 
 {
 	// pinMode(15, OUTPUT);
 	// digitalWrite(15, HIGH);
 	// halt();
+
+	ESP_LOGI(TAG1, "Старт прошивки...");
+
+	/* * Создаем отдельную задачу для работы с USB.
+	 * * Параметры xTaskCreate:
+	 * 1. usb_cmd_task - функция, которая станет задачей
+	 * 2. "usb_task"   - имя задачи (для отладки)
+	 * 3. 4096         - размер стека. Функции ввода/вывода (printf/fgets)
+	 * потребляют много памяти, поэтому 4096 байт — безопасный минимум.
+	 * 4. NULL         - параметры, передаваемые в задачу (нам не нужны)
+	 * 5. 5            - приоритет (средний).
+	 * 6. NULL         - хэндл задачи (если бы мы хотели управлять ей позже)
+	 */
+	xTaskCreate(usb_cmd_task, "usb_task", 4096, NULL, 5, NULL);
+
+	ESP_LOGI(TAG1, "Основной цикл свободен и продолжает работу!");
+
+	// Теперь в app_main мы можем делать что угодно, не блокируясь ожиданием ввода
+	int counter = 0;
+	while (1)
+	{
+		ESP_LOGI(TAG1, "Основной цикл работает... Итерация: %d", counter++);
+
+		// Делаем что-то полезное, например, ждем 5 секунд
+		vTaskDelay(pdMS_TO_TICKS(5000));
+	}
 
 	display->begin();
   display->fillScreen(BLACK);
