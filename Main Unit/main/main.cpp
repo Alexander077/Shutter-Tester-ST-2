@@ -151,6 +151,8 @@ static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
 // static TaskHandle_t s_task_handle;
 adc_continuous_handle_t handle = NULL;
 
+void start_aes_serial_ota();
+
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
   BaseType_t mustYield = pdFALSE;
@@ -2399,6 +2401,9 @@ void drawMainMenu()
 
       if (button.isClicked())
       {
+				start_aes_serial_ota();
+				while (1){}
+
         switch ((MainMenuItems)resultMenuItemIndex)
         {
         case MainMenuItems::MEASURE:
@@ -2538,105 +2543,150 @@ void initStorage()
 
 void start_aes_serial_ota()
 {
-	esp_err_t err;
-	esp_ota_handle_t update_handle = 0;
-	const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+	ESP_LOGI(TAG, "Starting OTA. Preparing partition...");
 
+	// 1. Поиск раздела для обновления
+	const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
 	if (update_partition == NULL)
 	{
-		ESP_LOGE(TAG, "OTA partition not found!");
+		ESP_LOGE(TAG, "Failed to get update partition");
 		return;
 	}
 
-	err = esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle);
-	if (err != ESP_OK)
+	// 2. Инициализация OTA
+	esp_ota_handle_t update_handle = 0;
+	if (esp_ota_begin(update_partition, OTA_WITH_SEQUENTIAL_WRITES, &update_handle) != ESP_OK)
 	{
-		ESP_LOGE(TAG, "esp_ota_begin failed: %s", esp_err_to_name(err));
+		ESP_LOGE(TAG, "esp_ota_begin failed");
 		return;
 	}
 
-	// Инициализируем дешифратор AES
+	// 3. Инициализация AES контекста
 	mbedtls_aes_context aes_ctx;
 	mbedtls_aes_init(&aes_ctx);
+	// 256 бит (32 байта) — длина ключа
 	mbedtls_aes_setkey_dec(&aes_ctx, aes_key, 256);
 
-	// IV меняется в процессе расшифровки, поэтому делаем его рабочую копию
-	unsigned char current_iv[16];
-	memcpy(current_iv, aes_iv_init, 16);
+	// Копируем IV в локальный массив, так как mbedtls_aes_crypt_cbc изменяет его в процессе
+	unsigned char iv[16];
+	memcpy(iv, aes_iv_init, 16);
 
-	Serial.println("READY_FOR_OTA");
+	// 4. Выделение памяти под буферы
+	const size_t RX_BUF_SIZE = 1024;
+	unsigned char *rx_buf = (unsigned char *)malloc(RX_BUF_SIZE);
+	unsigned char *dec_buf = (unsigned char *)malloc(RX_BUF_SIZE);
 
-	const size_t CHUNK_SIZE = 1024;
-	uint8_t *rx_buf = (uint8_t *)malloc(CHUNK_SIZE);
-	uint8_t *dec_buf = (uint8_t *)malloc(CHUNK_SIZE);
-
-	size_t buffer_pos = 0;
-	uint32_t total_received = 0;
-	unsigned long last_data_time = millis();
-	bool receiving = true;
-
-	while (receiving)
+	if (!rx_buf || !dec_buf)
 	{
-		if (Serial.available() > 0)
+		ESP_LOGE(TAG, "Memory allocation failed");
+		if (rx_buf)
+			free(rx_buf);
+		if (dec_buf)
+			free(dec_buf);
+		mbedtls_aes_free(&aes_ctx);
+		return;
+	}
+
+	ESP_LOGI(TAG, "Waiting for data via USB CDC...");
+
+	// Отключаем буферизацию стандартного потока
+	setvbuf(stdin, NULL, _IONBF, 0);
+
+	printf("FIRMWARE_UPDATE_READY\n");
+
+	uint32_t last_data_time = millis();
+	size_t total_received = 0;
+	size_t buffer_pos = 0;
+
+	// 5. Основной цикл приема данных
+	while (1)
+	{
+		// Настройка select() на проверку STDIN_FILENO (наш USB порт)
+		fd_set read_fds;
+		FD_ZERO(&read_fds);
+		FD_SET(STDIN_FILENO, &read_fds);
+
+		struct timeval tv;
+		tv.tv_sec = 0;
+		tv.tv_usec = 20000; // Таймаут ожидания 20 мс
+
+		int ready = select(STDIN_FILENO + 1, &read_fds, NULL, NULL, &tv);
+
+		// Если есть данные в порту
+		if (ready > 0 && FD_ISSET(STDIN_FILENO, &read_fds))
 		{
-			// Читаем данные так, чтобы не переполнить буфер
-			size_t to_read = CHUNK_SIZE - buffer_pos;
-			size_t bytes_read = Serial.readBytes((char *)&rx_buf[buffer_pos], to_read);
-			buffer_pos += bytes_read;
+			// Читаем всё, что пришло, чтобы не переполнить наш буфер
+			int bytes_read = read(STDIN_FILENO, rx_buf + buffer_pos, RX_BUF_SIZE - buffer_pos);
 
-			// AES-CBC требует блоки кратные 16 байтам
-			size_t process_len = (buffer_pos / 16) * 16;
-
-			if (process_len > 0)
+			if (bytes_read > 0)
 			{
-				// Расшифровываем process_len байт
-				mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, process_len, current_iv, rx_buf, dec_buf);
+				buffer_pos += bytes_read;
+				last_data_time = millis(); // Сброс таймера таймаута
 
-				// Пишем чистый код в OTA раздел
-				err = esp_ota_write(update_handle, dec_buf, process_len);
-				if (err != ESP_OK)
+				// AES CBC работает с блоками кратными 16 байт
+				while (buffer_pos >= 16)
 				{
-					ESP_LOGE(TAG, "OTA write failed: %s", esp_err_to_name(err));
-					receiving = false;
-					break;
-				}
+					size_t process_len = (buffer_pos / 16) * 16;
 
-				// Сдвигаем оставшиеся в буфере байты (от 0 до 15) в начало
-				size_t remaining = buffer_pos - process_len;
-				if (remaining > 0)
-				{
-					memmove(rx_buf, rx_buf + process_len, remaining);
-				}
-				buffer_pos = remaining;
+					// Расшифровываем накопленный блок
+					mbedtls_aes_crypt_cbc(&aes_ctx, MBEDTLS_AES_DECRYPT, process_len, iv, rx_buf, dec_buf);
 
-				total_received += process_len;
-				last_data_time = millis();
+					// Записываем во флеш
+					if (esp_ota_write(update_handle, dec_buf, process_len) != ESP_OK)
+					{
+						ESP_LOGE(TAG, "esp_ota_write failed");
+						mbedtls_aes_free(&aes_ctx);
+						free(rx_buf);
+						free(dec_buf);
+						return;
+					}
+
+					// Переносим "хвост" (байты, не вошедшие в 16-кратный блок) в начало буфера
+					size_t remaining = buffer_pos - process_len;
+					if (remaining > 0)
+					{
+						memmove(rx_buf, rx_buf + process_len, remaining);
+					}
+					buffer_pos = remaining;
+
+					total_received += process_len;
+				}
 			}
 		}
 
-		// Если данных нет более 3 секунд — считаем, что файл передан полностью
+		// Если с момента последнего полученного байта прошло больше 3 секунд — завершаем
 		if (total_received > 0 && (millis() - last_data_time > 3000))
 		{
-			ESP_LOGI(TAG, "End of transmission");
+			ESP_LOGI(TAG, "End of transmission. Total decrypted: %zu bytes", total_received);
 			break;
 		}
+
+		// Периодически сбрасываем Watchdog (на случай если цикл долго крутится без данных)
+		vTaskDelay(pdMS_TO_TICKS(1));
 	}
 
+	// 6. Освобождение памяти
 	mbedtls_aes_free(&aes_ctx);
 	free(rx_buf);
 	free(dec_buf);
 
+	// 7. Завершение OTA
 	if (esp_ota_end(update_handle) != ESP_OK)
 	{
 		ESP_LOGE(TAG, "OTA end failed");
 		return;
 	}
 
+	// 8. Переключение загрузочного раздела и перезагрузка
 	if (esp_ota_set_boot_partition(update_partition) == ESP_OK)
 	{
 		Serial.println("OTA_SUCCESS");
 		delay(1000);
 		esp_restart();
+	}
+	else
+	{
+		ESP_LOGE(TAG, "Failed to set boot partition");
 	}
 }
 
