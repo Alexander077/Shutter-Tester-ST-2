@@ -1,4 +1,3 @@
-
 #include <string.h>
 #include <stdio.h>
 #include "sdkconfig.h"
@@ -15,8 +14,7 @@
 #include "lib/AceSorting/src/AceSorting.h"
 #include "esp_littlefs.h"
 
-#include "lib/AlexEncoder.h"
-#include "lib/AlexButton.h"
+#include <EncButton.h>
 #include "lib/Common.h"
 #include "lib/DisplayManager.h"
 #include "lib/StoredMeasuredResult.h"
@@ -32,7 +30,6 @@
 
 // Глобальный флаг для запроса API
 volatile bool isApiRequestReceived = false;
-
 
 // 32 байта для AES-256 (Симметричный ключ) - поменяйте на свои случайные числа!
 const unsigned char aes_key[32] = {
@@ -88,31 +85,32 @@ Arduino_GFX *display = new Arduino_ST7735(
     0 /* col offset 2 */, 0 /* row offset 2 */,
     false /* BGR */);
 
-AlexButton button(BUTTON_PIN);
+EncButton eb(ENCODER_A_PIN, ENCODER_B_PIN, BUTTON_PIN);
+volatile int32_t globalEncoderCounter = 0;
 
 enum class LightQualityStatus
 {
-  UNKNOWN,
-  OK,
-  BAD,
+	UNKNOWN,
+	OK,
+	BAD,
 };
 
 struct CurtainTimings
 {
-  double curtain1spanAtime; // In microseconds
-  double curtain2spanAtime; // In microseconds
+	double curtain1spanAtime; // In microseconds
+	double curtain2spanAtime; // In microseconds
 };
 
 struct MeasurementRecordSaveResult
 {
-  bool isSuccess;
-  int32_t newRecordNumber;
+	bool isSuccess;
+	int32_t newRecordNumber;
 };
 
 enum class MeasurementSaveScreenResult
 {
-  OK,
-  CANCEL
+	OK,
+	CANCEL
 };
 
 enum class CurtainMovementSelectionScreenResult
@@ -201,22 +199,22 @@ void serialApiTask(void *pvParameters)
 
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
-  BaseType_t mustYield = pdFALSE;
-  // Notify that ADC continuous driver has done enough number of conversions
-  // vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+	BaseType_t mustYield = pdFALSE;
+	// Notify that ADC continuous driver has done enough number of conversions
+	// vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
 
-  return (mustYield == pdTRUE);
+	return (mustYield == pdTRUE);
 }
 
 static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc_continuous_handle_t *out_handle)
 {
-  adc_continuous_handle_t handle = NULL;
+	adc_continuous_handle_t handle = NULL;
 
-  adc_continuous_handle_cfg_t adc_config = {
-      .max_store_buf_size = 1024,
-      .conv_frame_size = ADC_READ_LEN,
-  };
-  ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
+	adc_continuous_handle_cfg_t adc_config = {
+			.max_store_buf_size = 1024,
+			.conv_frame_size = ADC_READ_LEN,
+	};
+	ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
 
 	adc_continuous_config_t dig_cfg = {
 			.sample_freq_hz = ADC_CONVERSION_FREQ_HZ,
@@ -226,205 +224,212 @@ static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc
 	};
 
 	adc_digi_pattern_config_t adc_pattern[SOC_ADC_PATT_LEN_MAX] = {0};
-  dig_cfg.pattern_num = channel_num;
+	dig_cfg.pattern_num = channel_num;
 
-  for (int i = 0; i < channel_num; i++)
-  {
-    adc_pattern[i].atten = ADC_ATTEN;
-    adc_pattern[i].channel = channel[i] & 0x7;
-    adc_pattern[i].unit = ADC_UNIT;
-    adc_pattern[i].bit_width = ADC_BIT_WIDTH;
+	for (int i = 0; i < channel_num; i++)
+	{
+		adc_pattern[i].atten = ADC_ATTEN;
+		adc_pattern[i].channel = channel[i] & 0x7;
+		adc_pattern[i].unit = ADC_UNIT;
+		adc_pattern[i].bit_width = ADC_BIT_WIDTH;
 
-    ESP_LOGI("", "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
-    ESP_LOGI("", "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
-    ESP_LOGI("", "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
-  }
-  
-  dig_cfg.adc_pattern = adc_pattern;
-  ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
+		ESP_LOGI("", "adc_pattern[%d].atten is :%" PRIx8, i, adc_pattern[i].atten);
+		ESP_LOGI("", "adc_pattern[%d].channel is :%" PRIx8, i, adc_pattern[i].channel);
+		ESP_LOGI("", "adc_pattern[%d].unit is :%" PRIx8, i, adc_pattern[i].unit);
+	}
 
-  *out_handle = handle;
+	dig_cfg.adc_pattern = adc_pattern;
+	ESP_ERROR_CHECK(adc_continuous_config(handle, &dig_cfg));
+
+	*out_handle = handle;
 }
 
 struct SensorUnitData
 {
-  SensorType Type;
-  double FrameWidth;               // in millimiters
-  double FrameHeight;              // in millimiters
-  double HorisontalSensorDistance; // in millimiters
-  double VerticalSensorDistance;   // in millimiters
+	SensorType Type;
+	double FrameWidth;							 // in millimiters
+	double FrameHeight;							 // in millimiters
+	double HorisontalSensorDistance; // in millimiters
+	double VerticalSensorDistance;	 // in millimiters
 };
 
-const SensorUnitData sensorsData[sensorsDataArraySize] = 
-{
-	{
-		SensorType::Frame35mm,
-		36,
-		24,
-		16.0,
-		10.6,
-	},
-	{
-		SensorType::Frame6x45,
-		60,
-		45,
-		16.0,
-		10.6,
-	},
-	{
-		SensorType::Frame6x6,
-		60,
-		60,
-		16.0,
-		10.6,
-	},
-	{
-		SensorType::Frame6x7,
-		70,
-		60,
-		16.0,
-		10.6,
-	}
-};
+const SensorUnitData sensorsData[sensorsDataArraySize] =
+		{
+				{
+						SensorType::Frame35mm,
+						36,
+						24,
+						16.0,
+						10.6,
+				},
+				{
+						SensorType::Frame6x45,
+						60,
+						45,
+						16.0,
+						10.6,
+				},
+				{
+						SensorType::Frame6x6,
+						60,
+						60,
+						16.0,
+						10.6,
+				},
+				{
+						SensorType::Frame6x7,
+						70,
+						60,
+						16.0,
+						10.6,
+				}};
 
 struct Rect
 {
-  int16_t x;
-  int16_t y;
-  int16_t width;
-  int16_t height;
+	int16_t x;
+	int16_t y;
+	int16_t width;
+	int16_t height;
 };
 
 const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
-    {
-        "Measure",
-        "Light Setup",
-        "Saved Measures",
-        "About"};
+		{
+				"Measure",
+				"Light Setup",
+				"Saved Measures",
+				"About"};
 
 const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
-    {
-        "Horisontal",
-        "Vertical",
-        "Leaf"};
+		{
+				"Horisontal",
+				"Vertical",
+				"Leaf"};
 
 const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
-    {
-        "No",
-        "Yes",
-        "Overwrite oldest",
-        "Overwrite newest",
-        "Sel. rec. to overwrite",
-        "Return to result",
+		{
+				"No",
+				"Yes",
+				"Overwrite oldest",
+				"Overwrite newest",
+				"Sel. rec. to overwrite",
+				"Return to result",
 };
 
 const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
-    {
-        "No",
-        "Yes",
-        "Return to result",
+		{
+				"No",
+				"Yes",
+				"Return to result",
 };
 
 const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
-  return MainMenuItemsStr[(uint8_t)menuItem];
+	return MainMenuItemsStr[(uint8_t)menuItem];
 }
 
 const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
 {
-  return CurtainMovementItemsStr[(uint8_t)menuItem];
+	return CurtainMovementItemsStr[(uint8_t)menuItem];
 }
 
 const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
 {
-  if (useForZeroRecords)
-  {
-    return ZeroRecordsMeasurementSaveItemsStr[(uint8_t)menuItem];
-  }
-  else
-  {
-    return MeasurementSaveItemsStr[(uint8_t)menuItem];
-  }
+	if (useForZeroRecords)
+	{
+		return ZeroRecordsMeasurementSaveItemsStr[(uint8_t)menuItem];
+	}
+	else
+	{
+		return MeasurementSaveItemsStr[(uint8_t)menuItem];
+	}
 }
 
 Rect getStringRect(const char *str, int16_t x, int16_t y)
 {
-  // Variables to hold the bounding box dimensions
-  int16_t x1, y1;
-  uint16_t w, h;
+	// Variables to hold the bounding box dimensions
+	int16_t x1, y1;
+	uint16_t w, h;
 
-  // Get the bounds of the text
-  display->getTextBounds(str, x, y, &x1, &y1, &w, &h);
+	// Get the bounds of the text
+	display->getTextBounds(str, x, y, &x1, &y1, &w, &h);
 
-  Rect r;
-  r.x = x1;
-  r.y = y1;
-  r.width = w;
-  r.height = h;
-  return r;
+	Rect r;
+	r.x = x1;
+	r.y = y1;
+	r.width = w;
+	r.height = h;
+	return r;
 }
 
 Rect drawStringHCentered(const char *str, uint16_t y)
 {
-  // // Variables to hold the bounding box dimensions
-  // int16_t x1, y1;
-  // uint16_t w, h;
+	// // Variables to hold the bounding box dimensions
+	// int16_t x1, y1;
+	// uint16_t w, h;
 
-  Rect r = getStringRect(str, 0, y);
-  // Serial.println(r.y);
+	Rect r = getStringRect(str, 0, y);
+	// Serial.println(r.y);
 
-  // Calculate the position to center the text on the screen
-  int16_t x = (display->width() - r.width) / 2;
-  // int16_t y = (display->height() - h) / 2;
-  r.x = x;
+	// Calculate the position to center the text on the screen
+	int16_t x = (display->width() - r.width) / 2;
+	// int16_t y = (display->height() - h) / 2;
+	r.x = x;
 
-  // Draw the text at the calculated position
-  display->setCursor(x, y);
-  display->print(str);
+	// Draw the text at the calculated position
+	display->setCursor(x, y);
+	display->print(str);
 
-  // Serial.print(r.x);
-  // Serial.print("|");
-  // Serial.print(r.y);
-  // Serial.print("|");
-  // Serial.print(r.width);
-  // Serial.print("|");
-  // Serial.println(r.height);
+	// Serial.print(r.x);
+	// Serial.print("|");
+	// Serial.print(r.y);
+	// Serial.print("|");
+	// Serial.print(r.width);
+	// Serial.print("|");
+	// Serial.println(r.height);
 
-  // Optional: Draw the bounding box around the text for visualization
-  // display->drawRect(x, y - r.height, r.width, r.height, RED);
-  return r;
+	// Optional: Draw the bounding box around the text for visualization
+	// display->drawRect(x, y - r.height, r.width, r.height, RED);
+	return r;
 }
 
 Rect drawStringHCentered(const String &str, uint16_t y)
 {
 #define CHAR_BUF_SIZE 50
-  char buf[CHAR_BUF_SIZE];
-  str.toCharArray(buf, CHAR_BUF_SIZE);
-  return drawStringHCentered(buf, y);
+	char buf[CHAR_BUF_SIZE];
+	str.toCharArray(buf, CHAR_BUF_SIZE);
+	return drawStringHCentered(buf, y);
 }
 
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
-  int16_t navBarWidth = 120;
-  int16_t navBarY = 120;
-  // int16_t navBarItemsCount = RESULT_PAGES_COUNT;
-  int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
-  display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
+	int16_t navBarWidth = 120;
+	int16_t navBarY = 120;
+	// int16_t navBarItemsCount = RESULT_PAGES_COUNT;
+	int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
+	display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
 
-  for (int8_t i = 0, spacing = 0; i < itemsCount; i++, spacing += navBarWidth / (itemsCount - 1))
-  {
-    display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
-  }
+	for (int8_t i = 0, spacing = 0; i < itemsCount; i++, spacing += navBarWidth / (itemsCount - 1))
+	{
+		display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
+	}
 }
 
-void IRAM_ATTR onTimer()
+void encoderTickTask(void *pvParameters)
 {
-  button.tick();
+	while (true)
+	{
+		eb.tick();
+		if (eb.right())
+			globalEncoderCounter++;
+		if (eb.left())
+			globalEncoderCounter--;
+		vTaskDelay(pdMS_TO_TICKS(2));
+	}
 }
 
 int16_t getMeasurementSaveRecordSize()
 {
-  return sizeof(StoredMeasuredResult);
+	return sizeof(StoredMeasuredResult);
 }
 
 int16_t getTotalMeasurementSaveSlotsCount()
@@ -435,15 +440,15 @@ int16_t getTotalMeasurementSaveSlotsCount()
 
 int16_t getFreeMeasurementSaveSlotsCount()
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  int16_t freeCount = 0;
-  StoredMeasuredResult tempMeasRes;
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t freeCount = 0;
+	StoredMeasuredResult tempMeasRes;
 	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r");
 
 	for (int16_t i = 0; i < totalCount; i++)
-  {
-    // EEPROM.get(i * blockSize, tempMeasRes);
+	{
+		// EEPROM.get(i * blockSize, tempMeasRes);
 		int16_t readRes = fread(&tempMeasRes, blockSize, 1, recordsFile);
 
 		if (readRes != 1)
@@ -452,10 +457,10 @@ int16_t getFreeMeasurementSaveSlotsCount()
 		}
 
 		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
-    {
-      freeCount++;
-    }
-  }
+		{
+			freeCount++;
+		}
+	}
 
 	fclose(recordsFile);
 	return freeCount;
@@ -463,51 +468,51 @@ int16_t getFreeMeasurementSaveSlotsCount()
 
 StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  StoredMeasuredResult measRes = {-1};
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	StoredMeasuredResult measRes = {-1};
 
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); 
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r");
 
 	// for (int16_t i = 0; i < totalCount; i++)
 	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
 	{
-    // EEPROM.get(i * blockSize, measRes);
+		// EEPROM.get(i * blockSize, measRes);
 
-    if (measRes.recordNumber == recordNumber)
-    {
-      break;
-    }
-  }
+		if (measRes.recordNumber == recordNumber)
+		{
+			break;
+		}
+	}
 
 	fclose(recordsFile);
-  return measRes;
+	return measRes;
 }
 
 bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  StoredMeasuredResult measRes = {-1};
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+"); 
+	int16_t totalCount = getTotalMeasurementSaveSlotsCount();
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	StoredMeasuredResult measRes = {-1};
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+");
 	int32_t index = 0;
 	bool res = false;
 
-  // for (int16_t i = 0; i < totalCount; i++)
+	// for (int16_t i = 0; i < totalCount; i++)
 	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
-  {
-    // EEPROM.get(i * blockSize, measRes);
+	{
+		// EEPROM.get(i * blockSize, measRes);
 
-    if (measRes.recordNumber == recordNumber)
-    {
-      measRes.isDeleted = true;
+		if (measRes.recordNumber == recordNumber)
+		{
+			measRes.isDeleted = true;
 			// return verifiedEEPROMPut(i * blockSize, measRes);
-    	fseek(recordsFile, index * blockSize, SEEK_SET);
+			fseek(recordsFile, index * blockSize, SEEK_SET);
 			res = fwrite(&measRes, blockSize, 1, recordsFile) == 1;
 		}
 
 		index++;
-  }
+	}
 
 	fclose(recordsFile);
 	return res;
@@ -522,7 +527,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int16_t existingRecordsCount = totalSlotsCount - freeRecordSlots;
 	int16_t totalArraySaize = existingRecordsCount + 1;
 	int32_t recordNumbers[totalArraySaize];
-  recordNumbers[0] = 0; //"Back" option
+	recordNumbers[0] = 0;															 //"Back" option
 																										 // char *recordTitles[totalArraySaize];
 	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); // open file for read and write
 	int32_t index = 0;
@@ -561,7 +566,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 	ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
 
-	int16_t startEncoderVal = AlexEncoder::counter;
+	int16_t startEncoderVal = globalEncoderCounter;
 	display->fillScreen(BLACK);
 
 	uint8_t xMargin = 30;
@@ -615,22 +620,22 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 		if (isApiRequestReceived)
 			return 0; // ВЫХОД ДЛЯ API
 
-		int16_t curIndex = AlexEncoder::counter - startEncoderVal;
+		int16_t curIndex = globalEncoderCounter - startEncoderVal;
 
-    if (curIndex > totalArraySaize - 1)
-    {
-      startEncoderVal = AlexEncoder::counter - (totalArraySaize - 1);
-      curIndex = totalArraySaize - 1;
-    }
+		if (curIndex > totalArraySaize - 1)
+		{
+			startEncoderVal = globalEncoderCounter - (totalArraySaize - 1);
+			curIndex = totalArraySaize - 1;
+		}
 
-    if (curIndex < 0)
-    {
-      curIndex = 0;
-      startEncoderVal = AlexEncoder::counter;
-    }
+		if (curIndex < 0)
+		{
+			curIndex = 0;
+			startEncoderVal = globalEncoderCounter;
+		}
 
 		// ----------------------------
-    // displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, totalArraySaize);
+		// displayManager.drawMeasurementResultRecordSelectionScreen(curIndex, recordNumbers, totalArraySaize);
 
 		if (prevSelectedRecordIndex != curIndex)
 		{
@@ -716,7 +721,7 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 		// ----------------------------
 
-		if (button.isClicked())
+		if (eb.click())
 		{
 			return recordNumbers[curIndex];
 		}
@@ -725,15 +730,15 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-  int32_t numberOfLast = -1;
-  int32_t indexOfLast = -1;
-  StoredMeasuredResult savedMeasRes;
-  StoredMeasuredResult tempMeasRes;
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
-  MeasurementRecordSaveResult saveRes = {false, -1};
+	int32_t numberOfLast = -1;
+	int32_t indexOfLast = -1;
+	StoredMeasuredResult savedMeasRes;
+	StoredMeasuredResult tempMeasRes;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
+	MeasurementRecordSaveResult saveRes = {false, -1};
 
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+");//open file for read and write
+	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+"); // open file for read and write
 
 	if (recordsFile == NULL)
 	{
@@ -744,241 +749,240 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
 	int32_t index = 0;
 	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
 	{
-    // EEPROM.get(i * blockSize, tempMeasRes);
+		// EEPROM.get(i * blockSize, tempMeasRes);
 		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
-    {
-      numberOfLast = tempMeasRes.recordNumber;
+		{
+			numberOfLast = tempMeasRes.recordNumber;
 			indexOfLast = index;
 		}
 
 		index++;
-  }
+	}
 
-  if (numberOfLast == -1)
-  {
+	if (numberOfLast == -1)
+	{
 		fclose(recordsFile);
 		halt("Halted. numberOfLast was not defined");
-  }
+	}
 
-  savedMeasRes.recordNumber = numberOfLast + 1;
-  savedMeasRes.isDeleted = false;
-  savedMeasRes.sensor0Time = res.sensor0Time;
-  savedMeasRes.sensor1Time = res.sensor1Time;
-  savedMeasRes.curtain1spanAspeed = res.curtain1spanAspeed;
-  savedMeasRes.curtain1spanAtime = res.curtain1spanAtime;
-  savedMeasRes.curtain1TotalTime = res.curtain1TotalTime;
-  savedMeasRes.curtain2spanAspeed = res.curtain2spanAspeed;
-  savedMeasRes.curtain2spanAtime = res.curtain2spanAtime;
-  savedMeasRes.curtain2TotalTime = res.curtain2TotalTime;
-  savedMeasRes.slitWidthSensor0 = res.slitWidthSensor0;
-  savedMeasRes.slitWidthSensor1 = res.slitWidthSensor1;
-  savedMeasRes.slitWidthAverage = res.slitWidthAverage;
-  savedMeasRes.usedSensorType = res.usedSensorType;
-  savedMeasRes.selectedCurtainMovement = res.selectedCurtainMovement;
+	savedMeasRes.recordNumber = numberOfLast + 1;
+	savedMeasRes.isDeleted = false;
+	savedMeasRes.sensor0Time = res.sensor0Time;
+	savedMeasRes.sensor1Time = res.sensor1Time;
+	savedMeasRes.curtain1spanAspeed = res.curtain1spanAspeed;
+	savedMeasRes.curtain1spanAtime = res.curtain1spanAtime;
+	savedMeasRes.curtain1TotalTime = res.curtain1TotalTime;
+	savedMeasRes.curtain2spanAspeed = res.curtain2spanAspeed;
+	savedMeasRes.curtain2spanAtime = res.curtain2spanAtime;
+	savedMeasRes.curtain2TotalTime = res.curtain2TotalTime;
+	savedMeasRes.slitWidthSensor0 = res.slitWidthSensor0;
+	savedMeasRes.slitWidthSensor1 = res.slitWidthSensor1;
+	savedMeasRes.slitWidthAverage = res.slitWidthAverage;
+	savedMeasRes.usedSensorType = res.usedSensorType;
+	savedMeasRes.selectedCurtainMovement = res.selectedCurtainMovement;
 
-  if (numberOfLast == 0) // if there is no records at all in the EEPROM
-  {
+	if (numberOfLast == 0) // if there is no records at all in the EEPROM
+	{
 		// saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
 		rewind(recordsFile);
 		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
 		if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
 
-		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8, 
-							savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
+		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
+						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
 		fclose(recordsFile);
 		return saveRes;
-  }
+	}
 
-	
-  // save to free slot
-  if (!overwriteNewest && !overwriteOldest && recordNumberToOverwrite == -1)
-  {
+	// save to free slot
+	if (!overwriteNewest && !overwriteOldest && recordNumberToOverwrite == -1)
+	{
 		int16_t freeSlotIndex = -1;
 		int32_t index = 0;
 		rewind(recordsFile);
 
-    // Check for free slots
-    // for (int16_t i = 0; i < totalRecordsCount; i++)
+		// Check for free slots
+		// for (int16_t i = 0; i < totalRecordsCount; i++)
 		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
-    {
-      // EEPROM.get(i * blockSize, tempMeasRes);
-      if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
-      {
+		{
+			// EEPROM.get(i * blockSize, tempMeasRes);
+			if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
+			{
 				freeSlotIndex = index;
 			}
 
 			index++;
 		}
 
-    if (freeSlotIndex != -1)
-    {
-      // saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
+		if (freeSlotIndex != -1)
+		{
+			// saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
 			fseek(recordsFile, freeSlotIndex * blockSize, SEEK_SET);
 			saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
 			if (saveRes.isSuccess)
-      {
-        saveRes.newRecordNumber = savedMeasRes.recordNumber;
-      }
+			{
+				saveRes.newRecordNumber = savedMeasRes.recordNumber;
+			}
 
 			ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
 							 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
 			fclose(recordsFile);
 			return saveRes;
-    }
+		}
 
-    halt("Halted. freeSlotIndex not found");
-  }
+		halt("Halted. freeSlotIndex not found");
+	}
 
-  // if user choose to overwrite oldest record
-  if (overwriteOldest)
-  {
-    int32_t numberOfOldest = INT32_MAX;
-    int32_t indexOfOldest = -1;
+	// if user choose to overwrite oldest record
+	if (overwriteOldest)
+	{
+		int32_t numberOfOldest = INT32_MAX;
+		int32_t indexOfOldest = -1;
 		int32_t index = 0;
 		rewind(recordsFile);
 
 		// find oldest
-    // for (int16_t i = 0; i < totalRecordsCount; i++)
+		// for (int16_t i = 0; i < totalRecordsCount; i++)
 		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
 		{
-      // EEPROM.get(i * blockSize, tempMeasRes);
+			// EEPROM.get(i * blockSize, tempMeasRes);
 
-      if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
-      {
-        numberOfOldest = tempMeasRes.recordNumber;
+			if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
+			{
+				numberOfOldest = tempMeasRes.recordNumber;
 				indexOfOldest = index;
 			}
 
 			index++;
 		}
 
-    if (indexOfOldest == -1)
-    {
-      halt("Halted. indexOfOldest not found");
-    }
+		if (indexOfOldest == -1)
+		{
+			halt("Halted. indexOfOldest not found");
+		}
 
-    // saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
+		// saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
 		fseek(recordsFile, indexOfOldest * blockSize, SEEK_SET);
 		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
 		if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
 
 		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
 						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
 		fclose(recordsFile);
 		return saveRes;
-  }
+	}
 
-  // if user choose to overwrite newest record
-  if (overwriteNewest)
-  {
-    if (indexOfLast == -1)
-    {
-      halt("Halted. indexOfLast not found");
-    }
+	// if user choose to overwrite newest record
+	if (overwriteNewest)
+	{
+		if (indexOfLast == -1)
+		{
+			halt("Halted. indexOfLast not found");
+		}
 
 		// saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
 		fseek(recordsFile, indexOfLast * blockSize, SEEK_SET);
 		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
-    if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
+		if (saveRes.isSuccess)
+		{
+			saveRes.newRecordNumber = savedMeasRes.recordNumber;
+		}
 
 		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
 						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
 
 		fclose(recordsFile);
 		return saveRes;
-  }
+	}
 
-  if (recordNumberToOverwrite != -1)
-  {
+	if (recordNumberToOverwrite != -1)
+	{
 		int32_t index = 0;
 		rewind(recordsFile);
 
 		// for (int16_t i = 0; i < totalRecordsCount; i++)
 		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
 		{
-      // EEPROM.get(i * blockSize, tempMeasRes);
-      if (tempMeasRes.recordNumber == recordNumberToOverwrite)
-      {
-        // saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
+			// EEPROM.get(i * blockSize, tempMeasRes);
+			if (tempMeasRes.recordNumber == recordNumberToOverwrite)
+			{
+				// saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
 				fseek(recordsFile, index * blockSize, SEEK_SET);
 				saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
 
 				if (saveRes.isSuccess)
-        {
-          saveRes.newRecordNumber = savedMeasRes.recordNumber;
-        }
+				{
+					saveRes.newRecordNumber = savedMeasRes.recordNumber;
+				}
 
 				ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
 								 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
 
 				fclose(recordsFile);
 				return saveRes;
-      }
+			}
 
 			index++;
 		}
 
-    halt("Halted. recordNumberToOverwrite not found");
-  }
+		halt("Halted. recordNumberToOverwrite not found");
+	}
 
 	fclose(recordsFile);
 	halt("Halted. Program should not get here");
-	return saveRes;//just to suppress warning
+	return saveRes; // just to suppress warning
 }
 
 double getCorrectedSensorValue(long rawSensorTime, uint16_t maxSensorValue)
 {
-  // #pragma GCC diagnostic ignored "-fpermissive"
-  double correction = Interpolation::Linear(sensorMaxAdcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
-  // #pragma GCC diagnostic pop
-  double resSensorTime = rawSensorTime + correction;
-  return resSensorTime;
+	// #pragma GCC diagnostic ignored "-fpermissive"
+	double correction = Interpolation::Linear(sensorMaxAdcVals, timeCorrectionVals, INTRPOLATION_POINTS_COUNT, (double)maxSensorValue, false);
+	// #pragma GCC diagnostic pop
+	double resSensorTime = rawSensorTime + correction;
+	return resSensorTime;
 }
 
 double getCurtainSpeed(long time, double distance)
 {
-  double curtainSpeedMmPerUs = distance / time;
-  double curtainSpeedInMmPerS = curtainSpeedMmPerUs * (double)US_IN_SECOND;
-  double curtainSpanASpeedInMPerS = curtainSpeedInMmPerS / (double)MM_IN_M;
-  return curtainSpanASpeedInMPerS;
+	double curtainSpeedMmPerUs = distance / time;
+	double curtainSpeedInMmPerS = curtainSpeedMmPerUs * (double)US_IN_SECOND;
+	double curtainSpanASpeedInMPerS = curtainSpeedInMmPerS / (double)MM_IN_M;
+	return curtainSpanASpeedInMPerS;
 }
 
 void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
 {
-  double frameSizeInMeters = frameSize / (double)MM_IN_M;
-  // First curtain
-  res.curtain1spanAspeed = getCurtainSpeed(curtainTimings.curtain1spanAtime, sensorDistance);
-  res.curtain1spanAtime = curtainTimings.curtain1spanAtime / US_IN_MILLISECOND;
-  res.curtain1TotalTime = frameSizeInMeters / (res.curtain1spanAspeed / 1000.0);
+	double frameSizeInMeters = frameSize / (double)MM_IN_M;
+	// First curtain
+	res.curtain1spanAspeed = getCurtainSpeed(curtainTimings.curtain1spanAtime, sensorDistance);
+	res.curtain1spanAtime = curtainTimings.curtain1spanAtime / US_IN_MILLISECOND;
+	res.curtain1TotalTime = frameSizeInMeters / (res.curtain1spanAspeed / 1000.0);
 
-  // Second curtain
-  res.curtain2spanAspeed = getCurtainSpeed(curtainTimings.curtain2spanAtime, sensorDistance);
-  res.curtain2spanAtime = curtainTimings.curtain2spanAtime / US_IN_MILLISECOND;
-  res.curtain2TotalTime = frameSizeInMeters / (res.curtain2spanAspeed / 1000.0);
+	// Second curtain
+	res.curtain2spanAspeed = getCurtainSpeed(curtainTimings.curtain2spanAtime, sensorDistance);
+	res.curtain2spanAtime = curtainTimings.curtain2spanAtime / US_IN_MILLISECOND;
+	res.curtain2TotalTime = frameSizeInMeters / (res.curtain2spanAspeed / 1000.0);
 
-  // Slit width
-  double estSlitSpeed = sensorDistance / ((curtainTimings.curtain1spanAtime + curtainTimings.curtain2spanAtime) / 2.0); // in mm per microsecond
-  res.slitWidthSensor0 = estSlitSpeed * sensor0time;                                                                    // in mm
-  res.slitWidthSensor1 = estSlitSpeed * sensor1time;                                                                    // in mm
-  res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0;                                           // in mm
+	// Slit width
+	double estSlitSpeed = sensorDistance / ((curtainTimings.curtain1spanAtime + curtainTimings.curtain2spanAtime) / 2.0); // in mm per microsecond
+	res.slitWidthSensor0 = estSlitSpeed * sensor0time;																																		// in mm
+	res.slitWidthSensor1 = estSlitSpeed * sensor1time;																																		// in mm
+	res.slitWidthAverage = (res.slitWidthSensor0 + res.slitWidthSensor1) / 2.0;																						// in mm
 }
 
 int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
-  int16_t startEncoderVal = AlexEncoder::counter;
+	int16_t startEncoderVal = globalEncoderCounter;
 	int8_t prevSelectedMenuItemIndex = 0;
 	uint8_t xMargin = 35;
 	uint8_t yMargin = 50;
@@ -1003,22 +1007,22 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 		if (isApiRequestReceived)
 			return 0;
 
-		int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
+		int16_t resultOptionIndex = globalEncoderCounter - startEncoderVal;
 
-    if (resultOptionIndex > optionsCount - 1)
-    {
-      startEncoderVal = AlexEncoder::counter - (optionsCount - 1);
-      resultOptionIndex = optionsCount - 1;
-    }
+		if (resultOptionIndex > optionsCount - 1)
+		{
+			startEncoderVal = globalEncoderCounter - (optionsCount - 1);
+			resultOptionIndex = optionsCount - 1;
+		}
 
-    if (resultOptionIndex < 0)
-    {
-      resultOptionIndex = 0;
-      startEncoderVal = AlexEncoder::counter;
-    }
+		if (resultOptionIndex < 0)
+		{
+			resultOptionIndex = 0;
+			startEncoderVal = globalEncoderCounter;
+		}
 
 		// -------------------------------
-    // displayManager.drawMessageScreen(messageScreenId, useProgMem, title, options, optionsCount, resultOptionIndex);
+		// displayManager.drawMessageScreen(messageScreenId, useProgMem, title, options, optionsCount, resultOptionIndex);
 
 		if (prevSelectedMenuItemIndex != resultOptionIndex)
 		{
@@ -1034,20 +1038,20 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 		}
 		// -------------------------------
 
-    if (button.isClicked())
-    {
-      return resultOptionIndex;
-    }
-  }
+		if (eb.click())
+		{
+			return resultOptionIndex;
+		}
+	}
 }
 
 MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
 	int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
 	int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
-  int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
-  int16_t startEncoderVal = AlexEncoder::counter;
-  bool drawMoreThanZeroRecordsMenuItems = menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+	int16_t menuItemsCount = totalRecordsCount == freeSlotsCount ? SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT : SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
+	int16_t startEncoderVal = globalEncoderCounter;
+	bool drawMoreThanZeroRecordsMenuItems = menuItemsCount == SAVE_MEASUREMENT_MENU_ITEMS_COUNT;
 
 	uint8_t xMargin = 20;
 	uint8_t yMargin = 40;
@@ -1058,7 +1062,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 	{
 		display->fillScreen(BLACK);
 		drawStringHCentered("Save measurement result?", 20);
-		
+
 		for (uint8_t i = 0; i < menuItemsCount; i++)
 		{
 			display->setCursor(xMargin, yMargin + (ySpacing * i));
@@ -1094,18 +1098,18 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 			if (isApiRequestReceived)
 				return MeasurementSaveScreenResult::CANCEL;
 
-			int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
+			int16_t resultIndex = globalEncoderCounter - startEncoderVal;
 
 			if (resultIndex > menuItemsCount - 1)
 			{
-				startEncoderVal = AlexEncoder::counter - (menuItemsCount - 1);
+				startEncoderVal = globalEncoderCounter - (menuItemsCount - 1);
 				resultIndex = menuItemsCount - 1;
 			}
 
 			if (resultIndex < 0)
 			{
 				resultIndex = 0;
-				startEncoderVal = AlexEncoder::counter;
+				startEncoderVal = globalEncoderCounter;
 			}
 
 			//-------------------------
@@ -1126,7 +1130,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 
 			//-----------------------------
 
-			if (button.isClicked())
+			if (eb.click())
 			{
 				MeasurementRecordSaveResult saveRes;
 
@@ -1134,93 +1138,93 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 				{
 					switch ((MeasurementSaveMenuItems)resultIndex)
 					{
-						case MeasurementSaveMenuItems::NO:
+					case MeasurementSaveMenuItems::NO:
+					{
+						return MeasurementSaveScreenResult::OK; // do not save the result
+						break;
+					}
+					case MeasurementSaveMenuItems::YES:
+					{
+						if (freeSlotsCount > 0)
 						{
-							return MeasurementSaveScreenResult::OK; // do not save the result
-							break;
+							ESP_LOGI("", "Saving record...");
+							saveRes = saveMesurementResult(measurementRes);
 						}
-						case MeasurementSaveMenuItems::YES:
+						else
 						{
-							if (freeSlotsCount > 0)
-							{
-								ESP_LOGI("","Saving record...");
-								saveRes = saveMesurementResult(measurementRes);
-							}
-							else
-							{
-								continue;
-							}
+							continue;
+						}
 
-							break;
-						}
-						case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
-						{
-							ESP_LOGI("","Saving record...");
-							saveRes = saveMesurementResult(measurementRes, false, true);
-							break;
-						}
-						case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
-						{
-							ESP_LOGI("","Saving record...");
-							saveRes = saveMesurementResult(measurementRes, true);
-							break;
-						}
-						case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
-						{
-							int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
+						break;
+					}
+					case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
+					{
+						ESP_LOGI("", "Saving record...");
+						saveRes = saveMesurementResult(measurementRes, false, true);
+						break;
+					}
+					case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
+					{
+						ESP_LOGI("", "Saving record...");
+						saveRes = saveMesurementResult(measurementRes, true);
+						break;
+					}
+					case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
+					{
+						int32_t selectedMesurementRecordNumber = drawMeasurementResultRecordSelectionScreen();
 
-							if (selectedMesurementRecordNumber == 0) // user selected "Back" option
-							{
-								runLoop = false;
-								startEncoderVal = AlexEncoder::counter - 4;//Point to same menu item
-								continue;
-							}
-
-							ESP_LOGI("","Saving record...");
-							saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
-							break;
-						}
-						case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+						if (selectedMesurementRecordNumber == 0) // user selected "Back" option
 						{
-							return MeasurementSaveScreenResult::CANCEL;
-							break;
+							runLoop = false;
+							startEncoderVal = globalEncoderCounter - 4; // Point to same menu item
+							continue;
 						}
-						default:
-							halt("Halted. Unknown measurement save option");
-							break;
+
+						ESP_LOGI("", "Saving record...");
+						saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
+						break;
+					}
+					case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+					{
+						return MeasurementSaveScreenResult::CANCEL;
+						break;
+					}
+					default:
+						halt("Halted. Unknown measurement save option");
+						break;
 					}
 				}
 				else
 				{
 					switch ((ZeroRecordsMeasurementSaveMenuItems)resultIndex)
 					{
-						case ZeroRecordsMeasurementSaveMenuItems::NO:
+					case ZeroRecordsMeasurementSaveMenuItems::NO:
+					{
+						return MeasurementSaveScreenResult::OK; // do not save the result
+						break;
+					}
+					case ZeroRecordsMeasurementSaveMenuItems::YES:
+					{
+						if (freeSlotsCount > 0)
 						{
-							return MeasurementSaveScreenResult::OK; // do not save the result
-							break;
+							ESP_LOGI("", "Saving record...");
+							saveRes = saveMesurementResult(measurementRes);
 						}
-						case ZeroRecordsMeasurementSaveMenuItems::YES:
+						else
 						{
-							if (freeSlotsCount > 0)
-							{
-								ESP_LOGI("","Saving record...");
-								saveRes = saveMesurementResult(measurementRes);
-							}
-							else
-							{
-								continue;
-							}
+							continue;
+						}
 
-							break;
-						}
-						case ZeroRecordsMeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
-						{
-							return MeasurementSaveScreenResult::CANCEL;
-							break;
-						}
-						default:
-							halt("Halted. Unknown measurement save option");
-							break;
+						break;
+					}
+					case ZeroRecordsMeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
+					{
+						return MeasurementSaveScreenResult::CANCEL;
+						break;
+					}
+					default:
+						halt("Halted. Unknown measurement save option");
+						break;
 					}
 				}
 
@@ -1230,9 +1234,9 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 				{
 					char buf[30];
 					formatRecordName(saveRes.newRecordNumber, buf);
-					#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat"
 					sprintf(resMessage, "Record saved as '%s'", buf);
-					#pragma GCC diagnostic pop		
+#pragma GCC diagnostic pop
 				}
 				else
 				{
@@ -1248,7 +1252,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 
 void renderMeasuredResult(MeasuredResult &res)
 {
-	int16_t startEncoderVal = AlexEncoder::counter;
+	int16_t startEncoderVal = globalEncoderCounter;
 	int8_t prevPageIndex = -1;
 	display->fillScreen(BLACK);
 
@@ -1258,22 +1262,22 @@ void renderMeasuredResult(MeasuredResult &res)
 		if (isApiRequestReceived)
 			return;
 
-		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+		int16_t resultPageIndex = globalEncoderCounter - startEncoderVal;
 
 		if (resultPageIndex > RESULT_PAGES_COUNT - 1)
 		{
-			startEncoderVal = AlexEncoder::counter - (RESULT_PAGES_COUNT - 1);
+			startEncoderVal = globalEncoderCounter - (RESULT_PAGES_COUNT - 1);
 			resultPageIndex = RESULT_PAGES_COUNT - 1;
 		}
 
 		if (resultPageIndex < 0)
 		{
 			resultPageIndex = 0;
-			startEncoderVal = AlexEncoder::counter;
+			startEncoderVal = globalEncoderCounter;
 		}
 
-		// displayManager.drawMeasuredScreen(resultPageIndex, res);
-		#pragma region // display interaction
+// displayManager.drawMeasuredScreen(resultPageIndex, res);
+#pragma region // display interaction
 		// int8_t resultPageIndex = getInputParamsArrayInt(1);
 		bool isReadingsValid = res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL;
 
@@ -1510,9 +1514,9 @@ void renderMeasuredResult(MeasuredResult &res)
 				drawNavBar(resultPageIndex, RESULT_PAGES_COUNT);
 			}
 		}
-		#pragma endregion // end of display interaction
+#pragma endregion // end of display interaction
 
-		if (button.isClicked())
+		if (eb.click())
 		{
 			return;
 		}
@@ -1713,234 +1717,235 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	do
 	{
 		renderMeasuredResult(res);
-		if (isApiRequestReceived) return; // ВЫХОД ДЛЯ API
-		
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
+
 		if (sensor0DataOk || sensor1DataOk)
 		{
 			saveScreenRes = drawMeasurementSaveScreen(res);
-		} 
+		}
 
 	} while (saveScreenRes == MeasurementSaveScreenResult::CANCEL && !isApiRequestReceived);
 }
 
 void drawMeasuringScreen()
 {
-		sensor0Max = 0;
-		sensor1Max = 0;
+	sensor0Max = 0;
+	sensor1Max = 0;
 
-		uint32_t sensor1ADCSamplesCounter = 0;
-		bool isSensor1Opened = false;
-		bool isSensor1Closed = false;
-		uint32_t sensor2ADCSamplesCounter = 0;
-		bool isSensor2Opened = false;
-		bool isSensor2Closed = false;
-		uint32_t time = 0;
+	uint32_t sensor1ADCSamplesCounter = 0;
+	bool isSensor1Opened = false;
+	bool isSensor1Closed = false;
+	uint32_t sensor2ADCSamplesCounter = 0;
+	bool isSensor2Opened = false;
+	bool isSensor2Closed = false;
+	uint32_t time = 0;
 
-		esp_err_t adcReadRes;
-		uint32_t retNum = 0;
-		uint8_t result[ADC_READ_LEN] = {0};
-		memset(result, 0xcc, ADC_READ_LEN);
+	esp_err_t adcReadRes;
+	uint32_t retNum = 0;
+	uint8_t result[ADC_READ_LEN] = {0};
+	memset(result, 0xcc, ADC_READ_LEN);
 
-		const uint16_t resArrLength = UINT8_MAX + 1;
-		uint16_t sensor1ResArr[resArrLength] = {};
-		uint16_t sensor2ResArr[resArrLength] = {};
-		uint8_t sensor1ResArrInd = 0;
-		uint8_t sensor2ResArrInd = 0;
-		uint32_t curtain1ADCSamplesCounter = 0;
-		uint32_t curtain2ADCSamplesCounter = 0;
-		int8_t curtain1firstOpenedSensor = -1;
-		int8_t curtain2firstClosedSensor = -1;
+	const uint16_t resArrLength = UINT8_MAX + 1;
+	uint16_t sensor1ResArr[resArrLength] = {};
+	uint16_t sensor2ResArr[resArrLength] = {};
+	uint8_t sensor1ResArrInd = 0;
+	uint8_t sensor2ResArrInd = 0;
+	uint32_t curtain1ADCSamplesCounter = 0;
+	uint32_t curtain2ADCSamplesCounter = 0;
+	int8_t curtain1firstOpenedSensor = -1;
+	int8_t curtain2firstClosedSensor = -1;
 
-		display->fillScreen(BLACK);
-		display->setTextSize(2);
-		drawStringHCentered("MEASURING", 40);
-		display->setTextSize(1);
-		drawStringHCentered("Release camera shutter", 60);
+	display->fillScreen(BLACK);
+	display->setTextSize(2);
+	drawStringHCentered("MEASURING", 40);
+	display->setTextSize(1);
+	drawStringHCentered("Release camera shutter", 60);
 
-		ESP_ERROR_CHECK(adc_continuous_start(handle));
+	ESP_ERROR_CHECK(adc_continuous_start(handle));
 
-		// s_task_handle = xTaskGetCurrentTaskHandle();
+	// s_task_handle = xTaskGetCurrentTaskHandle();
 
-		// while (1)
-		// {
+	// while (1)
+	// {
 
-		/**
-		 * This is to show you the way to use the ADC continuous mode driver event callback.
-		 * This `ulTaskNotifyTake` will block when the data processing in the task is fast.
-		 * However in this example, the data processing (print) is slow, so you barely block here.
-		 *
-		 * Without using this event callback (to notify this task), you can still just call
-		 * `adc_continuous_read()` here in a loop, with/without a certain block timeout.
-		 */
-		// ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+	/**
+	 * This is to show you the way to use the ADC continuous mode driver event callback.
+	 * This `ulTaskNotifyTake` will block when the data processing in the task is fast.
+	 * However in this example, the data processing (print) is slow, so you barely block here.
+	 *
+	 * Without using this event callback (to notify this task), you can still just call
+	 * `adc_continuous_read()` here in a loop, with/without a certain block timeout.
+	 */
+	// ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-		// char unit[] = ADC_UNIT_STR(ADC_UNIT);
+	// char unit[] = ADC_UNIT_STR(ADC_UNIT);
 
-		while (true)
+	while (true)
+	{
+		if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
 		{
-			if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
+			ESP_ERROR_CHECK(adc_continuous_stop(handle));
+			return;
+		}
+
+		adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
+
+		if (adcReadRes == ESP_OK)
+		{
+			// ESP_LOGI("TASK", "ret is %x, ret_num is %" PRIu32 " bytes", ret, ret_num);
+			for (int i = 0; i < retNum; i += SOC_ADC_DIGI_RESULT_BYTES)
+			{
+				adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
+				uint32_t chan_num = ADC_GET_CHANNEL(p);
+				uint16_t adcVal = ADC_GET_DATA(p);
+
+				if (chan_num == ADC_CHANNEL_1) // senosor 1
+				{
+					if (adcVal > sensor0Max)
+					{
+						sensor0Max = adcVal;
+					}
+
+					if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor1Opened)
+					{
+						isSensor1Opened = true;
+						// ESP_LOGI("", "On");
+					}
+
+					if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
+					{
+						isSensor1Closed = true;
+						// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
+					}
+
+					if (isSensor1Opened && !isSensor1Closed)
+					{
+						sensor1ADCSamplesCounter++;
+					}
+
+					if (!isSensor1Closed || (isSensor1Closed && adcVal > 50))
+					{
+						sensor1ResArr[sensor1ResArrInd] = adcVal;
+						sensor1ResArrInd++;
+					}
+				}
+				else // sensor 2
+				{
+					if (adcVal > sensor1Max)
+					{
+						sensor1Max = adcVal;
+					}
+
+					if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor2Opened)
+					{
+						isSensor2Opened = true;
+						// ESP_LOGI("", "On");
+					}
+
+					if (adcVal < sensor1Max - SHUTTER_OPEN_LEVEL && !isSensor2Closed)
+					{
+						isSensor2Closed = true;
+						// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
+					}
+
+					if (isSensor2Opened && !isSensor2Closed)
+					{
+						sensor2ADCSamplesCounter++;
+					}
+
+					if (!isSensor2Closed || (isSensor2Closed && adcVal > 50))
+					{
+						sensor2ResArr[sensor2ResArrInd] = adcVal;
+						sensor2ResArrInd++;
+					}
+				}
+
+				if ((isSensor1Opened && !isSensor2Opened) ||
+						(!isSensor1Opened && isSensor2Opened))
+				{
+					curtain1ADCSamplesCounter++;
+				}
+
+				if ((!isSensor1Closed && isSensor2Closed) ||
+						(isSensor1Closed && !isSensor2Closed))
+				{
+					curtain2ADCSamplesCounter++;
+				}
+
+				// /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
+				// if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
+				// {
+				// ESP_LOGI(TAG, "Unit: %s, Channel: %" PRIu32 ", Value: %" PRIu32, unit, chan_num, data);
+				// }
+				// else
+				// {
+				//   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
+				// }
+			}
+
+			/**
+			 * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
+			 * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
+			 * usually you don't need this delay (as this task will block for a while).
+			 */
+			// vTaskDelay(1);
+		}
+		else if (adcReadRes == ESP_ERR_TIMEOUT)
+		{
+			// We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
+			ESP_LOGW("", "ADC timed out");
+			break;
+		}
+
+		if (eb.click())
+		{
+			ESP_ERROR_CHECK(adc_continuous_stop(handle));
+			return;
+		}
+		else if (((isSensor1Opened && isSensor1Closed) ||
+							(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
+		{
+			if (time == 0)
+			{
+				time = millis();
+			}
+
+			// wait for other sensors to get data
+			if (millis() - time > 500)
 			{
 				ESP_ERROR_CHECK(adc_continuous_stop(handle));
+				ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+				ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+
+				drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+													 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+													 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+													 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+
+				/* for (uint8_t i = 0; i < resArrLength - 1; i++)
+				{
+					ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
+				} */
+
 				return;
-			}
-
-			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
-
-			if (adcReadRes == ESP_OK)
-			{
-				// ESP_LOGI("TASK", "ret is %x, ret_num is %" PRIu32 " bytes", ret, ret_num);
-				for (int i = 0; i < retNum; i += SOC_ADC_DIGI_RESULT_BYTES)
-				{
-					adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
-					uint32_t chan_num = ADC_GET_CHANNEL(p);
-					uint16_t adcVal = ADC_GET_DATA(p);
-
-					if (chan_num == ADC_CHANNEL_1) // senosor 1
-					{
-						if (adcVal > sensor0Max)
-						{
-							sensor0Max = adcVal;
-						}
-
-						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor1Opened)
-						{
-							isSensor1Opened = true;
-							// ESP_LOGI("", "On");
-						}
-
-						if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
-						{
-							isSensor1Closed = true;
-							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
-						}
-
-						if (isSensor1Opened && !isSensor1Closed)
-						{
-							sensor1ADCSamplesCounter++;
-						}
-
-						if (!isSensor1Closed || (isSensor1Closed && adcVal > 50))
-						{
-							sensor1ResArr[sensor1ResArrInd] = adcVal;
-							sensor1ResArrInd++;
-						}
-					}
-					else // sensor 2
-					{
-						if (adcVal > sensor1Max)
-						{
-							sensor1Max = adcVal;
-						}
-
-						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor2Opened)
-						{
-							isSensor2Opened = true;
-							// ESP_LOGI("", "On");
-						}
-
-						if (adcVal < sensor1Max - SHUTTER_OPEN_LEVEL && !isSensor2Closed)
-						{
-							isSensor2Closed = true;
-							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
-						}
-
-						if (isSensor2Opened && !isSensor2Closed)
-						{
-							sensor2ADCSamplesCounter++;
-						}
-
-						if (!isSensor2Closed || (isSensor2Closed && adcVal > 50))
-						{
-							sensor2ResArr[sensor2ResArrInd] = adcVal;
-							sensor2ResArrInd++;
-						}
-					}
-
-					if ((isSensor1Opened && !isSensor2Opened) ||
-							(!isSensor1Opened && isSensor2Opened))
-					{
-						curtain1ADCSamplesCounter++;
-					}
-
-					if ((!isSensor1Closed && isSensor2Closed) ||
-								(isSensor1Closed && !isSensor2Closed))
-					{
-						curtain2ADCSamplesCounter++;
-					}
-
-					// /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
-					// if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
-					// {
-					// ESP_LOGI(TAG, "Unit: %s, Channel: %" PRIu32 ", Value: %" PRIu32, unit, chan_num, data);
-					// }
-					// else
-					// {
-					//   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
-					// }
-				}
-
-				/**
-				 * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
-				 * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
-				 * usually you don't need this delay (as this task will block for a while).
-				 */
-				// vTaskDelay(1);
-			}
-			else if (adcReadRes == ESP_ERR_TIMEOUT)
-			{
-				// We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
-				ESP_LOGW("", "ADC timed out");
-				break;
-			}
-
-			if (button.isClicked())
-			{
-				ESP_ERROR_CHECK(adc_continuous_stop(handle));
-				return;
-			}
-			else if (((isSensor1Opened && isSensor1Closed) ||
-								(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
-			{
-				if (time == 0)
-				{
-					time = millis();
-				}
-
-				// wait for other sensors to get data
-				if (millis() - time > 500)
-				{
-					ESP_ERROR_CHECK(adc_continuous_stop(handle));
-					ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
-					ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
-
-					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-														 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-														 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
-
-					/* for (uint8_t i = 0; i < resArrLength - 1; i++)
-					{
-						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-					} */
-
-					return;
-				}
 			}
 		}
-		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
+	}
+	// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
 
 CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
-  display->fillScreen(BLACK);
-  drawStringHCentered("Select curtain movement", 20);
-  
-  int16_t startEncoderVal = AlexEncoder::counter;
-  uint8_t xMargin = 50;
-  uint8_t yMargin = 55;
-  uint8_t ySpacing = 15;
-  uint8_t arrowXmargin = 15;
-	const uint8_t totalMenuItemsCount = CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT + 1;//+1 for 'Go back' item
+	display->fillScreen(BLACK);
+	drawStringHCentered("Select curtain movement", 20);
+
+	int16_t startEncoderVal = globalEncoderCounter;
+	uint8_t xMargin = 50;
+	uint8_t yMargin = 55;
+	uint8_t ySpacing = 15;
+	uint8_t arrowXmargin = 15;
+	const uint8_t totalMenuItemsCount = CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT + 1; //+1 for 'Go back' item
 
 	for (uint8_t i = 0; i < totalMenuItemsCount; i++)
 	{
@@ -1954,59 +1959,60 @@ CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 		{
 			display->println(GetCurtainMovementItemTitle((CurtainMovement)i));
 		}
-  }
+	}
 
-  display->setCursor(xMargin - arrowXmargin, yMargin);
-  display->print("->");
+	display->setCursor(xMargin - arrowXmargin, yMargin);
+	display->print("->");
 
-  int8_t resultMenuItemIndex = 0;
-  int8_t prevSelectedMenuItemIndex = 0;
+	int8_t resultMenuItemIndex = 0;
+	int8_t prevSelectedMenuItemIndex = 0;
 
-  while (true)
-  {
-		if (isApiRequestReceived) return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU; // ВЫХОД ДЛЯ API
+	while (true)
+	{
+		if (isApiRequestReceived)
+			return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU; // ВЫХОД ДЛЯ API
 
-    int16_t resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
+		int16_t resultMenuItemIndex = globalEncoderCounter - startEncoderVal;
 
 		if (resultMenuItemIndex > totalMenuItemsCount - 1)
 		{
-			startEncoderVal = AlexEncoder::counter - (totalMenuItemsCount - 1);
+			startEncoderVal = globalEncoderCounter - (totalMenuItemsCount - 1);
 			resultMenuItemIndex = totalMenuItemsCount - 1;
 		}
 
-    if (resultMenuItemIndex < 0)
-    {
-      resultMenuItemIndex = 0;
-      startEncoderVal = AlexEncoder::counter;
-    }
+		if (resultMenuItemIndex < 0)
+		{
+			resultMenuItemIndex = 0;
+			startEncoderVal = globalEncoderCounter;
+		}
 
-    // displayManager.drawCurtainMovementSelectionScreen(resultMenuItemIndex);
+		// displayManager.drawCurtainMovementSelectionScreen(resultMenuItemIndex);
 
-    if (prevSelectedMenuItemIndex != resultMenuItemIndex)
-    {
-      display->setTextColor(BLACK);
-      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
-      display->print("->");
+		if (prevSelectedMenuItemIndex != resultMenuItemIndex)
+		{
+			display->setTextColor(BLACK);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+			display->print("->");
 
-      display->setTextColor(WHITE);
-      display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultMenuItemIndex));
-      display->print("->");
+			display->setTextColor(WHITE);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultMenuItemIndex));
+			display->print("->");
 
-      prevSelectedMenuItemIndex = resultMenuItemIndex;
-    }
+			prevSelectedMenuItemIndex = resultMenuItemIndex;
+		}
 
-    if (button.isClicked())
-    {
-			if (resultMenuItemIndex == totalMenuItemsCount - 1)//'Go back' selected
+		if (eb.click())
+		{
+			if (resultMenuItemIndex == totalMenuItemsCount - 1) //'Go back' selected
 			{
 				return CurtainMovementSelectionScreenResult::GO_BACK;
 			}
-			
-      curtainMovement = (CurtainMovement)resultMenuItemIndex;
-      drawMeasuringScreen();
+
+			curtainMovement = (CurtainMovement)resultMenuItemIndex;
+			drawMeasuringScreen();
 			return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU;
 		}
-  }
+	}
 }
 
 void drawSensorSelectionScreen()
@@ -2030,12 +2036,12 @@ void drawSensorSelectionScreen()
 			return; // ВЫХОД ДЛЯ API
 
 		ESP_LOGI("", "Selected sensor index: %" PRIi16, selectedOptionIndex);
-	
+
 		if (selectedOptionIndex == sensorsDataArraySize) //'Go back' selected
 		{
 			return;
 		}
-	
+
 		curSensorIndex = selectedOptionIndex;
 		auto menuRes = drawCurtainMovementSelectionScreen();
 
@@ -2060,7 +2066,7 @@ void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint
 	static int8_t prevSensor2SignalStatus = -1;
 	static int8_t prevSensor1ActualBarWidth = 0;
 	static int8_t prevSensor2ActualBarWidth = 0;
-	static const char *sensorStatuses[3] = {"Too dim","Too bright","OK"};
+	static const char *sensorStatuses[3] = {"Too dim", "Too bright", "OK"};
 	const uint8_t barWidthPx = 80;
 	const uint8_t barX = 10;
 	double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
@@ -2150,7 +2156,7 @@ void drawLightCheckScreen()
 	uint32_t sensor1OpenADCSamplesCounter = 0;
 	uint32_t sensor2TotalADCSamplesCounter = 0;
 	uint32_t sensor2OpenADCSamplesCounter = 0;
-	const uint16_t displayUpdateSamplesCount = 8000;//200ms interval
+	const uint16_t displayUpdateSamplesCount = 8000; // 200ms interval
 
 	esp_err_t adcReadRes;
 	uint32_t retNum = 0;
@@ -2160,15 +2166,16 @@ void drawLightCheckScreen()
 	const char *lightQualityBrightnessLabel = "Light quality";
 	char *lightQualityStatusesStr[3] = {"Unknown", "Ok", "Bad"};
 	display->fillScreen(BLACK);
-	
+
 	uint8_t barX = 65;
 	uint8_t barY = 52;
-	drawSensorSignalLevelBar(barX, barY, 1, 0); //draw zero value to force ful bar visibility
+	drawSensorSignalLevelBar(barX, barY, 1, 0); // draw zero value to force ful bar visibility
 	drawSensorSignalLevelBar(barX, barY, 2, 0); // draw zero value to force ful bar visibility
 
 	while (true)
 	{
-		if (isApiRequestReceived) isApiRequestReceived = false; // Сбрасываем, если мы уже здесь
+		if (isApiRequestReceived)
+			isApiRequestReceived = false; // Сбрасываем, если мы уже здесь
 
 		sensor0Max = 0;
 		sensor1Max = 0;
@@ -2232,8 +2239,7 @@ void drawLightCheckScreen()
 		ESP_LOGI("", "Sen 1: %" PRIu32 ", sen 2: %" PRIu32 ", sen 1 max: %" PRIu16 ", sen 2 max: %" PRIu16,
 						 sensor1OpenADCSamplesCounter, sensor2OpenADCSamplesCounter, sensor0Max, sensor1Max);
 
-
-		#pragma region // display interaction
+#pragma region // display interaction
 
 		static LightQualityStatus oldLightQualityStatus = LightQualityStatus::UNKNOWN;
 		LightQualityStatus resLightQualityStatus = LightQualityStatus::UNKNOWN;
@@ -2270,17 +2276,17 @@ void drawLightCheckScreen()
 			resLightQualityStatus = LightQualityStatus::BAD;
 		}
 		else if (sen1LightQualityStatus == LightQualityStatus::OK &&
-							sen2LightQualityStatus == LightQualityStatus::OK)
+						 sen2LightQualityStatus == LightQualityStatus::OK)
 		{
 			resLightQualityStatus = LightQualityStatus::OK;
 		}
 		else if (sen1LightQualityStatus == LightQualityStatus::OK &&
-							 sen2LightQualityStatus == LightQualityStatus::UNKNOWN)
+						 sen2LightQualityStatus == LightQualityStatus::UNKNOWN)
 		{
 			resLightQualityStatus = LightQualityStatus::OK;
 		}
 		else if (sen2LightQualityStatus == LightQualityStatus::OK &&
-							 sen1LightQualityStatus == LightQualityStatus::UNKNOWN)
+						 sen1LightQualityStatus == LightQualityStatus::UNKNOWN)
 		{
 			resLightQualityStatus = LightQualityStatus::OK;
 		}
@@ -2312,32 +2318,33 @@ void drawLightCheckScreen()
 
 		barX = 65;
 		barY = 52;
-		
+
 		display->setTextColor(WHITE);
 		display->setTextSize(1);
 		drawSensorSignalLevelBar(barX, barY, 1, sensor0Max);
 		drawSensorSignalLevelBar(barX, barY, 2, sensor1Max);
-		
-		#pragma endregion //display interaction
+
+#pragma endregion // display interaction
 
 		// === ГЕНЕРАЦИЯ JSON ДЛЯ API ===
 		cJSON *json = cJSON_CreateObject();
 
-		if (json != NULL) 
+		if (json != NULL)
 		{
 			cJSON_AddStringToObject(json, "type", "light_setup_data");
 			cJSON_AddNumberToObject(json, "sensor1_level", sensor0Max / MAX_SIGNAL_LEVEL * 100); // in percents
 			cJSON_AddNumberToObject(json, "sensor2_level", sensor1Max / MAX_SIGNAL_LEVEL * 100); // in percents
 
-			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
-			const char* s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
+			const char *s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
+			const char *s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
 
 			cJSON_AddStringToObject(json, "sensor1_status", s1_status);
 			cJSON_AddStringToObject(json, "sensor2_status", s2_status);
 			cJSON_AddStringToObject(json, "light_quality", lightQualityStatusesStr[(int8_t)resLightQualityStatus]);
 
 			char *json_str = cJSON_PrintUnformatted(json);
-			if (json_str != NULL) {
+			if (json_str != NULL)
+			{
 				printf("%s\n", json_str);
 				free(json_str);
 			}
@@ -2345,35 +2352,36 @@ void drawLightCheckScreen()
 		}
 		// ==============================
 
-		if (button.isClicked())
-    {
-      return;
-    }
+		if (eb.click())
+		{
+			return;
+		}
 	}
 }
 
 void drawAboutScreen()
 {
-  display->fillScreen(BLACK);
+	display->fillScreen(BLACK);
 
-  while (true)
-  {
-		if (isApiRequestReceived) return; // ВЫХОД ДЛЯ API
+	while (true)
+	{
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
 
-    // displayManager.drawAboutScreen();
+		// displayManager.drawAboutScreen();
 
-    drawStringHCentered("About this device", 15);
+		drawStringHCentered("About this device", 15);
 
-    display->setCursor(10, 35);
-    display->printf("Hardware version: %s", About::HW_VERSION);
-    display->setCursor(10, 50);
-    display->printf("Firmware version: %s", About::SW_VERSION);
+		display->setCursor(10, 35);
+		display->printf("Hardware version: %s", About::HW_VERSION);
+		display->setCursor(10, 50);
+		display->printf("Firmware version: %s", About::SW_VERSION);
 
-    if (button.isClicked())
-    {
-      return;
-    }
-  }
+		if (eb.click())
+		{
+			return;
+		}
+	}
 }
 
 void drawViewRecordsScreen()
@@ -2389,35 +2397,35 @@ void drawViewRecordsScreen()
 
 		if (isApiRequestReceived)
 		{
-			return;											 // ВЫХОД ДЛЯ API
+			return; // ВЫХОД ДЛЯ API
 		}
 
-    if (selectedRecordNumber == 0) //"Back" option selected
-    {
-      return;
-    }
+		if (selectedRecordNumber == 0) //"Back" option selected
+		{
+			return;
+		}
 
-    StoredMeasuredResult selectedResult = getMeasurementStoredResultByNumber(selectedRecordNumber);
+		StoredMeasuredResult selectedResult = getMeasurementStoredResultByNumber(selectedRecordNumber);
 
-    if (selectedResult.recordNumber == -1)
-    {
-      halt("Halted. selectedRecordNumber is not found");
-    }
+		if (selectedResult.recordNumber == -1)
+		{
+			halt("Halted. selectedRecordNumber is not found");
+		}
 
-    MeasuredResult resultToDisplay = {};
-    resultToDisplay.sensor0Time = selectedResult.sensor0Time;
-    resultToDisplay.sensor1Time = selectedResult.sensor1Time;
-    resultToDisplay.curtain1spanAspeed = selectedResult.curtain1spanAspeed;
-    resultToDisplay.curtain1spanAtime = selectedResult.curtain1spanAtime;
-    resultToDisplay.curtain1TotalTime = selectedResult.curtain1TotalTime;
-    resultToDisplay.curtain2spanAspeed = selectedResult.curtain2spanAspeed;
-    resultToDisplay.curtain2spanAtime = selectedResult.curtain2spanAtime;
-    resultToDisplay.curtain2TotalTime = selectedResult.curtain2TotalTime;
-    resultToDisplay.slitWidthSensor0 = selectedResult.slitWidthSensor0;
-    resultToDisplay.slitWidthSensor1 = selectedResult.slitWidthSensor1;
-    resultToDisplay.slitWidthAverage = selectedResult.slitWidthAverage;
-    resultToDisplay.usedSensorType = selectedResult.usedSensorType;
-    resultToDisplay.selectedCurtainMovement = selectedResult.selectedCurtainMovement;
+		MeasuredResult resultToDisplay = {};
+		resultToDisplay.sensor0Time = selectedResult.sensor0Time;
+		resultToDisplay.sensor1Time = selectedResult.sensor1Time;
+		resultToDisplay.curtain1spanAspeed = selectedResult.curtain1spanAspeed;
+		resultToDisplay.curtain1spanAtime = selectedResult.curtain1spanAtime;
+		resultToDisplay.curtain1TotalTime = selectedResult.curtain1TotalTime;
+		resultToDisplay.curtain2spanAspeed = selectedResult.curtain2spanAspeed;
+		resultToDisplay.curtain2spanAtime = selectedResult.curtain2spanAtime;
+		resultToDisplay.curtain2TotalTime = selectedResult.curtain2TotalTime;
+		resultToDisplay.slitWidthSensor0 = selectedResult.slitWidthSensor0;
+		resultToDisplay.slitWidthSensor1 = selectedResult.slitWidthSensor1;
+		resultToDisplay.slitWidthAverage = selectedResult.slitWidthAverage;
+		resultToDisplay.usedSensorType = selectedResult.usedSensorType;
+		resultToDisplay.selectedCurtainMovement = selectedResult.selectedCurtainMovement;
 
 		renderMeasuredResult(resultToDisplay);
 
@@ -2469,62 +2477,62 @@ void drawViewRecordsScreen()
 		}
 
 		return;
-  }
+	}
 }
 
 void drawMainMenu()
 {
-  int16_t startEncoderVal = AlexEncoder::counter;
-  Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
-  int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
+	int16_t startEncoderVal = globalEncoderCounter;
+	Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];
+	int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT];
 
-  while (true)
-  {
-    display->fillScreen(BLACK);
+	while (true)
+	{
+		display->fillScreen(BLACK);
 
-    for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
-    {
-      menuItemsRects[i] = drawStringHCentered(GetMenuItemTitle((MainMenuItems)i), y);
-      menuItemsY[i] = y;
-    }
+		for (uint8_t i = 0, y = 45; i < MAIN_MENU_ITEMS_COUNT; i++, y += 15)
+		{
+			menuItemsRects[i] = drawStringHCentered(GetMenuItemTitle((MainMenuItems)i), y);
+			menuItemsY[i] = y;
+		}
 
-    int8_t resultMenuItemIndex = 0;
-    int8_t prevSelectedMenuItemIndex = -1;
+		int8_t resultMenuItemIndex = 0;
+		int8_t prevSelectedMenuItemIndex = -1;
 
-    while (true)
-    {
-      resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
+		while (true)
+		{
+			resultMenuItemIndex = globalEncoderCounter - startEncoderVal;
 
-      if (resultMenuItemIndex > MAIN_MENU_ITEMS_COUNT - 1)
-      {
-        startEncoderVal = AlexEncoder::counter - (MAIN_MENU_ITEMS_COUNT - 1);
-        resultMenuItemIndex = MAIN_MENU_ITEMS_COUNT - 1;
-      }
+			if (resultMenuItemIndex > MAIN_MENU_ITEMS_COUNT - 1)
+			{
+				startEncoderVal = globalEncoderCounter - (MAIN_MENU_ITEMS_COUNT - 1);
+				resultMenuItemIndex = MAIN_MENU_ITEMS_COUNT - 1;
+			}
 
-      if (resultMenuItemIndex < 0)
-      {
-        resultMenuItemIndex = 0;
-        startEncoderVal = AlexEncoder::counter;
-      }
+			if (resultMenuItemIndex < 0)
+			{
+				resultMenuItemIndex = 0;
+				startEncoderVal = globalEncoderCounter;
+			}
 
-      // displayManager.drawMainMenu(resultMenuItemIndex);
-      if (prevSelectedMenuItemIndex != resultMenuItemIndex)
-      {
-        if (prevSelectedMenuItemIndex != -1)
-        {
-          Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
-          display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
-          menuItemsRects[prevSelectedMenuItemIndex] =
-              drawStringHCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
-        }
+			// displayManager.drawMainMenu(resultMenuItemIndex);
+			if (prevSelectedMenuItemIndex != resultMenuItemIndex)
+			{
+				if (prevSelectedMenuItemIndex != -1)
+				{
+					Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
+					display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
+					menuItemsRects[prevSelectedMenuItemIndex] =
+							drawStringHCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
+				}
 
-        String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)resultMenuItemIndex)) + " <-";
-        Rect rNew = menuItemsRects[resultMenuItemIndex];
-        display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
+				String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)resultMenuItemIndex)) + " <-";
+				Rect rNew = menuItemsRects[resultMenuItemIndex];
+				display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
 
-        menuItemsRects[resultMenuItemIndex] = drawStringHCentered(newSelMenuItem, menuItemsY[resultMenuItemIndex]);
-        prevSelectedMenuItemIndex = resultMenuItemIndex;
-      }
+				menuItemsRects[resultMenuItemIndex] = drawStringHCentered(newSelMenuItem, menuItemsY[resultMenuItemIndex]);
+				prevSelectedMenuItemIndex = resultMenuItemIndex;
+			}
 
 			// === ПЕРЕХВАТЧИК API ===
 			if (isApiRequestReceived)
@@ -2533,63 +2541,63 @@ void drawMainMenu()
 
 				switch (apiRequestAction)
 				{
-					case ApiRequstAction::GO_TO_LIGHT_SETUP:
-						drawLightCheckScreen();
-						startEncoderVal = AlexEncoder::counter;
-						break;
+				case ApiRequstAction::GO_TO_LIGHT_SETUP:
+					drawLightCheckScreen();
+					startEncoderVal = globalEncoderCounter;
+					break;
 
-					default:
-						break;
+				default:
+					break;
 				}
 			}
 			// =======================
 
-			if (button.isClicked())
-      {
-        switch ((MainMenuItems)resultMenuItemIndex)
-        {
-        case MainMenuItems::MEASURE:
-        {
-          // drawCurtainMovementSelectionScreen();
+			if (eb.click())
+			{
+				switch ((MainMenuItems)resultMenuItemIndex)
+				{
+				case MainMenuItems::MEASURE:
+				{
+					// drawCurtainMovementSelectionScreen();
 					drawSensorSelectionScreen();
-          break;
-        }
-        case MainMenuItems::CHECK_LIGHT:
-        {
-          drawLightCheckScreen();
-          break;
-        }
-        case MainMenuItems::CREDITS:
-        {
-          drawAboutScreen();
-          break;
-        }
-        case MainMenuItems::MEASURMENT_HISTORY:
-        {
-          drawViewRecordsScreen();
-          break;
-        }
+					break;
+				}
+				case MainMenuItems::CHECK_LIGHT:
+				{
+					drawLightCheckScreen();
+					break;
+				}
+				case MainMenuItems::CREDITS:
+				{
+					drawAboutScreen();
+					break;
+				}
+				case MainMenuItems::MEASURMENT_HISTORY:
+				{
+					drawViewRecordsScreen();
+					break;
+				}
 
-        default:
-          halt("Halted. Unknown menu item");
-          break;
-        }
+				default:
+					halt("Halted. Unknown menu item");
+					break;
+				}
 
-        startEncoderVal = AlexEncoder::counter;
-        break;//break from while loop
-      }
-    }
-  }
+				startEncoderVal = globalEncoderCounter;
+				break; // break from while loop
+			}
+		}
+	}
 }
 
 void initADC()
 {
-  continuous_adc_init(channel, sizeof(channel) / sizeof(adc_channel_t), &handle);
+	continuous_adc_init(channel, sizeof(channel) / sizeof(adc_channel_t), &handle);
 
-  adc_continuous_evt_cbs_t cbs = {
-      .on_conv_done = s_conv_done_cb,
-  };
-  ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
+	adc_continuous_evt_cbs_t cbs = {
+			.on_conv_done = s_conv_done_cb,
+	};
+	ESP_ERROR_CHECK(adc_continuous_register_event_callbacks(handle, &cbs, NULL));
 }
 
 void initStorage()
@@ -2862,31 +2870,27 @@ void startFirmwareUpdate()
 	}
 }
 
-void setup() 
+void setup()
 {
 	// pinMode(15, OUTPUT);
 	// digitalWrite(15, HIGH);
 	// halt();
 
 	display->begin();
-  display->fillScreen(BLACK);
-  display->setTextColor(WHITE);
-  display->setFont(u8g2_font_6x13_tf);
+	display->fillScreen(BLACK);
+	display->setTextColor(WHITE);
+	display->setFont(u8g2_font_6x13_tf);
 
-  AlexEncoder::init(ENCODER_A_PIN, ENCODER_B_PIN);
+	xTaskCreate(encoderTickTask, "encTask", 2048, NULL, 1, NULL);
 
-  auto timer = timerBegin(1000000);
-  timerAttachInterrupt(timer, &onTimer);
-  timerAlarm(timer, US_IN_SECOND / USER_INPUT_POLLING_FREQ_HZ, true, 0);
-
-  initADC();
+	initADC();
 	initStorage();
 
 	// Запуск фонового слушателя API
 	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 4096, NULL, 1, NULL, 0);
 }
 
-void loop() 
+void loop()
 {
 	/* MeasuredResult r = {
 			3,
