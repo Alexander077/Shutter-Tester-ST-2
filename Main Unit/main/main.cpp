@@ -28,8 +28,11 @@
 #include "esp_log.h"
 #include "mbedtls/aes.h"
 #include "mbedtls/base64.h"
+#include "cJSON.h"
 
-static const char *TAG = "SERIAL_OTA";
+// Глобальный флаг для запроса API
+volatile bool isApiRequestReceived = false;
+
 
 // 32 байта для AES-256 (Симметричный ключ) - поменяйте на свои случайные числа!
 const unsigned char aes_key[32] = {
@@ -151,7 +154,50 @@ static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
 // static TaskHandle_t s_task_handle;
 adc_continuous_handle_t handle = NULL;
 
-void start_aes_serial_ota();
+enum class ApiRequstAction
+{
+	NO_ACTION,
+	GO_TO_LIGHT_SETUP,
+};
+
+volatile ApiRequstAction apiRequestAction = ApiRequstAction::NO_ACTION;
+
+void startFirmwareUpdate();
+
+void serialApiTask(void *pvParameters)
+{
+	const size_t API_BUF_SIZE = 512;
+	char rx_buf[API_BUF_SIZE];
+	setvbuf(stdin, NULL, _IONBF, 0);
+
+	while (true)
+	{
+		if (fgets(rx_buf, API_BUF_SIZE, stdin) != NULL)
+		{
+			ESP_LOGI("API", "Received data: %s", rx_buf);
+			cJSON *json = cJSON_Parse(rx_buf);
+
+			if (json != NULL)
+			{
+				cJSON *cmd_item = cJSON_GetObjectItemCaseSensitive(json, "cmd");
+
+				if (cJSON_IsString(cmd_item) && (cmd_item->valuestring != NULL))
+				{
+					if (strcmp(cmd_item->valuestring, "light_setup") == 0)
+					{
+						ESP_LOGI("API", "Command received: switch to light_setup");
+						isApiRequestReceived = true;
+						apiRequestAction = ApiRequstAction::GO_TO_LIGHT_SETUP;
+					}
+				}
+
+				cJSON_Delete(json); // Обязательно освобождаем память
+			}
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(50));
+	}
+}
 
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
@@ -469,15 +515,15 @@ bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
-  StoredMeasuredResult tempMeasRes;
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  int16_t totalSlotsCount = getTotalMeasurementSaveSlotsCount();
-  int16_t freeRecordSlots = getFreeMeasurementSaveSlotsCount();
-  int16_t existingRecordsCount = totalSlotsCount - freeRecordSlots;
-  int16_t totalArraySaize = existingRecordsCount + 1;
-  int32_t recordNumbers[totalArraySaize];
+	StoredMeasuredResult tempMeasRes;
+	int16_t blockSize = getMeasurementSaveRecordSize();
+	int16_t totalSlotsCount = getTotalMeasurementSaveSlotsCount();
+	int16_t freeRecordSlots = getFreeMeasurementSaveSlotsCount();
+	int16_t existingRecordsCount = totalSlotsCount - freeRecordSlots;
+	int16_t totalArraySaize = existingRecordsCount + 1;
+	int32_t recordNumbers[totalArraySaize];
   recordNumbers[0] = 0; //"Back" option
-  // char *recordTitles[totalArraySaize];
+																										 // char *recordTitles[totalArraySaize];
 	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); // open file for read and write
 	int32_t index = 0;
 	int32_t r = 1;
@@ -486,36 +532,36 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 	// for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
 	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
-  {
-    // EEPROM.get(i * blockSize, tempMeasRes);
-    if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
-    {
-      recordNumbers[r] = tempMeasRes.recordNumber;
-      r++;
+	{
+		// EEPROM.get(i * blockSize, tempMeasRes);
+		if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
+		{
+			recordNumbers[r] = tempMeasRes.recordNumber;
+			r++;
 			// ESP_LOGI("", "Rec. num: %" PRIi32, tempMeasRes.recordNumber);
 		}
 
 		index++;
-  }
+	}
 
 	fclose(recordsFile);
 
-  // recordNumbers[0] = 0;
-  // recordNumbers[1] = 89345;
-  // recordNumbers[2] = 456;
-  // recordNumbers[3] = 321;
-  // recordNumbers[4] = 5776;
-  // recordNumbers[5] = 57623;
-  // recordNumbers[6] = 120381;
-  // recordNumbers[7] = 335;
-  // recordNumbers[8] = 5675;
-  // recordNumbers[9] = 768;
-  // recordNumbers[10] = 57;
-  // recordNumbers[11] = 789;
+	// recordNumbers[0] = 0;
+	// recordNumbers[1] = 89345;
+	// recordNumbers[2] = 456;
+	// recordNumbers[3] = 321;
+	// recordNumbers[4] = 5776;
+	// recordNumbers[5] = 57623;
+	// recordNumbers[6] = 120381;
+	// recordNumbers[7] = 335;
+	// recordNumbers[8] = 5675;
+	// recordNumbers[9] = 768;
+	// recordNumbers[10] = 57;
+	// recordNumbers[11] = 789;
 
-  ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
+	ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
 
-  int16_t startEncoderVal = AlexEncoder::counter;
+	int16_t startEncoderVal = AlexEncoder::counter;
 	display->fillScreen(BLACK);
 
 	uint8_t xMargin = 30;
@@ -565,8 +611,11 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 	int8_t prevTopRecordIndex = 0;
 
 	while (true)
-  {
-    int16_t curIndex = AlexEncoder::counter - startEncoderVal;
+	{
+		if (isApiRequestReceived)
+			return 0; // ВЫХОД ДЛЯ API
+
+		int16_t curIndex = AlexEncoder::counter - startEncoderVal;
 
     if (curIndex > totalArraySaize - 1)
     {
@@ -667,11 +716,11 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 		// ----------------------------
 
-    if (button.isClicked())
-    {
-      return recordNumbers[curIndex];
-    }
-  }
+		if (button.isClicked())
+		{
+			return recordNumbers[curIndex];
+		}
+	}
 }
 
 MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
@@ -949,8 +998,12 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
 	display->print("->");
 
 	while (true)
-  {
-    int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
+	{
+		// === ВЫХОД ДЛЯ API ===
+		if (isApiRequestReceived)
+			return 0;
+
+		int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
 
     if (resultOptionIndex > optionsCount - 1)
     {
@@ -1037,6 +1090,10 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 
 		while (runLoop)
 		{
+			// === ВЫХОД ДЛЯ API ===
+			if (isApiRequestReceived)
+				return MeasurementSaveScreenResult::CANCEL;
+
 			int16_t resultIndex = AlexEncoder::counter - startEncoderVal;
 
 			if (resultIndex > menuItemsCount - 1)
@@ -1197,6 +1254,10 @@ void renderMeasuredResult(MeasuredResult &res)
 
 	while (true)
 	{
+		// === ВЫХОД ДЛЯ API ===
+		if (isApiRequestReceived)
+			return;
+
 		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
 
 		if (resultPageIndex > RESULT_PAGES_COUNT - 1)
@@ -1652,13 +1713,14 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	do
 	{
 		renderMeasuredResult(res);
+		if (isApiRequestReceived) return; // ВЫХОД ДЛЯ API
 		
 		if (sensor0DataOk || sensor1DataOk)
 		{
 			saveScreenRes = drawMeasurementSaveScreen(res);
 		} 
 
-	} while (saveScreenRes == MeasurementSaveScreenResult::CANCEL);
+	} while (saveScreenRes == MeasurementSaveScreenResult::CANCEL && !isApiRequestReceived);
 }
 
 void drawMeasuringScreen()
@@ -1716,6 +1778,12 @@ void drawMeasuringScreen()
 
 		while (true)
 		{
+			if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
+			{
+				ESP_ERROR_CHECK(adc_continuous_stop(handle));
+				return;
+			}
+
 			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
 
 			if (adcReadRes == ESP_OK)
@@ -1896,6 +1964,8 @@ CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 
   while (true)
   {
+		if (isApiRequestReceived) return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU; // ВЫХОД ДЛЯ API
+
     int16_t resultMenuItemIndex = AlexEncoder::counter - startEncoderVal;
 
 		if (resultMenuItemIndex > totalMenuItemsCount - 1)
@@ -1952,7 +2022,13 @@ void drawSensorSelectionScreen()
 
 	while (true)
 	{
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
+
 		int16_t selectedOptionIndex = drawMessageScreen("Select sensor type", sensorsDataArraySize + 1, options);
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
+
 		ESP_LOGI("", "Selected sensor index: %" PRIi16, selectedOptionIndex);
 	
 		if (selectedOptionIndex == sensorsDataArraySize) //'Go back' selected
@@ -1962,6 +2038,9 @@ void drawSensorSelectionScreen()
 	
 		curSensorIndex = selectedOptionIndex;
 		auto menuRes = drawCurtainMovementSelectionScreen();
+
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
 
 		if (menuRes == CurtainMovementSelectionScreenResult::GO_BACK)
 		{
@@ -2089,6 +2168,8 @@ void drawLightCheckScreen()
 
 	while (true)
 	{
+		if (isApiRequestReceived) isApiRequestReceived = false; // Сбрасываем, если мы уже здесь
+
 		sensor0Max = 0;
 		sensor1Max = 0;
 		sensor1TotalADCSamplesCounter = 0;
@@ -2239,6 +2320,31 @@ void drawLightCheckScreen()
 		
 		#pragma endregion //display interaction
 
+		// === ГЕНЕРАЦИЯ JSON ДЛЯ API ===
+		cJSON *json = cJSON_CreateObject();
+
+		if (json != NULL) 
+		{
+			cJSON_AddStringToObject(json, "type", "light_setup_data");
+			cJSON_AddNumberToObject(json, "sensor1_level", sensor0Max / MAX_SIGNAL_LEVEL * 100); // in percents
+			cJSON_AddNumberToObject(json, "sensor2_level", sensor1Max / MAX_SIGNAL_LEVEL * 100); // in percents
+
+			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
+			const char* s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
+
+			cJSON_AddStringToObject(json, "sensor1_status", s1_status);
+			cJSON_AddStringToObject(json, "sensor2_status", s2_status);
+			cJSON_AddStringToObject(json, "light_quality", lightQualityStatusesStr[(int8_t)resLightQualityStatus]);
+
+			char *json_str = cJSON_PrintUnformatted(json);
+			if (json_str != NULL) {
+				printf("%s\n", json_str);
+				free(json_str);
+			}
+			cJSON_Delete(json);
+		}
+		// ==============================
+
 		if (button.isClicked())
     {
       return;
@@ -2252,6 +2358,8 @@ void drawAboutScreen()
 
   while (true)
   {
+		if (isApiRequestReceived) return; // ВЫХОД ДЛЯ API
+
     // displayManager.drawAboutScreen();
 
     drawStringHCentered("About this device", 15);
@@ -2270,9 +2378,19 @@ void drawAboutScreen()
 
 void drawViewRecordsScreen()
 {
-  while (true)
-  {
-    int32_t selectedRecordNumber = drawMeasurementResultRecordSelectionScreen();
+	while (true)
+	{
+		if (isApiRequestReceived)
+		{
+			return; // ВЫХОД ДЛЯ API
+		}
+
+		int32_t selectedRecordNumber = drawMeasurementResultRecordSelectionScreen();
+
+		if (isApiRequestReceived)
+		{
+			return;											 // ВЫХОД ДЛЯ API
+		}
 
     if (selectedRecordNumber == 0) //"Back" option selected
     {
@@ -2303,8 +2421,14 @@ void drawViewRecordsScreen()
 
 		renderMeasuredResult(resultToDisplay);
 
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
+
 		const char *options[] = {"Go back to list", "Go to main menu", "Delete record"};
 		int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+
+		if (isApiRequestReceived)
+			return; // ВЫХОД ДЛЯ API
 
 		if (selectedOptionIndex == 0) // Go back to list
 		{
@@ -2320,6 +2444,9 @@ void drawViewRecordsScreen()
 		{
 			const char *options[] = {"Yes", "No"};
 			int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);
+
+			if (isApiRequestReceived)
+				return; // ВЫХОД ДЛЯ API
 
 			if (deleteOptionIndex == 0) // Delete record
 			{
@@ -2399,7 +2526,25 @@ void drawMainMenu()
         prevSelectedMenuItemIndex = resultMenuItemIndex;
       }
 
-      if (button.isClicked())
+			// === ПЕРЕХВАТЧИК API ===
+			if (isApiRequestReceived)
+			{
+				isApiRequestReceived = false;
+
+				switch (apiRequestAction)
+				{
+					case ApiRequstAction::GO_TO_LIGHT_SETUP:
+						drawLightCheckScreen();
+						startEncoderVal = AlexEncoder::counter;
+						break;
+
+					default:
+						break;
+				}
+			}
+			// =======================
+
+			if (button.isClicked())
       {
         switch ((MainMenuItems)resultMenuItemIndex)
         {
@@ -2538,8 +2683,10 @@ void initStorage()
 	}
 }
 
-void start_aes_serial_ota()
+void startFirmwareUpdate()
 {
+	static const char *TAG = "SERIAL_OTA";
+
 	ESP_LOGI(TAG, "Starting OTA. Preparing partition...");
 
 	// 1. Поиск раздела для обновления
@@ -2734,6 +2881,9 @@ void setup()
 
   initADC();
 	initStorage();
+
+	// Запуск фонового слушателя API
+	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 4096, NULL, 1, NULL, 0);
 }
 
 void loop() 
