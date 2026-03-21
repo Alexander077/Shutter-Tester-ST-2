@@ -57,7 +57,7 @@ const unsigned char aes_iv_init[16] = {
 
 #define TEST_PIN 5
 
-#define USER_INPUT_POLLING_FREQ_HZ 100
+#define USER_INPUT_POLLING_FREQ_HZ 300
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
 
@@ -420,6 +420,7 @@ void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 void IRAM_ATTR onTimer()
 {
   button.tick();
+	AlexEncoder::tick();
 }
 
 int16_t getMeasurementSaveRecordSize()
