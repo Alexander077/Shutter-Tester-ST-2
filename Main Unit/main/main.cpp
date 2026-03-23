@@ -22,6 +22,7 @@
 #include "lib/StoredMeasuredResult.h"
 #include "lib/About.h"
 #include "lib/Images.h"
+#include "lib/SerialAPI.h"
 
 #include "esp_ota_ops.h"
 #include "esp_partition.h"
@@ -2330,12 +2331,17 @@ void drawLightCheckScreen()
 			cJSON_AddNumberToObject(json, "sensor1_level", sensor0Max / MAX_SIGNAL_LEVEL * 100); // in percents
 			cJSON_AddNumberToObject(json, "sensor2_level", sensor1Max / MAX_SIGNAL_LEVEL * 100); // in percents
 
-			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
-			const char* s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? "Too dim" : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? "Too bright" : "OK");
+			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
+				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
+					SerialAPILightStatus::LIGHT_STATUS_TOO_BRIGHT : SerialAPILightStatus::LIGHT_STATUS_OK);
+
+			const char* s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
+				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
+					SerialAPILightStatus::LIGHT_STATUS_TOO_BRIGHT : SerialAPILightStatus::LIGHT_STATUS_OK);
 
 			cJSON_AddStringToObject(json, "sensor1_status", s1_status);
 			cJSON_AddStringToObject(json, "sensor2_status", s2_status);
-			cJSON_AddStringToObject(json, "light_quality", lightQualityStatusesStr[(int8_t)resLightQualityStatus]);
+			cJSON_AddStringToObject(json, "light_quality", serialApiLightQualityStatusesStr[(int8_t)resLightQualityStatus]);
 
 			char *json_str = cJSON_PrintUnformatted(json);
 			if (json_str != NULL) {
