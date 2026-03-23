@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include "cJSON.h"
 #include "esp_log.h"
+#include "Common.h"
 
 // Глобальный флаг для запроса API
 volatile bool isApiRequestReceived = false;
@@ -50,6 +51,38 @@ void serialApiTask(void *pvParameters)
             ESP_LOGI("API", "Command received: switch to light_setup");
             isApiRequestReceived = true;
             apiRequestAction = ApiRequstAction::GO_TO_LIGHT_SETUP;
+          }
+          else if (strcmp(cmd_item->valuestring, "measure") == 0)
+          {
+            ESP_LOGI("API", "Command received: switch to measure");
+
+            // Пытаемся получить параметры из JSON
+            cJSON *sensor_item = cJSON_GetObjectItemCaseSensitive(json, "sensor_index");
+            cJSON *curtain_item = cJSON_GetObjectItemCaseSensitive(json, "curtain_movement");
+
+            // Проверяем, что параметры переданы и это числа
+            if (cJSON_IsNumber(sensor_item) && cJSON_IsNumber(curtain_item))
+            {
+              // Желательно добавить валидацию, чтобы индекс не вышел за пределы массива
+              if (sensor_item->valueint >= 0 && sensor_item->valueint < sensorsDataArraySize &&
+                  curtain_item->valueint >= 0 && curtain_item->valueint <= 2)
+              {
+                // Устанавливаем глобальные переменные
+                curSensorIndex = sensor_item->valueint;
+                curtainMovement = (CurtainMovement)curtain_item->valueint;
+
+                isApiRequestReceived = true;
+                apiRequestAction = ApiRequstAction::GO_TO_MEASURE;
+              }
+              else
+              {
+                ESP_LOGE("API", "Measure command parameters are out of range");
+              }
+            }
+            else
+            {
+              ESP_LOGE("API", "Measure command missing sensor_index or curtain_movement");
+            }
           }
         }
 

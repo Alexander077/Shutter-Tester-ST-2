@@ -85,6 +85,9 @@ enum class Screens
   TEST = 't',
 };
 
+CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
+int8_t curSensorIndex = -1;
+
 void formatRecordName(int32_t recordNumber, char resultRecordName[30])
 {
   int16_t bufSize = 30;

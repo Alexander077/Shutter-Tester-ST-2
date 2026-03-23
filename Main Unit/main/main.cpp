@@ -117,9 +117,6 @@ double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {40, 40, 30, 20, 15};
 #define SHUTTR_SPEEDS_COUNT 14
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
-CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
-int8_t curSensorIndex = -1;
-
 #define ADC_UNIT ADC_UNIT_1
 #define ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
 #define ADC_ATTEN ADC_ATTEN_DB_12
@@ -1193,7 +1190,6 @@ void renderMeasuredResult(MeasuredResult &res)
 
 	while (true)
 	{
-		// === ВЫХОД ДЛЯ API ===
 		if (isApiRequestReceived)
 			return;
 
@@ -1646,6 +1642,57 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	// Serial.println(res.slitWidthSensor0);
 	// Serial.println(res.slitWidthSensor1);
 	// Serial.println(res.slitWidthAverage);
+
+	// === ГЕНЕРАЦИЯ JSON ДЛЯ API ===
+	cJSON *json = cJSON_CreateObject();
+
+	if (json != NULL)
+	{
+		cJSON_AddStringToObject(json, "type", "measurement_result");
+
+		// Проверяем, успешны ли измерения (если нет, отправляем флаг ошибки)
+		bool isDataValid = (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL);
+		cJSON_AddBoolToObject(json, "is_valid", isDataValid);
+
+		if (isDataValid)
+		{
+			// Время прохождения шторок над сенсорами (мс)
+			cJSON_AddNumberToObject(json, "sensor1_time_ms", res.sensor0Time);
+			cJSON_AddNumberToObject(json, "sensor2_time_ms", res.sensor1Time);
+
+			// Данные первой шторки
+			cJSON_AddNumberToObject(json, "curtain1_speed_ms", res.curtain1spanAspeed);
+			cJSON_AddNumberToObject(json, "curtain1_time_ms", res.curtain1spanAtime);
+			cJSON_AddNumberToObject(json, "curtain1_total_time_ms", res.curtain1TotalTime);
+
+			// Данные второй шторки
+			cJSON_AddNumberToObject(json, "curtain2_speed_ms", res.curtain2spanAspeed);
+			cJSON_AddNumberToObject(json, "curtain2_time_ms", res.curtain2spanAtime);
+			cJSON_AddNumberToObject(json, "curtain2_total_time_ms", res.curtain2TotalTime);
+
+			// Ширина щели
+			cJSON_AddNumberToObject(json, "slit_width_s1_mm", res.slitWidthSensor0);
+			cJSON_AddNumberToObject(json, "slit_width_s2_mm", res.slitWidthSensor1);
+			cJSON_AddNumberToObject(json, "slit_width_avg_mm", res.slitWidthAverage);
+		}
+		else
+		{
+			// Можно добавить причину ошибки, если нужно
+			cJSON_AddStringToObject(json, "error", "Invalid measurement data");
+		}
+
+		// Вывод в Serial
+		char *json_str = cJSON_PrintUnformatted(json);
+
+		if (json_str != NULL)
+		{
+			printf("%s\n", json_str);
+			free(json_str); // Не забываем освобождать память!
+		}
+
+		cJSON_Delete(json);
+	}
+	// ==============================
 
 	MeasurementSaveScreenResult saveScreenRes = MeasurementSaveScreenResult::OK;
 
@@ -2479,6 +2526,11 @@ void drawMainMenu()
 				{
 					case ApiRequstAction::GO_TO_LIGHT_SETUP:
 						drawLightCheckScreen();
+						startEncoderVal = AlexEncoder::counter;
+						break;
+
+					case ApiRequstAction::GO_TO_MEASURE: 
+						drawMeasuringScreen();
 						startEncoderVal = AlexEncoder::counter;
 						break;
 
