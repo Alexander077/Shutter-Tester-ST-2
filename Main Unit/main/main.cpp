@@ -24,6 +24,7 @@
 #include "lib/Images.h"
 #include "lib/SerialAPI.h"
 #include "lib/FirmwareUpdate.h"
+#include "lib/RecordsStorageManager.h"
 
 #include "esp_partition.h"
 #include "esp_log.h"
@@ -56,6 +57,8 @@
 #define LITTLEFS_BASE_PATH "/" LITTLEFS_PARTITION_NAME
 #define RECORDS_FILE_NAME "records.bin"
 #define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
+
+RecordsStorageManager storage(RECORDS_FILE_PATH);
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -371,130 +374,37 @@ int16_t getTotalMeasurementSaveSlotsCount()
 
 int16_t getFreeMeasurementSaveSlotsCount()
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  int16_t freeCount = 0;
-  StoredMeasuredResult tempMeasRes;
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r");
-
-	for (int16_t i = 0; i < totalCount; i++)
-  {
-    // EEPROM.get(i * blockSize, tempMeasRes);
-		int16_t readRes = fread(&tempMeasRes, blockSize, 1, recordsFile);
-
-		if (readRes != 1)
-		{
-			halt("Halted. Failed to read record");
-		}
-
-		if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
-    {
-      freeCount++;
-    }
-  }
-
-	fclose(recordsFile);
-	return freeCount;
+	return storage.getFreeSlotsCount();
 }
 
 StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  StoredMeasuredResult measRes = {-1};
-
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); 
-
-	// for (int16_t i = 0; i < totalCount; i++)
-	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
-	{
-    // EEPROM.get(i * blockSize, measRes);
-
-    if (measRes.recordNumber == recordNumber)
-    {
-      break;
-    }
-  }
-
-	fclose(recordsFile);
-  return measRes;
+	return storage.getRecordByNumber(recordNumber);
 }
 
 bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
-  int16_t totalCount = getTotalMeasurementSaveSlotsCount();
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  StoredMeasuredResult measRes = {-1};
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+"); 
-	int32_t index = 0;
-	bool res = false;
-
-  // for (int16_t i = 0; i < totalCount; i++)
-	while (fread(&measRes, blockSize, 1, recordsFile) == 1)
-  {
-    // EEPROM.get(i * blockSize, measRes);
-
-    if (measRes.recordNumber == recordNumber)
-    {
-      measRes.isDeleted = true;
-			// return verifiedEEPROMPut(i * blockSize, measRes);
-    	fseek(recordsFile, index * blockSize, SEEK_SET);
-			res = fwrite(&measRes, blockSize, 1, recordsFile) == 1;
-		}
-
-		index++;
-  }
-
-	fclose(recordsFile);
-	return res;
+	return storage.deleteRecordByNumber(recordNumber);
 }
 
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
-	StoredMeasuredResult tempMeasRes;
-	int16_t blockSize = getMeasurementSaveRecordSize();
-	int16_t totalSlotsCount = getTotalMeasurementSaveSlotsCount();
-	int16_t freeRecordSlots = getFreeMeasurementSaveSlotsCount();
-	int16_t existingRecordsCount = totalSlotsCount - freeRecordSlots;
-	int16_t totalArraySaize = existingRecordsCount + 1;
+	// 1. Получаем все существующие (не удаленные) номера записей через менеджер
+	std::vector<int32_t> validIds = storage.getAllValidRecordNumbers();
+
+	// 2. Размер массива = количество записей + 1 (для кнопки "Back")
+	int16_t totalArraySaize = validIds.size() + 1;
 	int32_t recordNumbers[totalArraySaize];
-  recordNumbers[0] = 0; //"Back" option
-																										 // char *recordTitles[totalArraySaize];
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r"); // open file for read and write
-	int32_t index = 0;
-	int32_t r = 1;
 
-	// ESP_LOGI("", "Rec count: %" PRIi16, existingRecordsCount);
+	recordNumbers[0] = 0; // Опция "Back" (возврат)
 
-	// for (int16_t i = 0, r = 1; i < totalSlotsCount; i++)
-	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+	// 3. Заполняем массив данными из вектора
+	for (size_t i = 0; i < validIds.size(); i++)
 	{
-		// EEPROM.get(i * blockSize, tempMeasRes);
-		if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
-		{
-			recordNumbers[r] = tempMeasRes.recordNumber;
-			r++;
-			// ESP_LOGI("", "Rec. num: %" PRIi32, tempMeasRes.recordNumber);
-		}
-
-		index++;
+		recordNumbers[i + 1] = validIds[i];
 	}
 
-	fclose(recordsFile);
-
-	// recordNumbers[0] = 0;
-	// recordNumbers[1] = 89345;
-	// recordNumbers[2] = 456;
-	// recordNumbers[3] = 321;
-	// recordNumbers[4] = 5776;
-	// recordNumbers[5] = 57623;
-	// recordNumbers[6] = 120381;
-	// recordNumbers[7] = 335;
-	// recordNumbers[8] = 5675;
-	// recordNumbers[9] = 768;
-	// recordNumbers[10] = 57;
-	// recordNumbers[11] = 789;
-
+	// Сортировка (оставляем вашу оригинальную логику)
 	ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
 
 	int16_t startEncoderVal = AlexEncoder::counter;
@@ -661,218 +571,91 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
 MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-  int32_t numberOfLast = -1;
-  int32_t indexOfLast = -1;
-  StoredMeasuredResult savedMeasRes;
-  StoredMeasuredResult tempMeasRes;
-  int16_t blockSize = getMeasurementSaveRecordSize();
-  int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
-  MeasurementRecordSaveResult saveRes = {false, -1};
+	MeasurementRecordSaveResult saveRes = {false, -1};
 
-	FILE *recordsFile = fopen(RECORDS_FILE_PATH, "r+");//open file for read and write
+	// Создаем структуру для сохранения и зануляем её память
+	StoredMeasuredResult newRes;
+	memset(&newRes, 0, sizeof(StoredMeasuredResult));
 
-	if (recordsFile == NULL)
+	// Если передали recordNumberToOverwrite, значит это режим перезаписи (update)
+	// Иначе ставим 0, что для менеджера означает "создать новую запись или найти свободный слот"
+	if (recordNumberToOverwrite != -1)
 	{
-		halt("Failed to open records file");
+		newRes.recordNumber = recordNumberToOverwrite;
+	}
+	else
+	{
+		newRes.recordNumber = 0;
 	}
 
-	// for (int16_t i = 0; i < totalRecordsCount; i++)
-	int32_t index = 0;
-	while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+	newRes.isDeleted = false;
+
+	// Аккуратно перекладываем все данные из текущего измерения
+	newRes.sensor0Time = res.sensor0Time;
+	newRes.sensor1Time = res.sensor1Time;
+	newRes.curtain1spanAspeed = res.curtain1spanAspeed;
+	newRes.curtain1spanAtime = res.curtain1spanAtime;
+	newRes.curtain1TotalTime = res.curtain1TotalTime;
+	newRes.curtain2spanAspeed = res.curtain2spanAspeed;
+	newRes.curtain2spanAtime = res.curtain2spanAtime;
+	newRes.curtain2TotalTime = res.curtain2TotalTime;
+	newRes.slitWidthSensor0 = res.slitWidthSensor0;
+	newRes.slitWidthSensor1 = res.slitWidthSensor1;
+	newRes.slitWidthAverage = res.slitWidthAverage;
+	newRes.usedSensorType = res.usedSensorType;
+	newRes.selectedCurtainMovement = res.selectedCurtainMovement;
+
+	// --- Обработка команд перезаписи самых новых или самых старых результатов ---
+	if (overwriteOldest || overwriteNewest)
 	{
-    // EEPROM.get(i * blockSize, tempMeasRes);
-		if (tempMeasRes.recordNumber > numberOfLast && !tempMeasRes.isDeleted)
-    {
-      numberOfLast = tempMeasRes.recordNumber;
-			indexOfLast = index;
-		}
+		std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
 
-		index++;
-  }
+		if (!ids.empty())
+		{
+			// Находим минимальный (самый старый) и максимальный (самый новый) ID
+			int32_t minId = ids[0];
+			int32_t maxId = ids[0];
 
-  if (numberOfLast == -1)
-  {
-		fclose(recordsFile);
-		halt("Halted. numberOfLast was not defined");
-  }
-
-  savedMeasRes.recordNumber = numberOfLast + 1;
-  savedMeasRes.isDeleted = false;
-  savedMeasRes.sensor0Time = res.sensor0Time;
-  savedMeasRes.sensor1Time = res.sensor1Time;
-  savedMeasRes.curtain1spanAspeed = res.curtain1spanAspeed;
-  savedMeasRes.curtain1spanAtime = res.curtain1spanAtime;
-  savedMeasRes.curtain1TotalTime = res.curtain1TotalTime;
-  savedMeasRes.curtain2spanAspeed = res.curtain2spanAspeed;
-  savedMeasRes.curtain2spanAtime = res.curtain2spanAtime;
-  savedMeasRes.curtain2TotalTime = res.curtain2TotalTime;
-  savedMeasRes.slitWidthSensor0 = res.slitWidthSensor0;
-  savedMeasRes.slitWidthSensor1 = res.slitWidthSensor1;
-  savedMeasRes.slitWidthAverage = res.slitWidthAverage;
-  savedMeasRes.usedSensorType = res.usedSensorType;
-  savedMeasRes.selectedCurtainMovement = res.selectedCurtainMovement;
-
-  if (numberOfLast == 0) // if there is no records at all in the EEPROM
-  {
-		// saveRes.isSuccess = verifiedEEPROMPut(EEPROM_MEASURED_RES_START_INDEX, savedMeasRes);
-		rewind(recordsFile);
-		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
-
-		if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
-
-		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8, 
-							savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
-		fclose(recordsFile);
-		return saveRes;
-  }
-
-	
-  // save to free slot
-  if (!overwriteNewest && !overwriteOldest && recordNumberToOverwrite == -1)
-  {
-		int16_t freeSlotIndex = -1;
-		int32_t index = 0;
-		rewind(recordsFile);
-
-    // Check for free slots
-    // for (int16_t i = 0; i < totalRecordsCount; i++)
-		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
-    {
-      // EEPROM.get(i * blockSize, tempMeasRes);
-      if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
-      {
-				freeSlotIndex = index;
+			for (int32_t id : ids)
+			{
+				if (id < minId)
+					minId = id;
+				if (id > maxId)
+					maxId = id;
 			}
 
-			index++;
-		}
-
-    if (freeSlotIndex != -1)
-    {
-      // saveRes.isSuccess = verifiedEEPROMPut(freeSlotIndex * blockSize, savedMeasRes);
-			fseek(recordsFile, freeSlotIndex * blockSize, SEEK_SET);
-			saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
-
-			if (saveRes.isSuccess)
-      {
-        saveRes.newRecordNumber = savedMeasRes.recordNumber;
-      }
-
-			ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
-							 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
-			fclose(recordsFile);
-			return saveRes;
-    }
-
-    halt("Halted. freeSlotIndex not found");
-  }
-
-  // if user choose to overwrite oldest record
-  if (overwriteOldest)
-  {
-    int32_t numberOfOldest = INT32_MAX;
-    int32_t indexOfOldest = -1;
-		int32_t index = 0;
-		rewind(recordsFile);
-
-		// find oldest
-    // for (int16_t i = 0; i < totalRecordsCount; i++)
-		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
-		{
-      // EEPROM.get(i * blockSize, tempMeasRes);
-
-      if (tempMeasRes.recordNumber != 0 && tempMeasRes.recordNumber < numberOfOldest && !tempMeasRes.isDeleted)
-      {
-        numberOfOldest = tempMeasRes.recordNumber;
-				indexOfOldest = index;
+			if (overwriteOldest)
+			{
+				newRes.recordNumber = minId;
 			}
-
-			index++;
+			else if (overwriteNewest)
+			{
+				newRes.recordNumber = maxId;
+			}
 		}
-
-    if (indexOfOldest == -1)
-    {
-      halt("Halted. indexOfOldest not found");
-    }
-
-    // saveRes.isSuccess = verifiedEEPROMPut(indexOfOldest * blockSize, savedMeasRes);
-		fseek(recordsFile, indexOfOldest * blockSize, SEEK_SET);
-		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
-
-		if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
-
-		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
-						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
-		fclose(recordsFile);
-		return saveRes;
-  }
-
-  // if user choose to overwrite newest record
-  if (overwriteNewest)
-  {
-    if (indexOfLast == -1)
-    {
-      halt("Halted. indexOfLast not found");
-    }
-
-		// saveRes.isSuccess = verifiedEEPROMPut(indexOfLast * blockSize, savedMeasRes);
-		fseek(recordsFile, indexOfLast * blockSize, SEEK_SET);
-		saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
-
-    if (saveRes.isSuccess)
-    {
-      saveRes.newRecordNumber = savedMeasRes.recordNumber;
-    }
-
-		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
-						 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
-
-		fclose(recordsFile);
-		return saveRes;
-  }
-
-  if (recordNumberToOverwrite != -1)
-  {
-		int32_t index = 0;
-		rewind(recordsFile);
-
-		// for (int16_t i = 0; i < totalRecordsCount; i++)
-		while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+		else
 		{
-      // EEPROM.get(i * blockSize, tempMeasRes);
-      if (tempMeasRes.recordNumber == recordNumberToOverwrite)
-      {
-        // saveRes.isSuccess = verifiedEEPROMPut(i * blockSize, savedMeasRes);
-				fseek(recordsFile, index * blockSize, SEEK_SET);
-				saveRes.isSuccess = fwrite(&savedMeasRes, blockSize, 1, recordsFile);
-
-				if (saveRes.isSuccess)
-        {
-          saveRes.newRecordNumber = savedMeasRes.recordNumber;
-        }
-
-				ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: %" PRIu8,
-								 savedMeasRes.recordNumber, (uint8_t)saveRes.isSuccess);
-
-				fclose(recordsFile);
-				return saveRes;
-      }
-
-			index++;
+			// Если записей нет, но запрошена перезапись — просто сохраняем как новую
+			newRes.recordNumber = 0;
 		}
+	}
 
-    halt("Halted. recordNumberToOverwrite not found");
-  }
+	// Делегируем всю работу с файлом LittleFS и мьютексами классу-менеджеру
+	int32_t savedId = storage.saveOrUpdateRecord(newRes);
 
-	fclose(recordsFile);
-	halt("Halted. Program should not get here");
-	return saveRes;//just to suppress warning
+	// Обработка результата
+	if (savedId != -1)
+	{
+		saveRes.isSuccess = true;
+		saveRes.newRecordNumber = savedId;
+		ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: 1", savedId);
+	}
+	else
+	{
+		ESP_LOGE("", "Failed to save measurement result");
+	}
+
+	return saveRes;
 }
 
 double getCorrectedSensorValue(long rawSensorTime, uint16_t maxSensorValue)
@@ -2701,8 +2484,8 @@ void setup()
   initADC();
 	initStorage();
 
-	// Запуск фонового слушателя API
-	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 4096, NULL, 1, NULL, 0);
+	storage.begin();
+	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8192, NULL, 1, NULL, 0);
 }
 
 void loop() 
