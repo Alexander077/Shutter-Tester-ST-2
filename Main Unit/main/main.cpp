@@ -2485,7 +2485,7 @@ void setup()
 	initStorage();
 
 	storage.begin();
-	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8192, NULL, 1, NULL, 0);
+	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8 * 1024, NULL, 1, NULL, 0);
 }
 
 void loop() 

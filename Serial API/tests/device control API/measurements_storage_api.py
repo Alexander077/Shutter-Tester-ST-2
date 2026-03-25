@@ -9,15 +9,22 @@ import time
 PORT = 'COM40' 
 BAUD_RATE = 115200
 
-def send_and_receive(ser, payload, timeout=3.0):
+def send_and_receive(ser, payload, timeout=10.0):
     """Отправляет JSON и ждет ответный JSON, игнорируя системные логи ESP32"""
     
     # Формируем строку и добавляем символ переноса строки \n
     msg = json.dumps(payload) + '\n'
     print(f"\n[>>>] ОТПРАВКА: {msg.strip()}")
-    ser.write(msg.encode('utf-8'))
-    ser.flush()
-
+    
+    payload_bytes = msg.encode('utf-8')
+    
+    # ОТПРАВКА ЧАНКАМИ (кусочками по 32 байта)
+    # Это спасает аппаратный USB-буфер ESP32 (64 байта) от переполнения
+    for i in range(0, len(payload_bytes), 32):
+        ser.write(payload_bytes[i:i+32])
+        ser.flush()
+        time.sleep(0.02) # Даем ESP32 20 мс, чтобы "проглотить" этот кусочек
+        
     # Ждем ответа
     end_time = time.time() + timeout
     while time.time() < end_time:
@@ -27,18 +34,22 @@ def send_and_receive(ser, payload, timeout=3.0):
             if not line:
                 continue
             
-            # Если строка похожа на JSON-ответ (начинается с { и заканчивается на })
+            # Если строка похожа на JSON-ответ
             if line.startswith('{') and line.endswith('}'):
                 print(f"[<<<] ОТВЕТ:  {line}")
-                try:
-                    return json.loads(line)
-                except json.JSONDecodeError:
-                    print("[!!!] Ошибка парсинга JSON ответа!")
-                    return None
+                
+                # ПАУЗА ПОСЛЕ ОТВЕТА (Критически важно!)
+                # Даем ESP32 100 мс на то, чтобы очистить память (cJSON_Delete)
+                # и вернуться к fgetc() до того, как полетит следующий тест.
+                time.sleep(0.1) 
+                
+                return json.loads(line)
             else:
-                # Это обычный лог ESP_LOGI
+                # Печатаем логи (ESP_LOG или printf)
                 print(f"[LOG] {line}")
                 
+        time.sleep(0.01)
+
     print("[!!!] ТАЙМАУТ: Устройство не ответило")
     return None
 
@@ -63,6 +74,7 @@ def run_tests():
         print("\n=== ТЕСТ 1: ЧТЕНИЕ СПИСКА ЗАПИСЕЙ ===")
         send_and_receive(ser, {"cmd": "get_records_list"})
 
+        time.sleep(0.2) 
 
         # ==========================================
         # ТЕСТ 2: Создание новой записи
@@ -79,6 +91,8 @@ def run_tests():
         
         res = send_and_receive(ser, {"cmd": "save_record", "record": new_record_data})
         
+        # return
+
         created_id = None
         if res and res.get("status") == "ok":
             created_id = res.get("recordNumber")
@@ -87,7 +101,7 @@ def run_tests():
             print("---> Ошибка создания записи. Прерывание тестов.")
             return
 
-        time.sleep(1)
+        time.sleep(2)
 
         # ==========================================
         # ТЕСТ 3: Чтение только что созданной записи
@@ -95,7 +109,7 @@ def run_tests():
         print(f"\n=== ТЕСТ 3: ЧТЕНИЕ ЗАПИСИ {created_id} ===")
         send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
         
-        time.sleep(1)
+        time.sleep(2)
 
         # ==========================================
         # ТЕСТ 4: Обновление записи
@@ -109,7 +123,7 @@ def run_tests():
         
         send_and_receive(ser, {"cmd": "save_record", "record": update_record_data})
 
-        time.sleep(1)
+        time.sleep(2)
 
         # ==========================================
         # ТЕСТ 5: Проверка обновления
@@ -117,7 +131,7 @@ def run_tests():
         print(f"\n=== ТЕСТ 5: ПРОВЕРКА ОБНОВЛЕННЫХ ДАННЫХ ===")
         send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
 
-        time.sleep(1)
+        time.sleep(2)
 
         # ==========================================
         # ТЕСТ 6: Удаление записи
@@ -125,7 +139,7 @@ def run_tests():
         print(f"\n=== ТЕСТ 6: УДАЛЕНИЕ ЗАПИСИ {created_id} ===")
         send_and_receive(ser, {"cmd": "delete_record", "recordNumber": created_id})
 
-        time.sleep(1)
+        time.sleep(2)
 
         # ==========================================
         # ТЕСТ 7: Проверка удаления (запись не должна быть найдена)
@@ -133,6 +147,8 @@ def run_tests():
         print(f"\n=== ТЕСТ 7: ПРОВЕРКА УДАЛЕНИЯ ===")
         send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
         
+        time.sleep(2)
+
         # Финальный просмотр списка (убедиться, что ID пропал)
         print("\n=== ТЕСТ 8: ФИНАЛЬНЫЙ СПИСОК ЗАПИСЕЙ ===")
         send_and_receive(ser, {"cmd": "get_records_list"})

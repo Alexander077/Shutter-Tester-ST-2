@@ -1,11 +1,12 @@
 #pragma once
 
 #include <Arduino.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include "cJSON.h"
-#include "esp_log.h"
 #include "Common.h"
 #include "StoredMeasuredResult.h"
-#include "RecordsStorageManager.h" 
+#include "RecordsStorageManager.h"
 
 // Глобальный флаг для запроса API
 volatile bool isApiRequestReceived = false;
@@ -33,194 +34,365 @@ char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUA
 
 void serialApiTask(void *pvParameters)
 {
+  printf("[API_FLOW] --- Task serialApiTask started ---\n");
+  fflush(stdout);
+
   const size_t API_BUF_SIZE = 1024;
   char rx_buf[API_BUF_SIZE];
+  size_t rx_idx = 0; // Индекс для накопления символов в буфере
+
   setvbuf(stdin, NULL, _IONBF, 0);
+  printf("[API_FLOW] stdin set to _IONBF (unbuffered) mode\n");
+  fflush(stdout);
 
   while (true)
   {
-    if (fgets(rx_buf, API_BUF_SIZE, stdin) != NULL)
+    int c = fgetc(stdin); // Читаем по одному символу из USB CDC
+
+    if (c == EOF)
     {
-      ESP_LOGI("API", "Received data: %s", rx_buf);
-      cJSON *json = cJSON_Parse(rx_buf);
+      // Данных пока нет, ждем немного, чтобы не грузить процессор
+      vTaskDelay(pdMS_TO_TICKS(5));
+      continue;
+    }
 
-      if (json != NULL)
+    // Если пришел символ конца строки - значит команда (весь JSON) получена
+    if (c == '\n' || c == '\r')
+    {
+      if (rx_idx > 0)
       {
-        cJSON *cmd_item = cJSON_GetObjectItemCaseSensitive(json, "cmd");
+        rx_buf[rx_idx] = '\0'; // Закрываем строку
 
-        if (cJSON_IsString(cmd_item) && (cmd_item->valuestring != NULL))
+        printf("[API_FLOW] >>> String assembled (Len: %d): %s\n", rx_idx, rx_buf);
+        fflush(stdout);
+
+        cJSON *json = cJSON_Parse(rx_buf);
+
+        if (json != NULL)
         {
-          if (strcmp(cmd_item->valuestring, "light_setup") == 0)
-          {
-            ESP_LOGI("API", "Command received: switch to light_setup");
-            isApiRequestReceived = true;
-            apiRequestAction = ApiRequstAction::GO_TO_LIGHT_SETUP;
-          }
-          else if (strcmp(cmd_item->valuestring, "measure") == 0)
-          {
-            ESP_LOGI("API", "Command received: switch to measure");
-            cJSON *sensor_item = cJSON_GetObjectItemCaseSensitive(json, "sensor_index");
-            cJSON *curtain_item = cJSON_GetObjectItemCaseSensitive(json, "curtain_movement");
+          printf("[API_FLOW] JSON parsed successfully\n");
+          fflush(stdout);
 
-            if (cJSON_IsNumber(sensor_item) && cJSON_IsNumber(curtain_item))
+          cJSON *cmd_item = cJSON_GetObjectItemCaseSensitive(json, "cmd");
+
+          if (cJSON_IsString(cmd_item) && (cmd_item->valuestring != NULL))
+          {
+            printf("[API_FLOW] Command extracted: [%s]\n", cmd_item->valuestring);
+            fflush(stdout);
+
+            if (strcmp(cmd_item->valuestring, "light_setup") == 0)
             {
-              if (sensor_item->valueint >= 0 && sensor_item->valueint < sensorsDataArraySize &&
-                  curtain_item->valueint >= 0 && curtain_item->valueint <= 2)
-              {
-                curSensorIndex = sensor_item->valueint;
-                curtainMovement = (CurtainMovement)curtain_item->valueint;
-                isApiRequestReceived = true;
-                apiRequestAction = ApiRequstAction::GO_TO_MEASURE;
-              }
+              printf("[API_FLOW] -> Branch: light_setup\n");
+              fflush(stdout);
+              isApiRequestReceived = true;
+              apiRequestAction = ApiRequstAction::GO_TO_LIGHT_SETUP;
             }
-          }
-          // --- CRUD API: ПОЛУЧЕНИЕ СПИСКА ЗАПИСЕЙ ---
-          else if (strcmp(cmd_item->valuestring, "get_records_list") == 0)
-          {
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddStringToObject(response, "cmd", "get_records_list");
-            cJSON *records_array = cJSON_CreateArray();
-
-            std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
-            for (int32_t id : ids)
+            else if (strcmp(cmd_item->valuestring, "measure") == 0)
             {
-              cJSON_AddItemToArray(records_array, cJSON_CreateNumber(id));
-            }
+              printf("[API_FLOW] -> Branch: measure\n");
+              fflush(stdout);
 
-            cJSON_AddStringToObject(response, "status", "ok");
-            cJSON_AddItemToObject(response, "records", records_array);
+              cJSON *sensor_item = cJSON_GetObjectItemCaseSensitive(json, "sensor_index");
+              cJSON *curtain_item = cJSON_GetObjectItemCaseSensitive(json, "curtain_movement");
 
-            char *json_str = cJSON_PrintUnformatted(response);
-            printf("%s\n", json_str);
-            free(json_str);
-            cJSON_Delete(response);
-          }
-          // --- CRUD API: ЧТЕНИЕ КОНКРЕТНОЙ ЗАПИСИ ---
-          else if (strcmp(cmd_item->valuestring, "get_record") == 0)
-          {
-            cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddStringToObject(response, "cmd", "get_record");
-
-            if (cJSON_IsNumber(record_num_item))
-            {
-              StoredMeasuredResult rec = storage.getRecordByNumber(record_num_item->valueint);
-
-              if (rec.recordNumber != -1) // Если найдено
+              if (cJSON_IsNumber(sensor_item) && cJSON_IsNumber(curtain_item))
               {
-                cJSON_AddStringToObject(response, "status", "ok");
-                cJSON *record_obj = cJSON_CreateObject();
+                if (sensor_item->valueint >= 0 && sensor_item->valueint < sensorsDataArraySize &&
+                    curtain_item->valueint >= 0 && curtain_item->valueint <= 2)
+                {
+                  curSensorIndex = sensor_item->valueint;
+                  curtainMovement = (CurtainMovement)curtain_item->valueint;
+                  isApiRequestReceived = true;
+                  apiRequestAction = ApiRequstAction::GO_TO_MEASURE;
 
-                cJSON_AddNumberToObject(record_obj, "recordNumber", rec.recordNumber);
-                cJSON_AddNumberToObject(record_obj, "sensor0Time", rec.sensor0Time);
-                cJSON_AddNumberToObject(record_obj, "sensor1Time", rec.sensor1Time);
-                cJSON_AddNumberToObject(record_obj, "curtain1spanAtime", rec.curtain1spanAtime);
-                cJSON_AddNumberToObject(record_obj, "curtain1spanAspeed", rec.curtain1spanAspeed);
-                cJSON_AddNumberToObject(record_obj, "curtain1TotalTime", rec.curtain1TotalTime);
-                cJSON_AddNumberToObject(record_obj, "curtain2spanAspeed", rec.curtain2spanAspeed);
-                cJSON_AddNumberToObject(record_obj, "curtain2spanAtime", rec.curtain2spanAtime);
-                cJSON_AddNumberToObject(record_obj, "curtain2TotalTime", rec.curtain2TotalTime);
-                cJSON_AddNumberToObject(record_obj, "slitWidthSensor0", rec.slitWidthSensor0);
-                cJSON_AddNumberToObject(record_obj, "slitWidthSensor1", rec.slitWidthSensor1);
-                cJSON_AddNumberToObject(record_obj, "slitWidthAverage", rec.slitWidthAverage);
-
-                cJSON_AddItemToObject(response, "record", record_obj);
+                  printf("[API_FLOW] Measure parameters accepted\n");
+                  fflush(stdout);
+                }
+                else
+                {
+                  printf("[API_FLOW] WARNING: Measure parameters OUT OF BOUNDS\n");
+                  fflush(stdout);
+                }
               }
               else
               {
-                cJSON_AddStringToObject(response, "status", "error");
-                cJSON_AddStringToObject(response, "message", "Record not found");
+                printf("[API_FLOW] WARNING: Measure parameters missing or invalid type\n");
+                fflush(stdout);
               }
             }
-
-            char *json_str = cJSON_PrintUnformatted(response);
-            printf("%s\n", json_str);
-            free(json_str);
-            cJSON_Delete(response);
-          }
-          // --- CRUD API: УДАЛЕНИЕ ЗАПИСИ ---
-          else if (strcmp(cmd_item->valuestring, "delete_record") == 0)
-          {
-            cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddStringToObject(response, "cmd", "delete_record");
-
-            if (cJSON_IsNumber(record_num_item))
+            // --- CRUD API: ПОЛУЧЕНИЕ СПИСКА ЗАПИСЕЙ ---
+            else if (strcmp(cmd_item->valuestring, "get_records_list") == 0)
             {
-              bool success = storage.deleteRecordByNumber(record_num_item->valueint);
-              cJSON_AddStringToObject(response, "status", success ? "ok" : "error");
-              if (!success)
-                cJSON_AddStringToObject(response, "message", "Record not found");
-            }
+              printf("[API_FLOW] -> Branch: get_records_list\n");
+              fflush(stdout);
 
-            char *json_str = cJSON_PrintUnformatted(response);
-            printf("%s\n", json_str);
-            free(json_str);
-            cJSON_Delete(response);
-          }
-          // --- CRUD API: СОЗДАНИЕ И ИЗМЕНЕНИЕ ЗАПИСИ ---
-          else if (strcmp(cmd_item->valuestring, "save_record") == 0)
-          {
-            cJSON *record_item = cJSON_GetObjectItemCaseSensitive(json, "record");
-            cJSON *response = cJSON_CreateObject();
-            cJSON_AddStringToObject(response, "cmd", "save_record");
+              cJSON *response = cJSON_CreateObject();
+              cJSON_AddStringToObject(response, "cmd", "get_records_list");
+              cJSON *records_array = cJSON_CreateArray();
 
-            if (cJSON_IsObject(record_item))
-            {
-              StoredMeasuredResult newRes;
-              memset(&newRes, 0, sizeof(StoredMeasuredResult));
-              newRes.isDeleted = false;
+              std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
 
-              cJSON *rn = cJSON_GetObjectItemCaseSensitive(record_item, "recordNumber");
-              newRes.recordNumber = cJSON_IsNumber(rn) ? rn->valueint : 0;
+              printf("[API_FLOW] Found %d records in storage\n", ids.size());
+              fflush(stdout);
 
-              cJSON *item;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "sensor0Time")) && cJSON_IsNumber(item))
-                newRes.sensor0Time = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "sensor1Time")) && cJSON_IsNumber(item))
-                newRes.sensor1Time = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1spanAtime")) && cJSON_IsNumber(item))
-                newRes.curtain1spanAtime = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1spanAspeed")) && cJSON_IsNumber(item))
-                newRes.curtain1spanAspeed = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1TotalTime")) && cJSON_IsNumber(item))
-                newRes.curtain1TotalTime = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2spanAspeed")) && cJSON_IsNumber(item))
-                newRes.curtain2spanAspeed = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2spanAtime")) && cJSON_IsNumber(item))
-                newRes.curtain2spanAtime = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2TotalTime")) && cJSON_IsNumber(item))
-                newRes.curtain2TotalTime = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthSensor0")) && cJSON_IsNumber(item))
-                newRes.slitWidthSensor0 = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthSensor1")) && cJSON_IsNumber(item))
-                newRes.slitWidthSensor1 = item->valuedouble;
-              if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthAverage")) && cJSON_IsNumber(item))
-                newRes.slitWidthAverage = item->valuedouble;
-
-              int32_t savedId = storage.saveOrUpdateRecord(newRes);
-
-              if (savedId != -1)
+              for (int32_t id : ids)
               {
-                cJSON_AddStringToObject(response, "status", "ok");
-                cJSON_AddNumberToObject(response, "recordNumber", savedId);
+                cJSON_AddItemToArray(records_array, cJSON_CreateNumber(id));
+              }
+
+              cJSON_AddStringToObject(response, "status", "ok");
+              cJSON_AddItemToObject(response, "records", records_array);
+
+              char *json_str = cJSON_PrintUnformatted(response);
+              printf("%s\n", json_str);
+              fflush(stdout);
+
+              printf("[API_FLOW] <- Response sent for get_records_list\n");
+              fflush(stdout);
+
+              free(json_str);
+              cJSON_Delete(response);
+            }
+            // --- CRUD API: ЧТЕНИЕ КОНКРЕТНОЙ ЗАПИСИ ---
+            else if (strcmp(cmd_item->valuestring, "get_record") == 0)
+            {
+              printf("[API_FLOW] -> Branch: get_record\n");
+              fflush(stdout);
+
+              cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
+              cJSON *response = cJSON_CreateObject();
+              cJSON_AddStringToObject(response, "cmd", "get_record");
+
+              if (cJSON_IsNumber(record_num_item))
+              {
+                int target_id = record_num_item->valueint;
+
+                printf("[API_FLOW] Requesting record ID: %d\n", target_id);
+                fflush(stdout);
+
+                StoredMeasuredResult rec = storage.getRecordByNumber(target_id);
+
+                if (rec.recordNumber != -1) // Если найдено
+                {
+                  printf("[API_FLOW] Record %d found, packing JSON\n", target_id);
+                  fflush(stdout);
+
+                  cJSON_AddStringToObject(response, "status", "ok");
+                  cJSON *record_obj = cJSON_CreateObject();
+
+                  cJSON_AddNumberToObject(record_obj, "recordNumber", rec.recordNumber);
+                  cJSON_AddNumberToObject(record_obj, "sensor0Time", rec.sensor0Time);
+                  cJSON_AddNumberToObject(record_obj, "sensor1Time", rec.sensor1Time);
+                  cJSON_AddNumberToObject(record_obj, "curtain1spanAtime", rec.curtain1spanAtime);
+                  cJSON_AddNumberToObject(record_obj, "curtain1spanAspeed", rec.curtain1spanAspeed);
+                  cJSON_AddNumberToObject(record_obj, "curtain1TotalTime", rec.curtain1TotalTime);
+                  cJSON_AddNumberToObject(record_obj, "curtain2spanAspeed", rec.curtain2spanAspeed);
+                  cJSON_AddNumberToObject(record_obj, "curtain2spanAtime", rec.curtain2spanAtime);
+                  cJSON_AddNumberToObject(record_obj, "curtain2TotalTime", rec.curtain2TotalTime);
+                  cJSON_AddNumberToObject(record_obj, "slitWidthSensor0", rec.slitWidthSensor0);
+                  cJSON_AddNumberToObject(record_obj, "slitWidthSensor1", rec.slitWidthSensor1);
+                  cJSON_AddNumberToObject(record_obj, "slitWidthAverage", rec.slitWidthAverage);
+
+                  cJSON_AddItemToObject(response, "record", record_obj);
+                }
+                else
+                {
+                  printf("[API_FLOW] WARNING: Record %d NOT FOUND\n", target_id);
+                  fflush(stdout);
+
+                  cJSON_AddStringToObject(response, "status", "error");
+                  cJSON_AddStringToObject(response, "message", "Record not found");
+                }
               }
               else
               {
-                cJSON_AddStringToObject(response, "status", "error");
-                cJSON_AddStringToObject(response, "message", "Failed to save record");
+                printf("[API_FLOW] WARNING: recordNumber is missing or not a number\n");
+                fflush(stdout);
               }
-            }
 
-            char *json_str = cJSON_PrintUnformatted(response);
-            printf("%s\n", json_str);
-            free(json_str);
-            cJSON_Delete(response);
+              char *json_str = cJSON_PrintUnformatted(response);
+              printf("%s\n", json_str);
+              fflush(stdout);
+
+              printf("[API_FLOW] <- Response sent for get_record\n");
+              fflush(stdout);
+
+              free(json_str);
+              cJSON_Delete(response);
+            }
+            // --- CRUD API: УДАЛЕНИЕ ЗАПИСИ ---
+            else if (strcmp(cmd_item->valuestring, "delete_record") == 0)
+            {
+              printf("[API_FLOW] -> Branch: delete_record\n");
+              fflush(stdout);
+
+              cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
+              cJSON *response = cJSON_CreateObject();
+              cJSON_AddStringToObject(response, "cmd", "delete_record");
+
+              if (cJSON_IsNumber(record_num_item))
+              {
+                int target_id = record_num_item->valueint;
+
+                printf("[API_FLOW] Attempting to delete ID: %d\n", target_id);
+                fflush(stdout);
+
+                bool success = storage.deleteRecordByNumber(target_id);
+
+                if (success)
+                {
+                  printf("[API_FLOW] Record %d successfully deleted\n", target_id);
+                  fflush(stdout);
+                }
+                else
+                {
+                  printf("[API_FLOW] WARNING: Failed to delete record %d (not found)\n", target_id);
+                  fflush(stdout);
+                }
+
+                cJSON_AddStringToObject(response, "status", success ? "ok" : "error");
+                if (!success)
+                  cJSON_AddStringToObject(response, "message", "Record not found");
+              }
+              else
+              {
+                printf("[API_FLOW] WARNING: recordNumber is missing or not a number\n");
+                fflush(stdout);
+              }
+
+              char *json_str = cJSON_PrintUnformatted(response);
+              printf("%s\n", json_str);
+              fflush(stdout);
+
+              printf("[API_FLOW] <- Response sent for delete_record\n");
+              fflush(stdout);
+
+              free(json_str);
+              cJSON_Delete(response);
+            }
+            // --- CRUD API: СОЗДАНИЕ И ИЗМЕНЕНИЕ ЗАПИСИ ---
+            else if (strcmp(cmd_item->valuestring, "save_record") == 0)
+            {
+              printf("[API_FLOW] -> Branch: save_record\n");
+              fflush(stdout);
+
+              cJSON *record_item = cJSON_GetObjectItemCaseSensitive(json, "record");
+              cJSON *response = cJSON_CreateObject();
+              cJSON_AddStringToObject(response, "cmd", "save_record");
+
+              if (cJSON_IsObject(record_item))
+              {
+                StoredMeasuredResult newRes;
+                memset(&newRes, 0, sizeof(StoredMeasuredResult));
+                newRes.isDeleted = false;
+
+                cJSON *rn = cJSON_GetObjectItemCaseSensitive(record_item, "recordNumber");
+                newRes.recordNumber = cJSON_IsNumber(rn) ? rn->valueint : 0;
+
+                printf("[API_FLOW] Parsed recordNumber for saving: %ld\n", (long)newRes.recordNumber);
+                fflush(stdout);
+
+                cJSON *item;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "sensor0Time")) && cJSON_IsNumber(item))
+                  newRes.sensor0Time = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "sensor1Time")) && cJSON_IsNumber(item))
+                  newRes.sensor1Time = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1spanAtime")) && cJSON_IsNumber(item))
+                  newRes.curtain1spanAtime = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1spanAspeed")) && cJSON_IsNumber(item))
+                  newRes.curtain1spanAspeed = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain1TotalTime")) && cJSON_IsNumber(item))
+                  newRes.curtain1TotalTime = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2spanAspeed")) && cJSON_IsNumber(item))
+                  newRes.curtain2spanAspeed = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2spanAtime")) && cJSON_IsNumber(item))
+                  newRes.curtain2spanAtime = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "curtain2TotalTime")) && cJSON_IsNumber(item))
+                  newRes.curtain2TotalTime = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthSensor0")) && cJSON_IsNumber(item))
+                  newRes.slitWidthSensor0 = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthSensor1")) && cJSON_IsNumber(item))
+                  newRes.slitWidthSensor1 = item->valuedouble;
+                if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "slitWidthAverage")) && cJSON_IsNumber(item))
+                  newRes.slitWidthAverage = item->valuedouble;
+
+                printf("[API_FLOW] Calling storage.saveOrUpdateRecord()...\n");
+                fflush(stdout);
+
+                int32_t savedId = storage.saveOrUpdateRecord(newRes);
+
+                if (savedId != -1)
+                {
+                  printf("[API_FLOW] Success! Saved with ID: %ld\n", (long)savedId);
+                  fflush(stdout);
+
+                  cJSON_AddStringToObject(response, "status", "ok");
+                  cJSON_AddNumberToObject(response, "recordNumber", savedId);
+                }
+                else
+                {
+                  printf("[API_FLOW] ERROR: storage.saveOrUpdateRecord() returned error (-1)\n");
+                  fflush(stdout);
+
+                  cJSON_AddStringToObject(response, "status", "error");
+                  cJSON_AddStringToObject(response, "message", "Failed to save record");
+                }
+              }
+              else
+              {
+                printf("[API_FLOW] WARNING: 'record' object is missing in the payload\n");
+                fflush(stdout);
+              }
+
+              char *json_str = cJSON_PrintUnformatted(response);
+              printf("%s\n", json_str);
+              fflush(stdout);
+
+              printf("[API_FLOW] <- Response sent for save_record\n");
+              fflush(stdout);
+
+              free(json_str);
+              cJSON_Delete(response);
+            }
+            else
+            {
+              printf("[API_FLOW] WARNING: Unknown command: [%s]\n", cmd_item->valuestring);
+              fflush(stdout);
+            }
           }
+          else
+          {
+            printf("[API_FLOW] WARNING: JSON has no 'cmd' field or it is not a string\n");
+            fflush(stdout);
+          }
+
+          cJSON_Delete(json); // Освобождаем память после успешного парсинга
         }
-        cJSON_Delete(json);
+        else
+        {
+          printf("[API_FLOW] ERROR: !!! JSON Parse Error !!! Invalid format.\n");
+          printf("[API_FLOW] ERROR: Corrupted payload: %s\n", rx_buf);
+          fflush(stdout);
+        }
+
+        // Очищаем буфер для следующей команды
+        rx_idx = 0;
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(50));
+    else
+    {
+      // Накапливаем символы в буфер, защищаясь от переполнения
+      if (rx_idx < API_BUF_SIZE - 1)
+      {
+        rx_buf[rx_idx++] = (char)c;
+      }
+      else
+      {
+        // Защита: если буфер переполнился, сбрасываем его
+        printf("[API_FLOW] ERROR: !!! RX BUFFER OVERFLOW !!! String too long without '\\n'. Resetting.\n");
+        fflush(stdout);
+        rx_idx = 0;
+      }
+    }
   }
 }
