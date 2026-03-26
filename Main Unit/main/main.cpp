@@ -23,11 +23,9 @@
 #include "lib/About.h"
 #include "lib/Images.h"
 #include "lib/SerialAPI.h"
-#include "lib/FirmwareUpdate.h"
 #include "lib/RecordsStorageManager.h"
 
 #include "esp_partition.h"
-#include "esp_log.h"
 
 // #define DISPLAY_CS SS
 #define DISPLAY_RESET 18

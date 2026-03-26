@@ -72,9 +72,9 @@ def run_tests():
         # ТЕСТ 1: Получение списка записей
         # ==========================================
         print("\n=== ТЕСТ 1: ЧТЕНИЕ СПИСКА ЗАПИСЕЙ ===")
-        send_and_receive(ser, {"cmd": "get_records_list"})
+        send_and_receive(ser, {"cmd": "API_REQUEST_GET_RECORDS_LIST"})
 
-        time.sleep(0.2) 
+        time.sleep(1) 
 
         # ==========================================
         # ТЕСТ 2: Создание новой записи
@@ -89,27 +89,25 @@ def run_tests():
             "slitWidthAverage": 3.14
         }
         
-        res = send_and_receive(ser, {"cmd": "save_record", "record": new_record_data})
+        res = send_and_receive(ser, {"cmd": "API_REQUEST_SAVE_RECORD", "record": new_record_data})
         
-        # return
-
         created_id = None
-        if res and res.get("status") == "ok":
+        if res and res.get("status") == "API_RESPONSE_STATUS_OK":
             created_id = res.get("recordNumber")
             print(f"---> Успех! Создана запись с ID: {created_id}")
         else:
             print("---> Ошибка создания записи. Прерывание тестов.")
             return
 
-        time.sleep(2)
+        time.sleep(1)
 
         # ==========================================
         # ТЕСТ 3: Чтение только что созданной записи
         # ==========================================
         print(f"\n=== ТЕСТ 3: ЧТЕНИЕ ЗАПИСИ {created_id} ===")
-        send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
+        send_and_receive(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
         
-        time.sleep(2)
+        time.sleep(1)
 
         # ==========================================
         # ТЕСТ 4: Обновление записи
@@ -121,37 +119,37 @@ def run_tests():
         update_record_data["sensor0Time"] = 99.99
         update_record_data["slitWidthAverage"] = 5.55
         
-        send_and_receive(ser, {"cmd": "save_record", "record": update_record_data})
+        send_and_receive(ser, {"cmd": "API_REQUEST_SAVE_RECORD", "record": update_record_data})
 
-        time.sleep(2)
+        time.sleep(1)
 
         # ==========================================
         # ТЕСТ 5: Проверка обновления
         # ==========================================
         print(f"\n=== ТЕСТ 5: ПРОВЕРКА ОБНОВЛЕННЫХ ДАННЫХ ===")
-        send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
+        send_and_receive(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
 
-        time.sleep(2)
+        time.sleep(1)
 
         # ==========================================
         # ТЕСТ 6: Удаление записи
         # ==========================================
         print(f"\n=== ТЕСТ 6: УДАЛЕНИЕ ЗАПИСИ {created_id} ===")
-        send_and_receive(ser, {"cmd": "delete_record", "recordNumber": created_id})
+        send_and_receive(ser, {"cmd": "API_REQUEST_DELETE_RECORD", "recordNumber": created_id})
 
-        time.sleep(2)
+        time.sleep(1)
 
         # ==========================================
         # ТЕСТ 7: Проверка удаления (запись не должна быть найдена)
         # ==========================================
         print(f"\n=== ТЕСТ 7: ПРОВЕРКА УДАЛЕНИЯ ===")
-        send_and_receive(ser, {"cmd": "get_record", "recordNumber": created_id})
+        send_and_receive(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
         
-        time.sleep(2)
+        time.sleep(1)
 
         # Финальный просмотр списка (убедиться, что ID пропал)
         print("\n=== ТЕСТ 8: ФИНАЛЬНЫЙ СПИСОК ЗАПИСЕЙ ===")
-        send_and_receive(ser, {"cmd": "get_records_list"})
+        send_and_receive(ser, {"cmd": "API_REQUEST_GET_RECORDS_LIST"})
 
         ser.close()
         print("\nТестирование завершено. Порт закрыт.")
