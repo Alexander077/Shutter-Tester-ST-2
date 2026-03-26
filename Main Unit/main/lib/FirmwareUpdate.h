@@ -4,6 +4,8 @@
 #include "mbedtls/aes.h"
 #include "mbedtls/base64.h"
 #include "esp_ota_ops.h"
+#include "cJSON.h"
+#include "SerialAPICommon.h"
 
 // 32 байта для AES-256 (Симметричный ключ) - поменяйте на свои случайные числа!
 const unsigned char AesKey[32] = {
@@ -17,18 +19,46 @@ const unsigned char AesIvInit[16] = {
     0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
     0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF};
 
+// Вспомогательная функция для унифицированной отправки JSON
+static inline void sendOtaJsonResponse(const char *status, const char *message, int bytesReceived)
+{
+  cJSON *json = cJSON_CreateObject();
+  if (json == NULL)
+    return; // Защита от нехватки памяти
+
+  cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_FIRMWARE_UPDATE);
+  cJSON_AddStringToObject(json, "status", status);
+
+  if (message != NULL)
+  {
+    cJSON_AddStringToObject(json, "message", message);
+  }
+
+  if (bytesReceived >= 0)
+  {
+    cJSON_AddNumberToObject(json, "bytesReceived", bytesReceived);
+  }
+
+  char *str = cJSON_PrintUnformatted(json);
+
+  if (str != NULL)
+  {
+    printf("%s\n", str);
+    fflush(stdout);
+    free(str);
+  }
+
+  cJSON_Delete(json);
+}
+
 void startFirmwareUpdate()
 {
-  static const char *TAG = "SERIAL_OTA";
-
-  ESP_LOGI(TAG, "Starting OTA. Preparing partition...");
-
   // 1. Поиск раздела для обновления
   const esp_partition_t *updatePartition = esp_ota_get_next_update_partition(NULL);
 
   if (updatePartition == NULL)
   {
-    ESP_LOGE(TAG, "Failed to get update partition");
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, "Failed to get update partition", -1);
     return;
   }
 
@@ -37,7 +67,7 @@ void startFirmwareUpdate()
 
   if (esp_ota_begin(updatePartition, OTA_WITH_SEQUENTIAL_WRITES, &updateHandle) != ESP_OK)
   {
-    ESP_LOGE(TAG, "esp_ota_begin failed");
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, "esp_ota_begin failed", -1);
     return;
   }
 
@@ -61,35 +91,25 @@ void startFirmwareUpdate()
 
   if (!rxBuf || !decBuf || !b64Buf)
   {
-    ESP_LOGE(TAG, "Memory allocation failed");
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, "Memory allocation failed", -1);
+    
     if (rxBuf)
-    {
       free(rxBuf);
-    }
-
     if (decBuf)
-    {
       free(decBuf);
-    }
-
     if (b64Buf)
-    {
       free(b64Buf);
-    }
-
     mbedtls_aes_free(&aesCtx);
     return;
   }
 
+  
+  // Отправка статуса готовности
+  sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA, NULL, -1);
+  
   // Отключаем буферизацию стандартного потока
   setvbuf(stdin, NULL, _IONBF, 0);
-
-  // ВАЖНО: Мы убрали fcntl и O_NONBLOCK, так как fgets
-  // сам корректно читает данные до появления символа '\n'
-
-  printf("FIRMWARE_UPDATE_READY\n");
-  fflush(stdout);
-
+  
   uint32_t lastDataTime = millis();
   size_t totalReceived = 0;
   size_t bufferPos = 0;
@@ -140,7 +160,7 @@ void startFirmwareUpdate()
             // Записываем во флеш
             if (esp_ota_write(updateHandle, decBuf, processLen) != ESP_OK)
             {
-              ESP_LOGE(TAG, "esp_ota_write failed");
+              sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "esp_ota_write failed", -1);
               free(b64Buf);
               free(rxBuf);
               free(decBuf);
@@ -160,14 +180,15 @@ void startFirmwareUpdate()
 
             totalReceived += processLen;
 
-            // Отправляем ACK (подтверждаем запись)
-            printf("ACK:%zu\n", totalReceived);
-            fflush(stdout);
+            // Отправка ACK
+            sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK, NULL, totalReceived);
           }
         }
         else
         {
-          ESP_LOGE(TAG, "Base64 decode err: %d", ret);
+          char errMsg[64];
+          snprintf(errMsg, sizeof(errMsg), "Base64 decode err: %d", ret);
+          sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, errMsg, -1);
         }
       }
     }
@@ -175,11 +196,10 @@ void startFirmwareUpdate()
     // Завершаем процесс, если данные не приходили более 3 секунд
     if (totalReceived > 0 && (millis() - lastDataTime > 3000))
     {
-      ESP_LOGI(TAG, "End of transmission. Total decrypted: %zu bytes", totalReceived);
       break;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(1)); // Небольшая задержка для Watchdog
+    vTaskDelay(pdMS_TO_TICKS(1));
   }
 
   // 6. Освобождение памяти
@@ -191,20 +211,20 @@ void startFirmwareUpdate()
   // 7. Завершение OTA
   if (esp_ota_end(updateHandle) != ESP_OK)
   {
-    ESP_LOGE(TAG, "OTA end failed");
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "Firmware update failed", -1);
     return;
   }
 
   // 8. Переключение загрузочного раздела и перезагрузка
   if (esp_ota_set_boot_partition(updatePartition) == ESP_OK)
   {
-    printf("FIRMWARE_UPDATE_SUCCESS\n");
-    fflush(stdout);                  // Принудительно отправляем данные в USB
-    vTaskDelay(pdMS_TO_TICKS(1000)); // Даем RTOS время на передачу (вместо delay)
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_SUCCESS, 
+      "Firmware update successful. Restarting device...", -1);
+    vTaskDelay(pdMS_TO_TICKS(1000));
     esp_restart();
   }
   else
   {
-    ESP_LOGE(TAG, "Failed to set boot partition");
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "Failed to set boot partition", -1);
   }
 }

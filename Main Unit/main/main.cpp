@@ -2466,6 +2466,7 @@ void setup()
 {
 	// pinMode(15, OUTPUT);
 	// digitalWrite(15, HIGH);
+	// delay(2000);
 	// halt();
 
 	display->begin();

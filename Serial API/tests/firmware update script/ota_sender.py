@@ -1,47 +1,92 @@
 import serial
 import time
 import os
-import argparse
 import sys
 import base64
+import json
+
+def main():
+    print("=== Интерактивный скрипт OTA-обновления ESP32-S2 (JSON API) ===")
+    
+    # 1. Запрашиваем COM-порт
+    # port = input("Введите COM-порт (например, COM3 или /dev/ttyACM0): ").strip()
+    port = "COM40"
+    if not port:
+        print("[ОШИБКА] Порт не может быть пустым.")
+        return
+
+    # 2. Запрашиваем путь к файлу
+    # file_path = input("Введите путь к зашифрованному файлу .bin (можно перетащить файл в окно): ").strip()
+    file_path = "firmware_encrypted.bin"
+    
+    # Убираем кавычки (от drag & drop)
+    file_path = file_path.strip('"\'') 
+
+    if not os.path.exists(file_path):
+        print(f"[ОШИБКА] Файл '{file_path}' не найден. Проверьте путь.")
+        return
+
+    baudrate = 115200
+    send_ota_file(port, baudrate, file_path)
 
 def send_ota_file(port, baudrate, file_path):
-    chunk_size = 48 # Чанк в 48 байт, который после Base64 будет 64 байта (без учета \n)
-    
-    if not os.path.exists(file_path):
-        print(f"[ОШИБКА] Файл {file_path} не найден.")
-        sys.exit(1)
-
+    chunk_size = 48 # Чанк в 48 байт -> 64 байта в Base64
     file_size = os.path.getsize(file_path)
-    print(f"=== OTA Обновление ESP32-S2 ===")
+    
+    print(f"\nПодготовка к обновлению...")
     print(f"Файл: {file_path}")
     print(f"Размер: {file_size} байт")
-    print(f"Порт: {port} | Скорость: {baudrate} бод")
-    print("===============================\n")
+    print(f"Порт: {port} | Скорость: {baudrate} бод\n")
 
     try:
-        # Открываем Serial порт
         ser = serial.Serial(port, baudrate, timeout=1)
-        # Даем время на инициализацию соединения (важно для native USB)
-        time.sleep(2) 
+        time.sleep(2) # Даем время на инициализацию native USB
+
+        # Очищаем буфер от логов загрузки перед началом работы
+        ser.reset_input_buffer()
+
+        # --- НОВЫЙ ШАГ: Инициируем обновление через основное API ---
+        print("Отправка команды на запуск режима OTA (API_REQUEST_FIRMWARE_UPDATE)...")
+        start_cmd = json.dumps({"cmd": "API_REQUEST_FIRMWARE_UPDATE"}) + '\n'
+        ser.write(start_cmd.encode('ascii'))
+        ser.flush()
+
+        print("Ожидание сигнала FIRMWARE_UPDATE_READY от устройства...")
+        is_ready = False
         
-        # --- Ожидание сигнала готовности и вывод логов ---
-        print("Ожидание сигнала FIRMWARE_UPDATE_READY от ESP32...")
-        wait_buffer = ""
-        while "FIRMWARE_UPDATE_READY" not in wait_buffer:
+        # Ждем готовности (таймаут 10 секунд)
+        timeout_ready = time.time() + 10.0
+        while not is_ready and time.time() < timeout_ready:
             if ser.in_waiting > 0:
-                data = ser.read(ser.in_waiting).decode(errors='ignore')
-                print(data, end='', flush=True) # Печатаем всё, что приходит
-                wait_buffer += data
+                line = ser.readline().decode(errors='ignore').strip()
+                if line:
+                    try:
+                        resp = json.loads(line)
+                        if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                            status = resp.get("status")
+                            if status == "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA":
+                                is_ready = True
+                            elif status == "API_RESPONSE_STATUS_ERROR":
+                                print(f"\n[ОШИБКА УСТРОЙСТВА] {resp.get('message', 'Неизвестная ошибка инициализации')}")
+                                return
+                    except json.JSONDecodeError:
+                        # Выводим логи устройства, если это не JSON
+                        print(f"[Устройство]: {line}")
             time.sleep(0.01)
-            
-        print("\n\n[СИСТЕМА] Сигнал получен!")
-        print("Начинаю отправку данных. Пожалуйста, НЕ ОТКЛЮЧАЙТЕ устройство...")
+
+        if not is_ready:
+            print("\n[ОШИБКА] Таймаут ожидания сигнала готовности. Убедитесь, что устройство обработало команду в SerialAPI.h.")
+            return
+
+        print("\n[СИСТЕМА] Сигнал получен! Начинаю отправку данных. Пожалуйста, НЕ ОТКЛЮЧАЙТЕ устройство...")
         
         sent_bytes = 0
         start_time = time.time()
         ack_received = False
         
+        time.sleep(0.1)
+
+        # --- Основной цикл отправки Base64 ---
         with open(file_path, 'rb') as f:
             while True:
                 chunk = f.read(chunk_size)
@@ -55,58 +100,72 @@ def send_ota_file(port, baudrate, file_path):
                 
                 sent_bytes += len(chunk)
                 
-                # Прогресс-бар в консоли
-                progress = (sent_bytes / file_size) * 100
-                sys.stdout.write(f"\rПрогресс: [{sent_bytes}/{file_size} байт] {progress:.1f}% ")
-                sys.stdout.flush()
-                
                 # Ожидание ACK от ESP32
                 ack_received = False
-                chunk_timeout = time.time() + 5.0 # Ждем максимум 5 секунд на один чанк
+                chunk_timeout = time.time() + 2 
                 
                 while time.time() < chunk_timeout:
                     if ser.in_waiting > 0:
-                        # Читаем строку
                         line = ser.readline().decode(errors='ignore').strip()
-                        
-                        if line.startswith("ACK:"):
-                            # Для отладки (раскомментируйте, если нужно видеть каждый шаг)
-                            sys.stdout.write(f" [{line}] ")
-                            sys.stdout.flush()
-                            
+                        if line:
                             try:
-                                ack_bytes = int(line.split(":")[1])
-                                if ack_bytes >= sent_bytes:
-                                    ack_received = True
-                                    break
-                            except ValueError:
-                                pass
-                        elif line:
-                            # Печатаем логи с ESP32 (например, ESP_LOGE), не затирая прогресс-бар
-                            print(f"\n[ESP32]: {line}")
+                                resp = json.loads(line)
+                                if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                                    status = resp.get("status")
+                                    
+                                    if status == "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK":
+                                        ack_bytes = int(resp.get("bytesReceived", 0))
+                                        progress = (ack_bytes / file_size) * 100
+                                        sys.stdout.write(f"\rПрогресс: [{ack_bytes}/{file_size} байт] {progress:.1f}% ")
+                                        sys.stdout.flush()
+                                        
+                                        if ack_bytes >= sent_bytes:
+                                            ack_received = True
+                                            break
+                                            
+                                    elif status == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
+                                        print(f"\n\n[ОШИБКА ЗАПИСИ] {resp.get('message', 'Сбой при записи во флеш')}")
+                                        return
+                                        
+                            except json.JSONDecodeError:
+                                pass 
                     else:
                         time.sleep(0.005)
                         
                 if not ack_received:
                     print(f"\n\n[ОШИБКА] Таймаут: ESP32 не подтвердила запись {sent_bytes} байт!")
                     break
-                
+
+        # --- Завершение и проверка успеха ---
         if ack_received:
             total_time = time.time() - start_time
             print(f"\n\nОтправка файла завершена за {total_time:.1f} сек.")
-            print("Ожидание финального ответа от устройства (перезагрузка)...")
+            print("Ожидание финального статуса API_RESPONSE_FIRMWARE_UPDATE_SUCCESS и перезагрузки...")
             
-            # Ждем 15 секунд (вместо 5) для успешного окончания валидации прошивки и перезагрузки
-            timeout = time.time() + 15
+            timeout = time.time() + 15.0
             while time.time() < timeout:
                 if ser.in_waiting > 0:
-                    response = ser.read(ser.in_waiting)
-                    print(response.decode(errors='ignore'), end='', flush=True)
+                    line = ser.readline().decode(errors='ignore').strip()
+                    if line:
+                        try:
+                            resp = json.loads(line)
+                            if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                                status = resp.get("status")
+                                if status == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
+                                    print("\n[УСПЕХ] Устройство успешно прошито и перезагружается!")
+                                    return
+                                elif status == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
+                                    print(f"\n[ОШИБКА УСТРОЙСТВА] Ошибка на финальном этапе: {resp.get('message')}")
+                                    return
+                        except json.JSONDecodeError:
+                            print(f"[Устройство]: {line}")
                 time.sleep(0.01)
             
+            print("\n[ПРЕДУПРЕЖДЕНИЕ] Статус SUCCESS не получен, но данные были отправлены. Проверьте устройство.")
+
     except serial.SerialException as e:
         print(f"\n[ОШИБКА] Проблема с COM-портом: {e}")
-        print("Проверьте: не занят ли порт Serial Монитором (например, в VS Code или PlatformIO)?")
+        print("Убедитесь, что порт не занят Serial Монитором (в VS Code / PlatformIO / Arduino IDE).")
     except Exception as e:
         print(f"\n[ОШИБКА] Непредвиденная ошибка: {e}")
     finally:
@@ -115,10 +174,8 @@ def send_ota_file(port, baudrate, file_path):
             print("\nПорт закрыт.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Скрипт для OTA-обновления зашифрованной прошивки ESP32-S2 по USB (Base64)")
-    parser.add_argument("-p", "--port", required=True, help="COM порт (например, COM3 или /dev/ttyACM0)")
-    parser.add_argument("-f", "--file", required=True, help="Путь к зашифрованному файлу .bin")
-    
-    args = parser.parse_args()
-    # Вызов функции без передачи chunk_size, так как он теперь жестко задан внутри функции
-    send_ota_file(args.port, 115200, args.file)
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nПроцесс прерван пользователем. Порт закрыт.")
+        sys.exit(0)

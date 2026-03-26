@@ -8,49 +8,14 @@
 #include "StoredMeasuredResult.h"
 #include "RecordsStorageManager.h"
 #include "lib/FirmwareUpdate.h"
+#include "SerialAPICommon.h"
+
 
 // Глобальный флаг для запроса API
 volatile bool isApiRequestReceived = false;
 // Объявляем глобальный экземпляр хранилища
 extern RecordsStorageManager storage;
 
-enum class ApiRequstAction
-{
-  NO_ACTION,
-  GO_TO_LIGHT_SETUP,
-  GO_TO_MEASURE
-};
-
-volatile ApiRequstAction apiRequestAction = ApiRequstAction::NO_ACTION;
-
-class SerialAPILightStatus
-{
-public:
-  static constexpr const char *LIGHT_STATUS_TOO_DIMM = "LIGHT_STATUS_TOO_DIM";
-  static constexpr const char *LIGHT_STATUS_TOO_BRIGHT = "LIGHT_STATUS_TOO_BRIGHT";
-  static constexpr const char *LIGHT_STATUS_OK = "LIGHT_STATUS_OK";
-};
-
-class SerialAPIRequestAction
-{
-public:
-  static constexpr const char *API_REQUEST_LIGHT_SETUP = "API_REQUEST_LIGHT_SETUP";
-  static constexpr const char *API_REQUEST_MEASURE = "API_REQUEST_MEASURE";
-  static constexpr const char *API_REQUEST_GET_RECORDS_LIST = "API_REQUEST_GET_RECORDS_LIST";
-  static constexpr const char *API_REQUEST_GET_RECORD = "API_REQUEST_GET_RECORD";
-  static constexpr const char *API_REQUEST_DELETE_RECORD = "API_REQUEST_DELETE_RECORD";
-  static constexpr const char *API_REQUEST_SAVE_RECORD = "API_REQUEST_SAVE_RECORD";
-  static constexpr const char *API_REQUEST_FIRMWARE_UPDATE = "API_REQUEST_FIRMWARE_UPDATE";
-};
-
-class SerialAPIResponse
-{
-public:
-  static constexpr const char *API_RESPONSE_STATUS_OK = "API_RESPONSE_STATUS_OK";
-  static constexpr const char *API_RESPONSE_STATUS_ERROR = "API_RESPONSE_STATUS_ERROR";
-};
-
-char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};
 
 void serialApiTask(void *pvParameters)
 {
