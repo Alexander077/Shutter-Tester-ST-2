@@ -166,9 +166,10 @@ def test_firmware_update(ser):
             
         total_len = len(bin_data)
         print(f"File loaded. Total size: {total_len} bytes.")
+        print("Waiting for device to prepare flash memory...")
         
         offset = 0
-        waiting_for_ack = False
+        waiting_for_ack = True
         
         while True:
             if keyboard.is_pressed('esc'):
@@ -181,23 +182,39 @@ def test_firmware_update(ser):
                 if line:
                     try:
                         resp = json.loads(line)
+                        
+                        # ИСПРАВЛЕНИЕ: Устройство присылает ответ в поле "status"
+                        status = resp.get("status")
                         cmd = resp.get("cmd")
                         
-                        if cmd == "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA" or cmd == "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK":
+                        # Определяем фактическое событие
+                        actual_event = status if status else cmd
+                        
+                        if actual_event == "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA" or actual_event == "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK":
                             waiting_for_ack = False
                             
-                        elif cmd == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
-                            print("\n[SUCCESS] Firmware updated successfully. Rebooting...")
+                        elif actual_event == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
+                            print("\n\n[SUCCESS] Firmware updated successfully. Rebooting...")
                             time.sleep(2)
                             break
                             
-                        elif cmd == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
-                            print(f"\n[ERROR] Update failed: {resp.get('message')}")
+                        elif actual_event == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
+                            print(f"\n\n[ERROR] Update failed: {resp.get('message')}")
+                            time.sleep(2)
+                            break
+                            
+                        elif actual_event == "API_RESPONSE_STATUS_ERROR":
+                            print(f"\n\n[ERROR] Device reported an error: {resp}")
                             time.sleep(2)
                             break
                             
                     except json.JSONDecodeError:
-                        print(f"Device: {line}")
+                        # Добавлен \n чтобы не ломать строку прогресс-бара при выводе логов
+                        print(f"\nDevice: {line}")
+                        
+                        # Костыль на случай, если ESP склеит лог и JSON в одну строку в UART
+                        if "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA" in line or "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK" in line:
+                            waiting_for_ack = False
             
             if not waiting_for_ack and offset < total_len:
                 chunk = bin_data[offset : offset + chunk_size]
