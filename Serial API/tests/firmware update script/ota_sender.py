@@ -16,8 +16,8 @@ def main():
         return
 
     # 2. Запрашиваем путь к файлу
-    # file_path = input("Введите путь к зашифрованному файлу .bin (можно перетащить файл в окно): ").strip()
-    file_path = "firmware_encrypted.bin"
+    file_path = input("Введите путь к зашифрованному файлу .bin (можно перетащить файл в окно): ").strip()
+    # file_path = "firmware_encrypted.bin"
     
     # Убираем кавычки (от drag & drop)
     file_path = file_path.strip('"\'') 
@@ -152,7 +152,7 @@ def send_ota_file(port, baudrate, file_path):
                             if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
                                 status = resp.get("status")
                                 if status == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
-                                    print("\n[УСПЕХ] Устройство успешно прошито и перезагружается!")
+                                    print("\n[УСПЕХ] Прошивка успешно загружениа. Презагрузите устройство для окончания обновления.")
                                     return
                                 elif status == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
                                     print(f"\n[ОШИБКА УСТРОЙСТВА] Ошибка на финальном этапе: {resp.get('message')}")

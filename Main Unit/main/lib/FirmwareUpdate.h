@@ -193,8 +193,8 @@ void startFirmwareUpdate()
       }
     }
 
-    // Завершаем процесс, если данные не приходили более 3 секунд
-    if (totalReceived > 0 && (millis() - lastDataTime > 3000))
+    // Завершаем процесс, если данные не приходили более 2 секунд
+    if (totalReceived > 0 && (millis() - lastDataTime > 2000))
     {
       break;
     }
@@ -219,9 +219,9 @@ void startFirmwareUpdate()
   if (esp_ota_set_boot_partition(updatePartition) == ESP_OK)
   {
     sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_SUCCESS, 
-      "Firmware update successful. Restarting device...", -1);
+      "Firmware update successful.", -1);
     vTaskDelay(pdMS_TO_TICKS(1000));
-    esp_restart();
+    // esp_restart();
   }
   else
   {

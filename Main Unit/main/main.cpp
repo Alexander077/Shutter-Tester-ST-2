@@ -2485,6 +2485,18 @@ void setup()
 
 	storage.begin();
 	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8 * 1024, NULL, 1, NULL, 0);
+
+	esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
+	// esp_ota_mark_app_invalid_rollback_and_reboot();//mark as invalid in case of system test if failed
+
+	if (err == ESP_OK)
+	{
+		ESP_LOGI("", "Firmware validated, rollback cancelled.");
+	}
+	else
+	{
+		ESP_LOGE("", "Error validating firmware: %s", esp_err_to_name(err));
+	}
 }
 
 void loop() 
