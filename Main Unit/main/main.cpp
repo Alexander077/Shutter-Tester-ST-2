@@ -1428,7 +1428,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	if (apiRequestAction == ApiRequestAction::GO_TO_MEASURE)
 	{
 		cJSON *json = cJSON_CreateObject();
-		cJSON_AddStringToObject(json, "cmd", SerialAPIResponse::API_RESPONSE_MEASUREMENT_RESULT_DATA);
+		cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_MEASURE);
 
 		if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
 		{
@@ -1499,7 +1499,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		if (json_str != NULL)
 		{
 			printf("%s\n", json_str);
-			fflush(stdout);
+			doubleFlush();
 			free(json_str);
 		}
 
@@ -2128,23 +2128,27 @@ void drawLightCheckScreen()
 			cJSON_AddNumberToObject(json, "sensor1Level", (int)((float)sensor0Max / MAX_SIGNAL_LEVEL * 100)); // in percents
 			cJSON_AddNumberToObject(json, "sensor2Level", (int)((float)sensor1Max / MAX_SIGNAL_LEVEL * 100)); // in percents
 
-			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
+			const char* s1Status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
 				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
 					SerialAPILightStatus::LIGHT_STATUS_TOO_BRIGHT : SerialAPILightStatus::LIGHT_STATUS_OK);
 
-			const char* s2_status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
+			const char* s2Status = (sensor1Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
 				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
 					SerialAPILightStatus::LIGHT_STATUS_TOO_BRIGHT : SerialAPILightStatus::LIGHT_STATUS_OK);
 
-			cJSON_AddStringToObject(json, "sensor1Status", s1_status);
-			cJSON_AddStringToObject(json, "sensor2Status", s2_status);
+			cJSON_AddStringToObject(json, "sensor1Status", s1Status);
+			cJSON_AddStringToObject(json, "sensor2Status", s2Status);
 			cJSON_AddStringToObject(json, "lightQuality", serialApiLightQualityStatusesStr[(int8_t)resLightQualityStatus]);
 
 			char *json_str = cJSON_PrintUnformatted(json);
-			if (json_str != NULL) {
+
+			if (json_str != NULL) 
+			{
 				printf("%s\n", json_str);
+				doubleFlush();
 				free(json_str);
 			}
+
 			cJSON_Delete(json);
 		}
 		// ==============================

@@ -1,289 +1,645 @@
 import serial
 import json
 import time
-import sys
 import os
+import sys
 import base64
-import ctypes
+from typing import Optional, Dict, Any, Tuple
 
-try:
-    import keyboard
-except ImportError:
-    print("Error: 'keyboard' module not found.")
-    print("Please install it using: pip install keyboard")
-    sys.exit(1)
+# Cross-platform keyboard handling
+if sys.platform == 'win32':
+    import msvcrt
+else:
+    import termios
+    import tty
+    import select
 
-# Enable ANSI escape sequences for Windows
-if os.name == 'nt':
-    kernel32 = ctypes.windll.kernel32
-    kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-SERIAL_PORT = 'COM40'
+PORT = 'COM40'
 BAUD_RATE = 115200
 
+# Sensor types (indices for API)
+SENSOR_TYPES = [
+    (0, "35mm (36x24mm)"),
+    (1, "6x4.5 (60x45mm)"),
+    (2, "6x6 (60x60mm)"),
+    (3, "6x7 (70x60mm)"),
+]
+
+# Curtain movement types
+CURTAIN_MOVEMENTS = [
+    (0, "Horizontal"),
+    (1, "Vertical"),
+    (2, "Leaf"),
+]
+
+
+# ============================================================================
+# SERIAL COMMUNICATION
+# ============================================================================
+
+def send_json_command(ser: serial.Serial, payload: Dict[str, Any], timeout: float = 10.0) -> Optional[Dict]:
+    """Send JSON command and wait for JSON response, ignoring system logs."""
+
+    msg = json.dumps(payload) + '\n'
+    print(f"\n[>>>] SEND: {msg.strip()}")
+
+    payload_bytes = msg.encode('utf-8')
+
+    # Send in chunks to avoid USB buffer overflow
+    for i in range(0, len(payload_bytes), 32):
+        ser.write(payload_bytes[i:i+32])
+        ser.flush()
+        time.sleep(0.02)
+
+    # Wait for response
+    end_time = time.time() + timeout
+    while time.time() < end_time:
+        if ser.in_waiting > 0:
+            line = ser.readline().decode('utf-8', errors='ignore').strip()
+            if not line:
+                continue
+
+            if line.startswith('{') and line.endswith('}'):
+                print(f"[<<<] RESPONSE: {line}")
+                time.sleep(0.1)
+                return json.loads(line)
+            else:
+                print(f"[LOG] {line}")
+
+        time.sleep(0.01)
+
+    print("[!!!] TIMEOUT: No response from device")
+    return None
+
+
+def send_raw_command(ser: serial.Serial, cmd: str):
+    """Send raw string command."""
+    cmd_bytes = cmd.encode('utf-8')
+    for i in range(0, len(cmd_bytes), 32):
+        ser.write(cmd_bytes[i:i+32])
+        ser.flush()
+        time.sleep(0.02)
+
+
+def connect_to_device() -> Optional[serial.Serial]:
+    """Connect to the device and initialize."""
+    try:
+        ser = serial.Serial(PORT, BAUD_RATE, timeout=0.1)
+        ser.setDTR(False)
+        ser.setRTS(False)
+
+        print(f"Connected to {PORT} at {BAUD_RATE} baud")
+        print("Waiting for device initialization (1 sec)...")
+        time.sleep(1)
+
+        # Clear buffer from startup logs
+        ser.reset_input_buffer()
+
+        return ser
+    except serial.SerialException as e:
+        print(f"[ERROR] Cannot open COM port: {e}")
+        print("Check that the correct PORT is specified and no other program is using it.")
+        return None
+
+
+# ============================================================================
+# KEYBOARD INPUT (Cross-platform)
+# ============================================================================
+
+def kbhit() -> bool:
+    """Check if a key has been pressed (cross-platform)."""
+    if sys.platform == 'win32':
+        return msvcrt.kbhit()
+    else:
+        return select.select([sys.stdin], [], [], 0)[0]
+
+
+def getch() -> str:
+    """Get a single character from keyboard (cross-platform)."""
+    if sys.platform == 'win32':
+        ch = msvcrt.getch()
+        if ch in (b'\xe0', b'\x00'):  # Arrow keys prefix
+            ch = msvcrt.getch()
+        return ch.decode('utf-8', errors='ignore')
+    else:
+        return sys.stdin.read(1)
+
+
+def is_escape_pressed() -> bool:
+    """Check if ESC key is pressed. Returns True if ESC was pressed."""
+    if kbhit():
+        ch = getch()
+        if ch == '\x1b' or ch == 'q' or ch == 'Q':
+            return True
+    return False
+
+
+class TerminalContext:
+    """Context manager for terminal settings (Unix only)."""
+    def __init__(self):
+        self.old_settings = None
+        self.is_unix = sys.platform != 'win32'
+
+    def __enter__(self):
+        if self.is_unix:
+            self.old_settings = termios.tcgetattr(sys.stdin)
+            tty.setcbreak(sys.stdin.fileno())
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.is_unix and self.old_settings:
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
+        return False
+
+
+# ============================================================================
+# MENU DISPLAY
+# ============================================================================
+
 def clear_screen():
+    """Clear the terminal screen."""
     os.system('cls' if os.name == 'nt' else 'clear')
 
-def send_json_command(ser, payload):
-    cmd_str = json.dumps(payload) + "\n"
-    ser.write(cmd_str.encode('utf-8'))
 
-def test_light_setup(ser):
+def print_header(title: str):
+    """Print a formatted header."""
+    print("\n" + "=" * 60)
+    print(f"  {title}")
+    print("=" * 60)
+
+
+def print_menu():
+    """Print the main menu."""
     clear_screen()
-    print("=== Testing Light Setup API ===")
-    print("Press 'Esc' to return to Main Menu.\n")
-    
-    ser.reset_input_buffer()
-    send_json_command(ser, {"cmd": "API_REQUEST_LIGHT_SETUP"})
-    
-    last_lines_count = 0
-    
+    print_header("ESP32-S2 Shutter Tester API Tester")
+    print()
+    print("  1. Light Setup Mode")
+    print("  2. Shutter Speed Measurement Mode")
+    print("  3. Records Storage Operations")
+    print("  4. Firmware Update")
+    print("  5. Exit")
+    print()
+    print("-" * 60)
+    print("Press 'q' or ESC in modes with real-time data to exit")
+
+
+# ============================================================================
+# LIGHT SETUP MODE
+# ============================================================================
+
+def light_setup_mode(ser: serial.Serial):
+    """Test Light Setup API - real-time JSON status display."""
+    print_header("Light Setup Mode")
+    print("Starting light setup mode...")
+    print("Device will send light status JSON in real-time.")
+    print("Press 'q' or ESC to return to main menu.")
+    print("-" * 60)
+
+    # Send command to enter light setup mode
+    payload = {"cmd": "API_REQUEST_LIGHT_SETUP"}
+    msg = json.dumps(payload) + '\n'
+    print(f"Sending: {msg.strip()}")
+    send_raw_command(ser, msg)
+
+    print("\nWaiting for light status data...")
+    print("(Data will be displayed in overwrite mode)")
+    print()
+
+    with TerminalContext():
+        last_json_lines = 0
+        while True:
+            # Check for ESC/q key
+            if is_escape_pressed():
+                print("\n[EXIT] Exiting light setup mode...")
+                return
+
+            # Read data from serial
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+
+                if not line:
+                    continue
+
+                if line.startswith('{') and line.endswith('}'):
+                    try:
+                        data = json.loads(line)
+                        if data.get("cmd") == "API_REQUEST_LIGHT_SETUP":
+                            # Move cursor up and overwrite previous lines
+                            if last_json_lines > 0:
+                                print(f"\033[{last_json_lines}A", end='')
+                            print(f"\033[K", end='')  # Clear to end of line
+                            print(json.dumps(data, indent=2))
+                            # Count lines for next overwrite
+                            json_str = json.dumps(data, indent=2)
+                            last_json_lines = json_str.count('\n') + 1
+                        else:
+                            print(f"\n[JSON] {line}")
+                    except json.JSONDecodeError:
+                        print(f"\n[JSON] {line}")
+                else:
+                    print(f"\r[LOG] {line}", end='', flush=True)
+
+            time.sleep(0.01)
+
+
+# ============================================================================
+# MEASUREMENT MODE
+# ============================================================================
+
+def select_sensor_type() -> int:
+    """Prompt user to select sensor type."""
+    clear_screen()
+    print_header("Measurement Mode - Select Sensor Type")
+    print()
+    for idx, (code, name) in enumerate(SENSOR_TYPES):
+        print(f"  {idx + 1}. {name}")
+    print()
+    print("-" * 60)
+
     while True:
-        if keyboard.is_pressed('esc'):
-            print("\nExiting Light Setup Mode...")
-            time.sleep(0.5)
-            break
-            
-        if ser.in_waiting:
-            line = ser.readline().decode('utf-8', errors='replace').strip()
-            if line:
-                try:
-                    data = json.loads(line)
-                    if data.get("cmd") == "API_REQUEST_LIGHT_SETUP":
-                        formatted_json = json.dumps(data, indent=4)
-                        lines = formatted_json.split('\n')
-                        
-                        # Move cursor up by last_lines_count and clear to bottom
-                        if last_lines_count > 0:
-                            sys.stdout.write(f"\033[{last_lines_count}A")
-                            sys.stdout.write("\033[J")
-                        
-                        print(formatted_json)
-                        last_lines_count = len(lines)
-                except json.JSONDecodeError:
-                    pass
-        time.sleep(0.01)
+        try:
+            choice = input("Select sensor type (1-4): ").strip()
+            choice_num = int(choice)
+            if 1 <= choice_num <= 4:
+                return choice_num - 1
+            print("Invalid choice. Please enter 1-4.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
 
-def test_measurement(ser):
+
+def select_curtain_movement() -> int:
+    """Prompt user to select curtain movement."""
     clear_screen()
-    print("=== Testing Measurement API ===")
-    
-    frame_size = input("Enter frame size (e.g., '36x24' or '60x60'): ").strip()
-    curtain_dir = input("Enter curtain movement direction (e.g., 'Horizontal', 'Vertical', 'Leaf'): ").strip()
-    
-    print("\nStarting measurement mode... Waiting for results.")
-    print("Press 'Esc' to cancel and return to Main Menu.\n")
-    
-    ser.reset_input_buffer()
+    print_header("Measurement Mode - Select Curtain Movement")
+    print()
+    for idx, (code, name) in enumerate(CURTAIN_MOVEMENTS):
+        print(f"  {idx + 1}. {name}")
+    print()
+    print("-" * 60)
+
+    while True:
+        try:
+            choice = input("Select curtain movement (1-3): ").strip()
+            choice_num = int(choice)
+            if 1 <= choice_num <= 3:
+                return choice_num - 1
+            print("Invalid choice. Please enter 1-3.")
+        except ValueError:
+            print("Invalid input. Please enter a number.")
+
+
+def measurement_mode(ser: serial.Serial):
+    """Test Shutter Speed Measurement API."""
+    # Select sensor type
+    sensor_index = select_sensor_type()
+
+    # Select curtain movement
+    curtain_movement = select_curtain_movement()
+
+    clear_screen()
+    print_header("Measurement Mode - Ready")
+    print()
+    print(f"Selected sensor: {SENSOR_TYPES[sensor_index][1]}")
+    print(f"Curtain movement: {CURTAIN_MOVEMENTS[curtain_movement][1]}")
+    print()
+    print("Starting measurement...")
+    print("Press 'q' or ESC to cancel and return to main menu.")
+    print("-" * 60)
+
+    # Send measurement command
     payload = {
         "cmd": "API_REQUEST_MEASURE",
-        "frameSize": frame_size,
-        "direction": curtain_dir
+        "sensorIndex": sensor_index,
+        "curtainMovement": curtain_movement
     }
-    send_json_command(ser, payload)
-    
-    while True:
-        if keyboard.is_pressed('esc'):
-            print("\nExiting Measurement Mode...")
-            time.sleep(0.5)
-            break
-            
-        if ser.in_waiting:
-            line = ser.readline().decode('utf-8', errors='replace').strip()
-            if line:
-                try:
-                    data = json.loads(line)
-                    if data.get("cmd") == "API_REQUEST_MEASURE":
-                        print("\n--- Measurement Result Received ---")
-                        print(json.dumps(data, indent=4))
-                        print("\nPress 'Esc' to return to Main Menu.")
-                except json.JSONDecodeError:
-                    # Ignore logs during wait
-                    pass
-        time.sleep(0.01)
+    msg = json.dumps(payload) + '\n'
+    print(f"Sending: {msg.strip()}")
+    send_raw_command(ser, msg)
 
-def test_records_api(ser):
-    clear_screen()
-    print("=== Testing Records Storage API ===")
-    print("Running automated sequence...")
-    print("Press 'Esc' at any time to return to Main Menu.\n")
-    
-    ser.reset_input_buffer()
-    
-    print("1. Requesting Records List...")
+    print("\nWaiting for measurement results...")
+    print("(This may take some time...)")
+    print()
+
+    with TerminalContext():
+        while True:
+            # Check for ESC/q key
+            if is_escape_pressed():
+                print("\n[EXIT] Exiting measurement mode...")
+                return
+
+            # Read data from serial
+            if ser.in_waiting > 0:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+
+                if not line:
+                    continue
+
+                if line.startswith('{') and line.endswith('}'):
+                    try:
+                        data = json.loads(line)
+                        if data.get("cmd") == "API_REQUEST_MEASURE":
+                            print("\n" + "-" * 60)
+                            print("[RESULT] Measurement completed!")
+                            print("-" * 60)
+                            print(json.dumps(data, indent=2))
+                            print("-" * 60)
+                            print("\nPress 'q' or ESC to return to main menu...")
+
+                            # Wait for exit command
+                            while True:
+                                if is_escape_pressed():
+                                    return
+                                time.sleep(0.05)
+                    except json.JSONDecodeError:
+                        print(f"\n[JSON] {line}")
+                else:
+                    print(f"\r[LOG] {line}", end='', flush=True)
+
+            time.sleep(0.01)
+
+
+# ============================================================================
+# RECORDS STORAGE MODE
+# ============================================================================
+
+def records_storage_mode(ser: serial.Serial):
+    """Test Records Storage API - run all CRUD operations."""
+    print_header("Records Storage Operations")
+    print("Running all CRUD operations automatically...")
+    print("-" * 60)
+
+    # TEST 1: Get list of records
+    print("\n=== TEST 1: GET RECORDS LIST ===")
     send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORDS_LIST"})
     time.sleep(1)
-    
-    print("\n2. Requesting Specific Record (Index 0)...")
-    send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORD", "index": 0})
-    time.sleep(1)
-    
-    print("\n3. Testing Save Record...")
-    send_json_command(ser, {
-        "cmd": "API_REQUEST_SAVE_RECORD", 
-        "data": {"speed": "1/250", "deviation": "+0.1EV"}
-    })
-    time.sleep(1)
 
-    print("\nWaiting for device logs/JSONs:")
-    print("-" * 30)
-    
-    while True:
-        if keyboard.is_pressed('esc'):
-            print("\nExiting Records Test...")
-            time.sleep(0.5)
-            break
-            
-        if ser.in_waiting:
-            line = ser.readline().decode('utf-8', errors='replace').strip()
-            if line:
-                try:
-                    data = json.loads(line)
-                    print(json.dumps(data, indent=4))
-                except json.JSONDecodeError:
-                    print(f"LOG: {line}")
-        time.sleep(0.01)
+    # TEST 2: Create new record
+    print("\n=== TEST 2: CREATE NEW RECORD ===")
+    new_record_data = {
+        "recordNumber": 0,  # 0 means create new
+        "sensor0Time": 1.25,
+        "sensor1Time": 1.30,
+        "curtain1spanAspeed": 15.5,
+        "curtain1spanAtime": 2.1,
+        "slitWidthAverage": 3.14
+    }
 
-def test_firmware_update(ser):
-    clear_screen()
-    print("=== Testing Firmware Update API ===")
-    file_path = input("Enter path to encrypted .bin file: ").strip()
-    file_path = file_path.strip('\"\'') 
+    res = send_json_command(ser, {"cmd": "API_REQUEST_SAVE_RECORD", "record": new_record_data})
 
-    if not os.path.exists(file_path):
-        print(f"[ERROR] File '{file_path}' not found.")
-        time.sleep(2)
+    created_id = None
+    if res and res.get("status") == "API_RESPONSE_STATUS_OK":
+        created_id = res.get("recordNumber")
+        print(f"---> Success! Created record with ID: {created_id}")
+    else:
+        print("---> Error creating record. Stopping tests.")
+        input("\nPress Enter to continue...")
         return
 
-    print("Requesting firmware update mode...")
-    ser.reset_input_buffer()
-    send_json_command(ser, {"cmd": "API_REQUEST_FIRMWARE_UPDATE"})
-    
+    time.sleep(1)
+
+    # TEST 3: Read the newly created record
+    print(f"\n=== TEST 3: READ RECORD {created_id} ===")
+    send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
+    time.sleep(1)
+
+    # TEST 4: Update record
+    print(f"\n=== TEST 4: UPDATE RECORD {created_id} ===")
+    update_record_data = new_record_data.copy()
+    update_record_data["recordNumber"] = created_id
+    update_record_data["sensor0Time"] = 99.99
+    update_record_data["slitWidthAverage"] = 5.55
+
+    send_json_command(ser, {"cmd": "API_REQUEST_SAVE_RECORD", "record": update_record_data})
+    time.sleep(1)
+
+    # TEST 5: Verify update
+    print(f"\n=== TEST 5: VERIFY UPDATED DATA ===")
+    send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
+    time.sleep(1)
+
+    # TEST 6: Delete record
+    print(f"\n=== TEST 6: DELETE RECORD {created_id} ===")
+    send_json_command(ser, {"cmd": "API_REQUEST_DELETE_RECORD", "recordNumber": created_id})
+    time.sleep(1)
+
+    # TEST 7: Verify deletion (record should not be found)
+    print(f"\n=== TEST 7: VERIFY DELETION ===")
+    send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORD", "recordNumber": created_id})
+    time.sleep(1)
+
+    # Final list view
+    print("\n=== TEST 8: FINAL RECORDS LIST ===")
+    send_json_command(ser, {"cmd": "API_REQUEST_GET_RECORDS_LIST"})
+
+    print("\n" + "-" * 60)
+    print("[COMPLETE] All records storage tests completed successfully!")
+    print("-" * 60)
+
+    input("\nPress Enter to continue...")
+
+
+# ============================================================================
+# FIRMWARE UPDATE MODE
+# ============================================================================
+
+def firmware_update_mode(ser: serial.Serial):
+    """Test Firmware Update API."""
+    clear_screen()
+    print_header("Firmware Update Mode")
+    print()
+
+    # Get file path
+    file_path = input("Enter path to encrypted .bin file (or drag & drop): ").strip()
+    file_path = file_path.strip('"\'')
+
+    if not os.path.exists(file_path):
+        print(f"[ERROR] File not found: {file_path}")
+        input("\nPress Enter to continue...")
+        return
+
+    print(f"\nPreparing for update...")
+    print(f"File: {file_path}")
+    print(f"Size: {os.path.getsize(file_path)} bytes")
+    print(f"Port: {PORT} | Baud: {BAUD_RATE}")
+    print()
+
     chunk_size = 48
-    try:
-        with open(file_path, "rb") as f:
-            bin_data = f.read()
-            
-        total_len = len(bin_data)
-        print(f"File loaded. Total size: {total_len} bytes.")
-        print("Waiting for device to prepare flash memory...")
-        
-        offset = 0
-        waiting_for_ack = True
-        
+    file_size = os.path.getsize(file_path)
+
+    # Send OTA start command
+    print("Sending firmware update command...")
+    start_cmd = json.dumps({"cmd": "API_REQUEST_FIRMWARE_UPDATE"}) + '\n'
+    ser.write(start_cmd.encode('ascii'))
+    ser.flush()
+
+    print("Waiting for FIRMWARE_UPDATE_READY signal from device...")
+
+    # Wait for ready signal
+    is_ready = False
+    timeout_ready = time.time() + 10.0
+
+    while not is_ready and time.time() < timeout_ready:
+        if ser.in_waiting > 0:
+            line = ser.readline().decode(errors='ignore').strip()
+            if line:
+                try:
+                    resp = json.loads(line)
+                    if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                        status = resp.get("status")
+                        if status == "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA":
+                            is_ready = True
+                        elif status == "API_RESPONSE_STATUS_ERROR":
+                            print(f"\n[ERROR] Device error: {resp.get('message', 'Unknown error')}")
+                            input("\nPress Enter to continue...")
+                            return
+                except json.JSONDecodeError:
+                    print(f"[Device]: {line}")
+        time.sleep(0.01)
+
+    if not is_ready:
+        print("\n[ERROR] Timeout waiting for ready signal.")
+        input("\nPress Enter to continue...")
+        return
+
+    print("\n[SYSTEM] Ready signal received! Starting data transfer.")
+    print("WARNING: Do NOT disconnect the device during update...")
+
+    sent_bytes = 0
+    start_time = time.time()
+    ack_received = False
+
+    time.sleep(0.1)
+
+    # Main data transfer loop
+    with open(file_path, 'rb') as f:
         while True:
-            if keyboard.is_pressed('esc'):
-                print("\nFirmware update aborted by user.")
-                time.sleep(0.5)
+            chunk = f.read(chunk_size)
+            if not chunk:
                 break
-                
-            if ser.in_waiting:
-                line = ser.readline().decode('utf-8', errors='replace').strip()
+
+            # Encode to Base64
+            b64_data = base64.b64encode(chunk).decode('ascii') + '\n'
+            ser.write(b64_data.encode('ascii'))
+            ser.flush()
+
+            sent_bytes += len(chunk)
+
+            # Wait for ACK
+            ack_received = False
+            chunk_timeout = time.time() + 2
+
+            while time.time() < chunk_timeout:
+                if ser.in_waiting > 0:
+                    line = ser.readline().decode(errors='ignore').strip()
+                    if line:
+                        try:
+                            resp = json.loads(line)
+                            if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                                status = resp.get("status")
+
+                                if status == "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK":
+                                    ack_bytes = int(resp.get("bytesReceived", 0))
+                                    progress = (ack_bytes / file_size) * 100
+                                    sys.stdout.write(f"\rProgress: [{ack_bytes}/{file_size} bytes] {progress:.1f}% ")
+                                    sys.stdout.flush()
+
+                                    if ack_bytes >= sent_bytes:
+                                        ack_received = True
+                                        break
+
+                                elif status == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
+                                    print(f"\n\n[ERROR] Write error: {resp.get('message', 'Flash write failed')}")
+                                    input("\nPress Enter to continue...")
+                                    return
+
+                        except json.JSONDecodeError:
+                            pass
+                else:
+                    time.sleep(0.005)
+
+            if not ack_received:
+                print(f"\n\n[ERROR] Timeout: Device did not acknowledge {sent_bytes} bytes!")
+                break
+
+    # Final status check
+    if ack_received:
+        total_time = time.time() - start_time
+        print(f"\n\nFile transfer completed in {total_time:.1f} sec.")
+        print("Waiting for FIRMWARE_UPDATE_SUCCESS status...")
+
+        timeout = time.time() + 15.0
+        while time.time() < timeout:
+            if ser.in_waiting > 0:
+                line = ser.readline().decode(errors='ignore').strip()
                 if line:
                     try:
                         resp = json.loads(line)
-                        
-                        # ИСПРАВЛЕНИЕ: Устройство присылает ответ в поле "status"
-                        status = resp.get("status")
-                        cmd = resp.get("cmd")
-                        
-                        # Определяем фактическое событие
-                        actual_event = status if status else cmd
-                        
-                        if actual_event == "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA" or actual_event == "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK":
-                            waiting_for_ack = False
-                            
-                        elif actual_event == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
-                            print("\n\n[SUCCESS] Firmware updated successfully. Rebooting...")
-                            time.sleep(2)
-                            break
-                            
-                        elif actual_event == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
-                            print(f"\n\n[ERROR] Update failed: {resp.get('message')}")
-                            time.sleep(2)
-                            break
-                            
-                        elif actual_event == "API_RESPONSE_STATUS_ERROR":
-                            print(f"\n\n[ERROR] Device reported an error: {resp}")
-                            time.sleep(2)
-                            break
-                            
+                        if resp.get("cmd") == "API_REQUEST_FIRMWARE_UPDATE":
+                            status = resp.get("status")
+                            if status == "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS":
+                                print("\n[SUCCESS] Firmware uploaded successfully!")
+                                print("You need to reboot the device to complete the update.")
+                                input("\nPress Enter to continue...")
+                                return
+                            elif status == "API_RESPONSE_FIRMWARE_UPDATE_FAILED":
+                                print(f"\n[ERROR] Final stage error: {resp.get('message')}")
+                                input("\nPress Enter to continue...")
+                                return
                     except json.JSONDecodeError:
-                        # Добавлен \n чтобы не ломать строку прогресс-бара при выводе логов
-                        print(f"\nDevice: {line}")
-                        
-                        # Костыль на случай, если ESP склеит лог и JSON в одну строку в UART
-                        if "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA" in line or "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK" in line:
-                            waiting_for_ack = False
-            
-            if not waiting_for_ack and offset < total_len:
-                chunk = bin_data[offset : offset + chunk_size]
-                b64_chunk = base64.b64encode(chunk).decode('utf-8')
-                
-                payload = {
-                    "cmd": "API_RESPONSE_FIRMWARE_UPDATE_CHUNK",
-                    "data": b64_chunk,
-                    "len": len(chunk),
-                    "offset": offset
-                }
-                
-                send_json_command(ser, payload)
-                sys.stdout.write(f"\rProgress: {min(offset + chunk_size, total_len)} / {total_len} bytes")
-                sys.stdout.flush()
-                
-                offset += len(chunk)
-                waiting_for_ack = True
-                
+                        print(f"[Device]: {line}")
             time.sleep(0.01)
-            
-    except Exception as e:
-        print(f"\n[ERROR] {e}")
-        time.sleep(2)
+
+        print("\n[WARNING] SUCCESS status not received, but data was sent.")
+        print("Check the device for update status.")
+
+    input("\nPress Enter to continue...")
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
 
 def main():
-    try:
-        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.1)
-    except serial.SerialException as e:
-        print(f"Connection error on {SERIAL_PORT}: {e}")
-        sys.exit(1)
-        
-    time.sleep(2) # Give ESP32 time to reboot after DTR/RTS
+    """Main entry point."""
+    clear_screen()
+    print_header("Shutter Tester ST-2 Serial API Demo")
 
-    while True:
-        clear_screen()
-        print("=========================================")
-        print("      ESP32-S2 API TESTING TOOLBOX       ")
-        print("=========================================")
-        print(" 1. Test Light Setup API")
-        print(" 2. Test Measurement API")
-        print(" 3. Test Records API")
-        print(" 4. Test Firmware Update API")
-        print(" 5. Exit")
-        print("=========================================")
-        
-        choice = input("Select an option (1-5): ").strip()
-        
-        if choice == '1':
-            test_light_setup(ser)
-        elif choice == '2':
-            test_measurement(ser)
-        elif choice == '3':
-            test_records_api(ser)
-        elif choice == '4':
-            test_firmware_update(ser)
-        elif choice == '5':
-            print("Exiting toolbox...")
-            break
-        else:
-            print("Invalid choice. Try again.")
-            time.sleep(1)
-            
-    ser.close()
+    # Connect to device
+    ser = connect_to_device()
+    if ser is None:
+        input("\nPress Enter to exit...")
+        sys.exit(1)
+
+    try:
+        while True:
+            print_menu()
+            choice = input("Select option (1-5): ").strip()
+
+            if choice == '1':
+                light_setup_mode(ser)
+            elif choice == '2':
+                measurement_mode(ser)
+            elif choice == '3':
+                records_storage_mode(ser)
+            elif choice == '4':
+                firmware_update_mode(ser)
+            elif choice == '5':
+                print("\nExiting...")
+                break
+            else:
+                print("\nInvalid choice. Please enter 1-5.")
+                time.sleep(1)
+
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user.")
+    finally:
+        ser.close()
+        print("\nSerial port closed.")
+
 
 if __name__ == "__main__":
-    # Workaround so keyboard library hook doesn't block the main CLI thread unexpectedly
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\nExiting due to keyboard interrupt.")
-        sys.exit(0)
+    main()

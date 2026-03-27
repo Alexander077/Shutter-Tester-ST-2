@@ -17,10 +17,17 @@ volatile bool isApiRequestReceived = false;
 extern RecordsStorageManager storage;
 
 
+void doubleFlush()
+{
+  fflush(stdout);
+  printf("\n");
+  fflush(stdout);
+}
+
 void serialApiTask(void *pvParameters)
 {
   printf("[API_FLOW] --- Task serialApiTask started ---\n");
-  fflush(stdout);
+  doubleFlush();
 
   const size_t API_BUF_SIZE = 1024;
   char rxBuf[API_BUF_SIZE];
@@ -28,7 +35,7 @@ void serialApiTask(void *pvParameters)
 
   setvbuf(stdin, NULL, _IONBF, 0);
   printf("[API_FLOW] stdin set to _IONBF (unbuffered) mode\n");
-  fflush(stdout);
+  doubleFlush();
 
   while (true)
   {
@@ -49,33 +56,33 @@ void serialApiTask(void *pvParameters)
         rxBuf[rxIdx] = '\0'; // Закрываем строку
 
         printf("[API_FLOW] >>> String assembled (Len: %d): %s\n", rxIdx, rxBuf);
-        fflush(stdout);
+        doubleFlush();
 
         cJSON *json = cJSON_Parse(rxBuf);
 
         if (json != NULL)
         {
           printf("[API_FLOW] JSON parsed successfully\n");
-          fflush(stdout);
+          doubleFlush();
 
           cJSON *cmd_item = cJSON_GetObjectItemCaseSensitive(json, "cmd");
 
           if (cJSON_IsString(cmd_item) && (cmd_item->valuestring != NULL))
           {
             printf("[API_FLOW] Command extracted: [%s]\n", cmd_item->valuestring);
-            fflush(stdout);
+            doubleFlush();
 
             if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_LIGHT_SETUP) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_LIGHT_SETUP);
-              fflush(stdout);
+              doubleFlush();
               isApiRequestReceived = true;
               apiRequestAction = ApiRequestAction::GO_TO_LIGHT_SETUP;
             }
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_MEASURE) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_MEASURE);
-              fflush(stdout);
+              doubleFlush();
 
               cJSON *sensorItem = cJSON_GetObjectItemCaseSensitive(json, "sensorIndex");
               cJSON *curtainItem = cJSON_GetObjectItemCaseSensitive(json, "curtainMovement");
@@ -91,27 +98,27 @@ void serialApiTask(void *pvParameters)
                   apiRequestAction = ApiRequestAction::GO_TO_MEASURE;
 
                   printf("[API_FLOW] Measure parameters accepted\n");
-                  fflush(stdout);
+                  doubleFlush();
                 }
                 else
                 {
                   printf("[API_FLOW] WARNING: Measure parameters OUT OF BOUNDS\n");
-                  fflush(stdout);
+                  doubleFlush();
                 }
               }
               else
               {
                 printf("[API_FLOW] WARNING: Measure parameters missing or invalid type\n");
-                fflush(stdout);
+                doubleFlush();
                 printf("\n");
-                fflush(stdout);
+                doubleFlush();
               }
             }
             // --- CRUD API: ПОЛУЧЕНИЕ СПИСКА ЗАПИСЕЙ ---
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_GET_RECORDS_LIST) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORDS_LIST);
-              fflush(stdout);
+              doubleFlush();
 
               cJSON *response = cJSON_CreateObject();
               cJSON_AddStringToObject(response, "cmd", SerialAPIRequestAction::API_REQUEST_GET_RECORDS_LIST);
@@ -120,7 +127,7 @@ void serialApiTask(void *pvParameters)
               std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
 
               printf("[API_FLOW] Found %d records in storage\n", ids.size());
-              fflush(stdout);
+              doubleFlush();
 
               for (int32_t id : ids)
               {
@@ -132,10 +139,10 @@ void serialApiTask(void *pvParameters)
 
               char *json_str = cJSON_PrintUnformatted(response);
               printf("%s\n", json_str);
-              fflush(stdout);
+              doubleFlush();
 
               printf("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORDS_LIST);
-              fflush(stdout);
+              doubleFlush();
 
               free(json_str);
               cJSON_Delete(response);
@@ -144,7 +151,7 @@ void serialApiTask(void *pvParameters)
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_GET_RECORD) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
               cJSON *response = cJSON_CreateObject();
@@ -155,14 +162,14 @@ void serialApiTask(void *pvParameters)
                 int target_id = record_num_item->valueint;
 
                 printf("[API_FLOW] Requesting record ID: %d\n", target_id);
-                fflush(stdout);
+                doubleFlush();
 
                 StoredMeasuredResult rec = storage.getRecordByNumber(target_id);
 
                 if (rec.recordNumber != -1) // Если найдено
                 {
                   printf("[API_FLOW] Record %d found, packing JSON\n", target_id);
-                  fflush(stdout);
+                  doubleFlush();
 
                   cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
                   cJSON *record_obj = cJSON_CreateObject();
@@ -185,7 +192,7 @@ void serialApiTask(void *pvParameters)
                 else
                 {
                   printf("[API_FLOW] WARNING: Record %d NOT FOUND\n", target_id);
-                  fflush(stdout);
+                  doubleFlush();
 
                   cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
                   cJSON_AddStringToObject(response, "message", "Record not found");
@@ -194,15 +201,15 @@ void serialApiTask(void *pvParameters)
               else
               {
                 printf("[API_FLOW] WARNING: recordNumber is missing or not a number\n");
-                fflush(stdout);
+                doubleFlush();
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
               printf("%s\n", json_str);
-              fflush(stdout);
+              doubleFlush();
 
               printf("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               free(json_str);
               cJSON_Delete(response);
@@ -211,7 +218,7 @@ void serialApiTask(void *pvParameters)
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_DELETE_RECORD) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_DELETE_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               cJSON *record_num_item = cJSON_GetObjectItemCaseSensitive(json, "recordNumber");
               cJSON *response = cJSON_CreateObject();
@@ -222,19 +229,19 @@ void serialApiTask(void *pvParameters)
                 int target_id = record_num_item->valueint;
 
                 printf("[API_FLOW] Attempting to delete ID: %d\n", target_id);
-                fflush(stdout);
+                doubleFlush();
 
                 bool success = storage.deleteRecordByNumber(target_id);
 
                 if (success)
                 {
                   printf("[API_FLOW] Record %d successfully deleted\n", target_id);
-                  fflush(stdout);
+                  doubleFlush();
                 }
                 else
                 {
                   printf("[API_FLOW] WARNING: Failed to delete record %d (not found)\n", target_id);
-                  fflush(stdout);
+                  doubleFlush();
                 }
 
                 cJSON_AddStringToObject(response, "status", success ? 
@@ -245,15 +252,15 @@ void serialApiTask(void *pvParameters)
               else
               {
                 printf("[API_FLOW] WARNING: recordNumber is missing or not a number\n");
-                fflush(stdout);
+                doubleFlush();
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
               printf("%s\n", json_str);
-              fflush(stdout);
+              doubleFlush();
 
               printf("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_DELETE_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               free(json_str);
               cJSON_Delete(response);
@@ -262,7 +269,7 @@ void serialApiTask(void *pvParameters)
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_SAVE_RECORD) == 0)
             {
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_SAVE_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               cJSON *record_item = cJSON_GetObjectItemCaseSensitive(json, "record");
               cJSON *response = cJSON_CreateObject();
@@ -278,7 +285,7 @@ void serialApiTask(void *pvParameters)
                 newRes.recordNumber = cJSON_IsNumber(rn) ? rn->valueint : 0;
 
                 printf("[API_FLOW] Parsed recordNumber for saving: %ld\n", (long)newRes.recordNumber);
-                fflush(stdout);
+                doubleFlush();
 
                 cJSON *item;
                 if ((item = cJSON_GetObjectItemCaseSensitive(record_item, "sensor0Time")) && cJSON_IsNumber(item))
@@ -305,14 +312,14 @@ void serialApiTask(void *pvParameters)
                   newRes.slitWidthAverage = item->valuedouble;
 
                 printf("[API_FLOW] Calling storage.saveOrUpdateRecord()...\n");
-                fflush(stdout);
+                doubleFlush();
 
                 int32_t savedId = storage.saveOrUpdateRecord(newRes);
 
                 if (savedId != -1)
                 {
                   printf("[API_FLOW] Success! Saved with ID: %ld\n", (long)savedId);
-                  fflush(stdout);
+                  doubleFlush();
 
                   cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
                   cJSON_AddNumberToObject(response, "recordNumber", savedId);
@@ -320,7 +327,7 @@ void serialApiTask(void *pvParameters)
                 else
                 {
                   printf("[API_FLOW] ERROR: storage.saveOrUpdateRecord() returned error (-1)\n");
-                  fflush(stdout);
+                  doubleFlush();
 
                   cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
                   cJSON_AddStringToObject(response, "message", "Failed to save record");
@@ -329,15 +336,15 @@ void serialApiTask(void *pvParameters)
               else
               {
                 printf("[API_FLOW] WARNING: 'record' object is missing in the payload\n");
-                fflush(stdout);
+                doubleFlush();
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
               printf("%s\n", json_str);
-              fflush(stdout);
+              doubleFlush();
 
               printf("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_SAVE_RECORD);
-              fflush(stdout);
+              doubleFlush();
 
               free(json_str);
               cJSON_Delete(response);
@@ -349,13 +356,13 @@ void serialApiTask(void *pvParameters)
             else
             {
               printf("[API_FLOW] WARNING: Unknown command: [%s]\n", cmd_item->valuestring);
-              fflush(stdout);
+              doubleFlush();
             }
           }
           else
           {
             printf("[API_FLOW] WARNING: JSON has no 'cmd' field or it is not a string\n");
-            fflush(stdout);
+            doubleFlush();
           }
 
           cJSON_Delete(json); // Освобождаем память после успешного парсинга
@@ -364,7 +371,7 @@ void serialApiTask(void *pvParameters)
         {
           printf("[API_FLOW] ERROR: JSON parse error, invalid format.\n");
           printf("[API_FLOW] ERROR: Corrupted payload: %s\n", rxBuf);
-          fflush(stdout);
+          doubleFlush();
         }
 
         // Очищаем буфер для следующей команды
@@ -382,7 +389,7 @@ void serialApiTask(void *pvParameters)
       {
         // Защита: если буфер переполнился, сбрасываем его
         printf("[API_FLOW] ERROR: !!! RX BUFFER OVERFLOW !!! String too long without '\\n'. Resetting.\n");
-        fflush(stdout);
+        doubleFlush();
         rxIdx = 0;
       }
     }
