@@ -3,10 +3,8 @@ import json
 import time
 import sys
 
-# Настройки порта (ЗАМЕНИ НА СВОЙ ПОРТ!)
-# На Windows это обычно 'COM3', 'COM4' и т.д.
-# На Mac/Linux это обычно '/dev/cu.usbserial-...' или '/dev/ttyUSB0'
-SERIAL_PORT = 'COM7' 
+
+SERIAL_PORT = 'COM40' 
 BAUD_RATE = 115200
 
 def main():
@@ -28,7 +26,7 @@ def main():
     ser.reset_input_buffer()
 
     # Формируем команду перехода в режим настройки света
-    payload = {"cmd": "light_setup"}
+    payload = {"cmd": "API_REQUEST_LIGHT_SETUP"}
     cmd_str = json.dumps(payload) + "\n"
     
     print(f"Отправка команды: {cmd_str.strip()}")
@@ -48,10 +46,10 @@ def main():
                     data = json.loads(line)
                     
                     # Если это наш статус света, выводим красиво
-                    if data.get("type") == "light_setup_status":
-                        print(f"Качество: {data.get('light_quality'):<7} | "
-                              f"Сенсор 1: {data.get('sensor1_level'):<4} ({data.get('sensor1_status')}) | "
-                              f"Сенсор 2: {data.get('sensor2_level'):<4} ({data.get('sensor2_status')})")
+                    if data.get("cmd") == "API_REQUEST_LIGHT_SETUP":
+                        print(f"Качество: {data.get('lightQuality'):<7} | "
+                              f"Сенсор 1: {data.get('sensor1Level'):<4} ({data.get('sensor1Status')}) | "
+                              f"Сенсор 2: {data.get('sensor2Level'):<4} ({data.get('sensor2Status')})")
                     else:
                         # Если пришел какой-то другой JSON
                         print("JSON:", data)

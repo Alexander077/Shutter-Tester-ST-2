@@ -1,13 +1,13 @@
 #pragma once
 
-enum class ApiRequstAction
+enum class ApiRequestAction
 {
   NO_ACTION,
   GO_TO_LIGHT_SETUP,
   GO_TO_MEASURE
 };
 
-volatile ApiRequstAction apiRequestAction = ApiRequstAction::NO_ACTION;
+volatile ApiRequestAction apiRequestAction = ApiRequestAction::NO_ACTION;
 
 class SerialAPILightStatus
 {
@@ -34,14 +34,16 @@ class SerialAPIResponse
 public:
   static constexpr const char *API_RESPONSE_STATUS_OK = "API_RESPONSE_STATUS_OK";
   static constexpr const char *API_RESPONSE_STATUS_ERROR = "API_RESPONSE_STATUS_ERROR";
-  static constexpr const char *API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA = 
-    "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA";
+  static constexpr const char *API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA =
+      "API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA";
   static constexpr const char *API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK =
       "API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK";
   static constexpr const char *API_RESPONSE_FIRMWARE_UPDATE_SUCCESS =
       "API_RESPONSE_FIRMWARE_UPDATE_SUCCESS";
   static constexpr const char *API_RESPONSE_FIRMWARE_UPDATE_FAILED =
       "API_RESPONSE_FIRMWARE_UPDATE_FAILED";
+  static constexpr const char *API_RESPONSE_MEASUREMENT_RESULT_DATA =
+      "API_RESPONSE_MEASUREMENT_RESULT_DATA";
 };
 
 char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};

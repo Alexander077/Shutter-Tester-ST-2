@@ -70,7 +70,7 @@ void serialApiTask(void *pvParameters)
               printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_LIGHT_SETUP);
               fflush(stdout);
               isApiRequestReceived = true;
-              apiRequestAction = ApiRequstAction::GO_TO_LIGHT_SETUP;
+              apiRequestAction = ApiRequestAction::GO_TO_LIGHT_SETUP;
             }
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_MEASURE) == 0)
             {
@@ -88,7 +88,7 @@ void serialApiTask(void *pvParameters)
                   curSensorIndex = sensorItem->valueint;
                   curtainMovement = (CurtainMovement)curtainItem->valueint;
                   isApiRequestReceived = true;
-                  apiRequestAction = ApiRequstAction::GO_TO_MEASURE;
+                  apiRequestAction = ApiRequestAction::GO_TO_MEASURE;
 
                   printf("[API_FLOW] Measure parameters accepted\n");
                   fflush(stdout);
@@ -102,6 +102,8 @@ void serialApiTask(void *pvParameters)
               else
               {
                 printf("[API_FLOW] WARNING: Measure parameters missing or invalid type\n");
+                fflush(stdout);
+                printf("\n");
                 fflush(stdout);
               }
             }

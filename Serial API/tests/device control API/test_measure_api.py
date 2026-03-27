@@ -22,7 +22,7 @@ def read_from_port(ser):
                 try:
                     data = json.loads(line)
                     # Если это наш JSON с результатами измерений
-                    if data.get("type") == "measurement_result":
+                    if data.get("cmd") == "API_REQUEST_MEASURE":
                         print("\n\n" + "="*40)
                         print("🟢 ПОЛУЧЕН РЕЗУЛЬТАТ ИЗМЕРЕНИЯ:")
                         print(json.dumps(data, indent=4, ensure_ascii=False))
@@ -83,11 +83,11 @@ def main():
             
         elif choice == '2':
             # Допустим: sensor_index 0 = 35mm, curtain_movement 0 = HORIZONTAL
-            send_command(ser, {"cmd": "measure", "sensor_index": 0, "curtain_movement": 0})
+            send_command(ser, {"cmd": "API_REQUEST_MEASURE", "sensorIndex": 0, "curtainMovement": 0})
             
         elif choice == '3':
             # Допустим: sensor_index 1 = Medium Format, curtain_movement 1 = VERTICAL
-            send_command(ser, {"cmd": "measure", "sensor_index": 1, "curtain_movement": 1})
+            send_command(ser, {"cmd": "API_REQUEST_MEASURE", "sensorIndex": 1, "curtainMovement": 1})
             
         elif choice == '4':
             send_command(ser, {"cmd": "start_aes_serial_ota"})

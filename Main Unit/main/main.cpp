@@ -1425,55 +1425,87 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	// Serial.println(res.slitWidthAverage);
 
 	// === ГЕНЕРАЦИЯ JSON ДЛЯ API ===
-	cJSON *json = cJSON_CreateObject();
-
-	if (json != NULL)
+	if (apiRequestAction == ApiRequestAction::GO_TO_MEASURE)
 	{
-		cJSON_AddStringToObject(json, "type", "measurement_result");
+		cJSON *json = cJSON_CreateObject();
+		cJSON_AddStringToObject(json, "cmd", SerialAPIResponse::API_RESPONSE_MEASUREMENT_RESULT_DATA);
 
-		// Проверяем, успешны ли измерения (если нет, отправляем флаг ошибки)
-		bool isDataValid = (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL);
-		cJSON_AddBoolToObject(json, "is_valid", isDataValid);
-
-		if (isDataValid)
+		if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
 		{
-			// Время прохождения шторок над сенсорами (мс)
-			cJSON_AddNumberToObject(json, "sensor1_time_ms", res.sensor0Time);
-			cJSON_AddNumberToObject(json, "sensor2_time_ms", res.sensor1Time);
+			// Лямбда для обработки показаний сенсоров
+			auto addSensorValue = [](cJSON *jsonObj, const char *key, double value)
+			{
+				if (value == SENSOR_LIGHT_IS_TOO_DIM)
+				{
+					cJSON_AddStringToObject(jsonObj, key, "SENSOR_LIGHT_IS_TOO_DIM");
+				}
+				else if (value == SENSOR_LIGHT_IS_TOO_BRIGHT)
+				{
+					cJSON_AddStringToObject(jsonObj, key, "SENSOR_LIGHT_IS_TOO_BRIGHT");
+				}
+				else if (value == SENSOR_TIME_IS_TOO_SHORT)
+				{
+					cJSON_AddStringToObject(jsonObj, key, "SENSOR_TIME_IS_TOO_SHORT");
+				}
+				else
+				{
+					cJSON_AddNumberToObject(jsonObj, key, value);
+				}
+			};
 
-			// Данные первой шторки
-			cJSON_AddNumberToObject(json, "curtain1_speed_ms", res.curtain1spanAspeed);
-			cJSON_AddNumberToObject(json, "curtain1_time_ms", res.curtain1spanAtime);
-			cJSON_AddNumberToObject(json, "curtain1_total_time_ms", res.curtain1TotalTime);
+			// Лямбда для обработки параметров шторок и щели
+			auto addCurtainValue = [](cJSON *jsonObj, const char *key, double value, CurtainMovement movement, double s0, double s1)
+			{
+				if (movement == CurtainMovement::LEAF)
+				{
+					cJSON_AddStringToObject(jsonObj, key, "NOT_AVAILABLE_FOR_LEAF_SHUTERS");
+				}
+				else if (s0 < 0 || s1 < 0)
+				{
+					// Если хотя бы один сенсор не дал корректного измерения (значения ошибок < 0)
+					cJSON_AddStringToObject(jsonObj, key, "BOTH_SENSORS_MEASUREMENTS_REQUIRED");
+				}
+				else
+				{
+					cJSON_AddNumberToObject(jsonObj, key, value);
+				}
+			};
 
-			// Данные второй шторки
-			cJSON_AddNumberToObject(json, "curtain2_speed_ms", res.curtain2spanAspeed);
-			cJSON_AddNumberToObject(json, "curtain2_time_ms", res.curtain2spanAtime);
-			cJSON_AddNumberToObject(json, "curtain2_total_time_ms", res.curtain2TotalTime);
+			cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
 
-			// Ширина щели
-			cJSON_AddNumberToObject(json, "slit_width_s1_mm", res.slitWidthSensor0);
-			cJSON_AddNumberToObject(json, "slit_width_s2_mm", res.slitWidthSensor1);
-			cJSON_AddNumberToObject(json, "slit_width_avg_mm", res.slitWidthAverage);
+			// Записываем данные сенсоров
+			addSensorValue(json, "sensor0Time", res.sensor0Time);
+			addSensorValue(json, "sensor1Time", res.sensor1Time);
+
+			// Записываем данные по шторкам (скорости и время)
+			addCurtainValue(json, "curtain1spanAtime", res.curtain1spanAtime, curtainMovement, res.sensor0Time, res.sensor1Time);
+			addCurtainValue(json, "curtain1spanAspeed", res.curtain1spanAspeed, curtainMovement, res.sensor0Time, res.sensor1Time);
+			addCurtainValue(json, "curtain2spanAtime", res.curtain2spanAtime, curtainMovement, res.sensor0Time, res.sensor1Time);
+			addCurtainValue(json, "curtain2spanAspeed", res.curtain2spanAspeed, curtainMovement, res.sensor0Time, res.sensor1Time);
+
+			// Записываем данные ширины щели
+			addCurtainValue(json, "slitWidthSensor0", res.slitWidthSensor0, curtainMovement, res.sensor0Time, res.sensor1Time);
+			addCurtainValue(json, "slitWidthSensor1", res.slitWidthSensor1, curtainMovement, res.sensor0Time, res.sensor1Time);
+			addCurtainValue(json, "slitWidthAverage", res.slitWidthAverage, curtainMovement, res.sensor0Time, res.sensor1Time);
 		}
 		else
 		{
-			// Можно добавить причину ошибки, если нужно
+			cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
 			cJSON_AddStringToObject(json, "error", "Invalid measurement data");
 		}
 
-		// Вывод в Serial
 		char *json_str = cJSON_PrintUnformatted(json);
 
 		if (json_str != NULL)
 		{
 			printf("%s\n", json_str);
-			free(json_str); // Не забываем освобождать память!
+			fflush(stdout);
+			free(json_str);
 		}
 
 		cJSON_Delete(json);
+		return;
 	}
-	// ==============================
 
 	MeasurementSaveScreenResult saveScreenRes = MeasurementSaveScreenResult::OK;
 
@@ -2092,9 +2124,9 @@ void drawLightCheckScreen()
 
 		if (json != NULL) 
 		{
-			cJSON_AddStringToObject(json, "type", "light_setup_data");
-			cJSON_AddNumberToObject(json, "sensor1_level", sensor0Max / MAX_SIGNAL_LEVEL * 100); // in percents
-			cJSON_AddNumberToObject(json, "sensor2_level", sensor1Max / MAX_SIGNAL_LEVEL * 100); // in percents
+			cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_LIGHT_SETUP);
+			cJSON_AddNumberToObject(json, "sensor1Level", (int)((float)sensor0Max / MAX_SIGNAL_LEVEL * 100)); // in percents
+			cJSON_AddNumberToObject(json, "sensor2Level", (int)((float)sensor1Max / MAX_SIGNAL_LEVEL * 100)); // in percents
 
 			const char* s1_status = (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL) ? 
 				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor0Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
@@ -2104,9 +2136,9 @@ void drawLightCheckScreen()
 				SerialAPILightStatus::LIGHT_STATUS_TOO_DIMM : ((sensor1Max > MAX_ALLOWED_SIGNAL_LEVEL) ? 
 					SerialAPILightStatus::LIGHT_STATUS_TOO_BRIGHT : SerialAPILightStatus::LIGHT_STATUS_OK);
 
-			cJSON_AddStringToObject(json, "sensor1_status", s1_status);
-			cJSON_AddStringToObject(json, "sensor2_status", s2_status);
-			cJSON_AddStringToObject(json, "light_quality", serialApiLightQualityStatusesStr[(int8_t)resLightQualityStatus]);
+			cJSON_AddStringToObject(json, "sensor1Status", s1_status);
+			cJSON_AddStringToObject(json, "sensor2Status", s2_status);
+			cJSON_AddStringToObject(json, "lightQuality", serialApiLightQualityStatusesStr[(int8_t)resLightQualityStatus]);
 
 			char *json_str = cJSON_PrintUnformatted(json);
 			if (json_str != NULL) {
@@ -2305,18 +2337,18 @@ void drawMainMenu()
 
 				switch (apiRequestAction)
 				{
-					case ApiRequstAction::GO_TO_LIGHT_SETUP:
-						drawLightCheckScreen();
-						startEncoderVal = AlexEncoder::counter;
-						break;
+				case ApiRequestAction::GO_TO_LIGHT_SETUP:
+					drawLightCheckScreen();
+					startEncoderVal = AlexEncoder::counter;
+					break;
 
-					case ApiRequstAction::GO_TO_MEASURE: 
-						drawMeasuringScreen();
-						startEncoderVal = AlexEncoder::counter;
-						break;
+				case ApiRequestAction::GO_TO_MEASURE:
+					drawMeasuringScreen();
+					startEncoderVal = AlexEncoder::counter;
+					break;
 
-					default:
-						break;
+				default:
+					break;
 				}
 			}
 			// =======================

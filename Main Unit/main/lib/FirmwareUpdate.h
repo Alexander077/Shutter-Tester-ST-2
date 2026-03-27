@@ -45,6 +45,8 @@ static inline void sendOtaJsonResponse(const char *status, const char *message, 
   {
     printf("%s\n", str);
     fflush(stdout);
+    printf("\n");
+    fflush(stdout);
     free(str);
   }
 
