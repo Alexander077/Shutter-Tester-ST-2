@@ -1,21 +1,22 @@
-# ESP32-S2 Shutter Tester - Serial API Documentation
+# Shutter Tester ST-2 - Serial API Documentation
 
-This document describes the JSON-based Serial API for the Shutter Tester project. This API allows 3rd-party desktop applications, scripts, and other integrations to interact with the device over a USB CDC connection (COM port).
+This document describes the JSON-based Serial API for the Shutter Tester ST-2 project. This API allows 3rd-party desktop applications, scripts, and other integrations to interact with the device over a USB CDC connection (COM port).
 
 ## Table of Contents
 1. [General Information](#general-information)
-2. [Light Setup API](#light-setup-api)
-3. [Measurement API](#measurement-api)
-4. [Records Storage API (CRUD)](#records-storage-api-crud)
-5. [Firmware Update API (OTA)](#firmware-update-api-ota)
+2. [Echo API](#echo-api)
+3. [Light Setup API](#light-setup-api)
+4. [Measurement API](#measurement-api)
+5. [Records Storage API (CRUD)](#records-storage-api-crud)
+6. [Firmware Update API (OTA)](#firmware-update-api-ota)
 
 ---
 
 ## General Information
 
 ### Connection Settings
-- **Port:** Varies by OS (e.g., `COM3`, `/dev/ttyACM0`). The ESP32-S2 presents itself as a native USB CDC device.
-- **Baud Rate:** `115200` (ignored by native USB CDC, but standard to specify).
+- **Port:** Varies by OS (e.g., `COM3`, `/dev/ttyACM0`). The Shutter Tester ST-2 presents itself as a COM port.
+- **Baud Rate:** `115200`.
 - **Data Bits:** 8
 - **Parity:** None
 - **Stop Bits:** 1
@@ -23,9 +24,32 @@ This document describes the JSON-based Serial API for the Shutter Tester project
 ### Protocol Rules
 1. **JSON Only:** All commands sent to the device and all structured responses from the device are formatted as JSON objects.
 2. **Line Terminator:** Every JSON payload must be single-line and terminated by a newline character `\n`. The device reads characters until it encounters `\n` before parsing the JSON.
-3. **Buffering:** To prevent overflowing the hardware buffer, it is recommended to send large commands in chunks (e.g., 32 bytes) with a small delay (e.g., 20ms) between chunks.
-4. **Unsolicited Logs:** The ESP-IDF framework might occasionally output standard log messages (e.g., `I (123) TAG: ...`). Your JSON parser should be robust enough to ignore lines that do not start with `{` and end with `}`.
+3. **Buffering:** To prevent overflowing the hardware buffer, it is reqired to send large commands in chunks (e.g., 32 bytes) with a small delay (e.g., 20ms) between chunks.
+4. **Unsolicited Logs:** The might might occasionally output standard log messages (e.g., `I (123) TAG: ...`). Your JSON parser should be robust enough to ignore lines that do not start with `{` and end with `}`.
 5. **Flow Control:** Neither DTR nor RTS are required for the communication, and setting them to `False` when opening the serial connection can prevent unwanted reboots on some host systems.
+
+---
+
+## Echo API
+
+This API is used to verify that the device is connected, responsive, and ready to accept instructions. It also provides basic hardware and firmware version information.
+
+**Command:**
+```json
+{ "cmd": "API_REQUEST_ECHO" }
+```
+
+**Response:**
+```json
+{
+  "cmd": "API_REQUEST_ECHO",
+  "status": "API_RESPONSE_STATUS_OK",
+  "deviceName": "Shutter Tester ST-2",
+  "hwVersion": "1.2.0",
+  "swVersion": "1.4.0",
+  "deviceStatus": "Device is ready to accept instructions"
+}
+```
 
 ---
 
@@ -112,12 +136,13 @@ Sending this command immediately puts the device into an armed state, waiting fo
   "slitWidthAverage": 3.14
 }
 ```
-*Note: Depending on the physical result and the selected `curtainMovement`, some numeric fields might be replaced by string error statuses, such as:*
-- `"SENSOR_LIGHT_IS_TOO_DIM"`
-- `"SENSOR_LIGHT_IS_TOO_BRIGHT"`
-- `"SENSOR_TIME_IS_TOO_SHORT"`
-- `"BOTH_SENSORS_MEASUREMENTS_REQUIRED"` (e.g., if one sensor failed to trigger)
-- `"NOT_AVAILABLE_FOR_LEAF_SHUTERS"` (e.g., curtain speed calculations for leaf shutters)
+*Note: Depending on the physical result and the selected `curtainMovement`, some numeric fields might be replaced by specific negative numeric error codes, such as:*
+- `-1` (`SENSOR_LIGHT_IS_TOO_DIM`)
+- `-2` (`SENSOR_LIGHT_IS_TOO_BRIGHT`)
+- `-3` (`MEASUREMENTS_IS_INVALID_VAL`)
+- `-4` (`BOTH_SENSORS_MEASUREMENTS_REQUIRED`) (e.g., if one sensor failed to trigger)
+- `-5` (`NOT_AVAILABLE_FOR_LEAF_SHUTERS`) (e.g., curtain speed calculations for leaf shutters)
+- `-6` (`SENSOR_TIME_IS_TOO_SHORT`)
 
 **Measurement Result Response (Error):**
 If the device captures entirely invalid data that cannot be parsed into a measurement:
@@ -263,8 +288,7 @@ Marks a specific record as deleted in the file system.
 
 ## Firmware Update API (OTA)
 
-Allows updating the device firmware securely over the USB serial connection. The firmware binary must be AES-256 encrypted using the key baked into the existing firmware.
-
+Allows updating the device firmware over the USB serial connection. 
 ### 1. Initiate Update
 
 **Command:**
@@ -273,7 +297,7 @@ Allows updating the device firmware securely over the USB serial connection. The
 ```
 
 **Response (Ready):**
-Wait for the device to initialize the OTA partition and AES context. The device will respond with:
+Wait for the device to initialize the firmware update. The device will respond with:
 ```json
 {
   "cmd": "API_REQUEST_FIRMWARE_UPDATE",
@@ -282,13 +306,15 @@ Wait for the device to initialize the OTA partition and AES context. The device 
 ```
 
 ### 2. Send Firmware Chunks
-Once the device is ready, you must read the encrypted `.bin` file, encode it in **Base64**, and send it line by line.
+Once the device is ready, you must read the `.bin` file, encode it in **Base64**, and send it line by line.
 
 **Rules for transmission:**
-1. Read a small chunk of binary data (e.g., `48` bytes).
-2. Encode it in Base64.
+1. Read 48 bytes of binary data.
+2. Encode it in Base64 (you'll get 64 bytes).
 3. Append a newline character `\n`.
 4. Send the string over Serial.
+5. Wait for API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK status from the device
+6. Go to point 1 until all data is sent
 
 **Wait for Acknowledgment:**
 After sending a chunk, **you must wait** for the device to decrypt and write it to flash. The device will reply with an acknowledgment:

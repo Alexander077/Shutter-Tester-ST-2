@@ -27,6 +27,7 @@ public:
   static constexpr const char *API_REQUEST_DELETE_RECORD = "API_REQUEST_DELETE_RECORD";
   static constexpr const char *API_REQUEST_SAVE_RECORD = "API_REQUEST_SAVE_RECORD";
   static constexpr const char *API_REQUEST_FIRMWARE_UPDATE = "API_REQUEST_FIRMWARE_UPDATE";
+  static constexpr const char *API_REQUEST_ECHO = "API_REQUEST_ECHO";
 };
 
 class SerialAPIResponse

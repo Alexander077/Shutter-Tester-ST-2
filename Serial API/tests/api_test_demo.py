@@ -429,7 +429,21 @@ def test_firmware_update(ser):
         
     wait_for_esc(ser)
 
+def test_echo(ser):
+    clear_screen()
+    print("=== ECHO API TEST ===")
+    
+    ser.reset_input_buffer()
+    send_and_receive(ser, {"cmd": "API_REQUEST_ECHO"})
+    
+    wait_for_esc(ser)
+
 def main():
+    global PORT
+    user_port = input(f"Enter COM port (default {PORT}): ").strip()
+    if user_port:
+        PORT = user_port
+
     print(f"Connecting to {PORT} at {BAUD_RATE}...")
     try:
         ser = serial.Serial(PORT, BAUD_RATE, timeout=0.1)
@@ -449,9 +463,10 @@ def main():
         print("2. Test Measurement API")
         print("3. Test Records Storage API")
         print("4. Test Firmware Update API")
-        print("5. Exit")
+        print("5. Test Echo API")
+        print("6. Exit")
         
-        print("\nSelect an option (1-5): ", end="", flush=True)
+        print("\nSelect an option (1-6): ", end="", flush=True)
         
         choice = None
         while choice is None:
@@ -460,7 +475,7 @@ def main():
                 
             if msvcrt.kbhit():
                 key = msvcrt.getch().decode('utf-8', errors='ignore')
-                if key in ['1', '2', '3', '4', '5']:
+                if key in ['1', '2', '3', '4', '5', '6']:
                     choice = key
             time.sleep(0.01)
             
@@ -473,6 +488,8 @@ def main():
         elif choice == '4':
             test_firmware_update(ser)
         elif choice == '5':
+            test_echo(ser)
+        elif choice == '6':
             break
 
     ser.close()

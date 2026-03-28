@@ -1432,61 +1432,22 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 		if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
 		{
-			// Лямбда для обработки показаний сенсоров
-			auto addSensorValue = [](cJSON *jsonObj, const char *key, double value)
-			{
-				if (value == SENSOR_LIGHT_IS_TOO_DIM)
-				{
-					cJSON_AddStringToObject(jsonObj, key, "SENSOR_LIGHT_IS_TOO_DIM");
-				}
-				else if (value == SENSOR_LIGHT_IS_TOO_BRIGHT)
-				{
-					cJSON_AddStringToObject(jsonObj, key, "SENSOR_LIGHT_IS_TOO_BRIGHT");
-				}
-				else if (value == SENSOR_TIME_IS_TOO_SHORT)
-				{
-					cJSON_AddStringToObject(jsonObj, key, "SENSOR_TIME_IS_TOO_SHORT");
-				}
-				else
-				{
-					cJSON_AddNumberToObject(jsonObj, key, value);
-				}
-			};
-
-			// Лямбда для обработки параметров шторок и щели
-			auto addCurtainValue = [](cJSON *jsonObj, const char *key, double value, CurtainMovement movement, double s0, double s1)
-			{
-				if (movement == CurtainMovement::LEAF)
-				{
-					cJSON_AddStringToObject(jsonObj, key, "NOT_AVAILABLE_FOR_LEAF_SHUTERS");
-				}
-				else if (s0 < 0 || s1 < 0)
-				{
-					// Если хотя бы один сенсор не дал корректного измерения (значения ошибок < 0)
-					cJSON_AddStringToObject(jsonObj, key, "BOTH_SENSORS_MEASUREMENTS_REQUIRED");
-				}
-				else
-				{
-					cJSON_AddNumberToObject(jsonObj, key, value);
-				}
-			};
-
 			cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
 
 			// Записываем данные сенсоров
-			addSensorValue(json, "sensor0Time", res.sensor0Time);
-			addSensorValue(json, "sensor1Time", res.sensor1Time);
+			cJSON_AddNumberToObject(json, "sensor0Time", res.sensor0Time);
+			cJSON_AddNumberToObject(json, "sensor1Time", res.sensor1Time);
 
 			// Записываем данные по шторкам (скорости и время)
-			addCurtainValue(json, "curtain1spanAtime", res.curtain1spanAtime, curtainMovement, res.sensor0Time, res.sensor1Time);
-			addCurtainValue(json, "curtain1spanAspeed", res.curtain1spanAspeed, curtainMovement, res.sensor0Time, res.sensor1Time);
-			addCurtainValue(json, "curtain2spanAtime", res.curtain2spanAtime, curtainMovement, res.sensor0Time, res.sensor1Time);
-			addCurtainValue(json, "curtain2spanAspeed", res.curtain2spanAspeed, curtainMovement, res.sensor0Time, res.sensor1Time);
+			cJSON_AddNumberToObject(json, "curtain1spanAtime", res.curtain1spanAtime);
+			cJSON_AddNumberToObject(json, "curtain1spanAspeed", res.curtain1spanAspeed);
+			cJSON_AddNumberToObject(json, "curtain2spanAtime", res.curtain2spanAtime);
+			cJSON_AddNumberToObject(json, "curtain2spanAspeed", res.curtain2spanAspeed);
 
 			// Записываем данные ширины щели
-			addCurtainValue(json, "slitWidthSensor0", res.slitWidthSensor0, curtainMovement, res.sensor0Time, res.sensor1Time);
-			addCurtainValue(json, "slitWidthSensor1", res.slitWidthSensor1, curtainMovement, res.sensor0Time, res.sensor1Time);
-			addCurtainValue(json, "slitWidthAverage", res.slitWidthAverage, curtainMovement, res.sensor0Time, res.sensor1Time);
+			cJSON_AddNumberToObject(json, "slitWidthSensor0", res.slitWidthSensor0);
+			cJSON_AddNumberToObject(json, "slitWidthSensor1", res.slitWidthSensor1);
+			cJSON_AddNumberToObject(json, "slitWidthAverage", res.slitWidthAverage);
 		}
 		else
 		{
@@ -1967,7 +1928,17 @@ void drawLightCheckScreen()
 
 	while (true)
 	{
-		if (isApiRequestReceived) isApiRequestReceived = false; // Сбрасываем, если мы уже здесь
+		if (isApiRequestReceived)
+		{
+			if (apiRequestAction == ApiRequestAction::GO_TO_LIGHT_SETUP)
+			{
+				isApiRequestReceived = false; // Сбрасываем, если мы уже здесь
+			}
+			else
+			{
+				return;
+			}
+		}
 
 		sensor0Max = 0;
 		sensor1Max = 0;
@@ -1979,6 +1950,12 @@ void drawLightCheckScreen()
 
 		while (sensor1TotalADCSamplesCounter < displayUpdateSamplesCount)
 		{
+			if (isApiRequestReceived && apiRequestAction != ApiRequestAction::GO_TO_LIGHT_SETUP)
+			{
+				ESP_ERROR_CHECK(adc_continuous_stop(handle));
+				return;
+			}
+
 			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
 
 			if (adcReadRes == ESP_OK)

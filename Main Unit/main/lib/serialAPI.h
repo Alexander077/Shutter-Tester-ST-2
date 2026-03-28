@@ -9,6 +9,7 @@
 #include "RecordsStorageManager.h"
 #include "lib/FirmwareUpdate.h"
 #include "SerialAPICommon.h"
+#include "About.h"
 
 
 // Глобальный флаг для запроса API
@@ -352,6 +353,28 @@ void serialApiTask(void *pvParameters)
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_FIRMWARE_UPDATE) == 0)
             {
               startFirmwareUpdate();
+            }
+            else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_ECHO) == 0)
+            {
+              printf("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_ECHO);
+              doubleFlush();
+
+              cJSON *response = cJSON_CreateObject();
+              cJSON_AddStringToObject(response, "cmd", SerialAPIRequestAction::API_REQUEST_ECHO);
+              cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
+              cJSON_AddStringToObject(response, "deviceName", "Shutter Tester ST-2");
+              cJSON_AddStringToObject(response, "hwVersion", About::HW_VERSION);
+              cJSON_AddStringToObject(response, "swVersion", About::SW_VERSION);
+              cJSON_AddStringToObject(response, "deviceStatus", "Device is ready to accept instructions");
+
+              char *json_str = cJSON_PrintUnformatted(response);
+              if (json_str != NULL)
+              {
+                printf("%s\n", json_str);
+                doubleFlush();
+                free(json_str);
+              }
+              cJSON_Delete(response);
             }
             else
             {
