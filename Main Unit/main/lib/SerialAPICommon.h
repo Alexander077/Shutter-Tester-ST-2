@@ -48,3 +48,20 @@ public:
 };
 
 char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};
+
+// --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
+// Раскомментируйте строку ниже, чтобы включить отладочные логи [API_FLOW].
+// Закомментируйте, чтобы выводить ТОЛЬКО чистые JSON-ответы API.
+
+#define ENABLE_SERIAL_API_DEBUG_LOGS
+
+#ifdef ENABLE_SERIAL_API_DEBUG_LOGS
+#define SERIAL_API_DEBUG_PRINT(...) \
+  {                                 \
+    printf(__VA_ARGS__);            \
+    doubleFlush();                  \
+  }
+#else
+#define SERIAL_API_DEBUG_PRINT(...)
+#endif
+// ------------------------------

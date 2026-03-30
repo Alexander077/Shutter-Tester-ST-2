@@ -1316,14 +1316,14 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		}
 	}
 
-	ESP_LOGI("", "Sensor 0 max: %" PRIu16, sensor0Max);
-	ESP_LOGI("", "Sensor 1 max: %" PRIu16, sensor1Max);
-	ESP_LOGI("", "Sensor 0 raw time: %" PRIu32, rawSensor0TimeTakenUs);
-	ESP_LOGI("", "Sensor 1 raw time: %" PRIu32, rawSensor1TimeTakenUs);
-	ESP_LOGI("", "Sensor 0 corrected time: %" PRIu32, (uint32_t)correctedSensor0TimeTakenUs);
-	ESP_LOGI("", "Sensor 1 corrected time: %" PRIu32, (uint32_t)correctedSensor1TimeTakenUs);
-	ESP_LOGI("", "Curtain 1 time: %" PRIu32, curtain1TimeUs);
-	ESP_LOGI("", "Curtain 2 time: %" PRIu32, curtain2TimeUs);
+	SERIAL_API_DEBUG_PRINT("Sensor 0 max: %" PRIu16, sensor0Max);
+	SERIAL_API_DEBUG_PRINT("Sensor 1 max: %" PRIu16, sensor1Max);
+	SERIAL_API_DEBUG_PRINT("Sensor 0 raw time: %" PRIu32, rawSensor0TimeTakenUs);
+	SERIAL_API_DEBUG_PRINT("Sensor 1 raw time: %" PRIu32, rawSensor1TimeTakenUs);
+	SERIAL_API_DEBUG_PRINT("Sensor 0 corrected time: %" PRIu32, (uint32_t)correctedSensor0TimeTakenUs);
+	SERIAL_API_DEBUG_PRINT("Sensor 1 corrected time: %" PRIu32, (uint32_t)correctedSensor1TimeTakenUs);
+	SERIAL_API_DEBUG_PRINT("Curtain 1 time: %" PRIu32, curtain1TimeUs);
+	SERIAL_API_DEBUG_PRINT("Curtain 2 time: %" PRIu32, curtain2TimeUs);
 
 	CurtainTimings curtainTimings;
 	double sensorDistance = 0;
@@ -1670,8 +1670,8 @@ void drawMeasuringScreen()
 				if (millis() - time > 500)
 				{
 					ESP_ERROR_CHECK(adc_continuous_stop(handle));
-					ESP_LOGI("", "ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
-					ESP_LOGI("", "ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
 					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
 														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
@@ -2331,6 +2331,8 @@ void drawMainMenu()
 				default:
 					break;
 				}
+
+				break; // break inner while to redraw menu with correct item selected after API action
 			}
 			// =======================
 
