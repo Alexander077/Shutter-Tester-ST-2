@@ -1,0 +1,50 @@
+espsecure.py generate_flash_encryption_key "flash_encription_key\my_flash_encryption_key.bin"
+
+
+espefuse.py --port COM16 burn_key BLOCK_KEY0 "flash_encription_key\my_flash_encryption_key.bin" XTS_AES_128_KEY
+
+espefuse.py --port COM16 --chip esp32s2 --do-not-confirm burn_efuse SPI_BOOT_CRYPT_CNT 0x1 //for production instead of '0x1' burn '7'
+espefuse.py --port COM16 --chip esp32s2 --do-not-confirm write_protect_efuse SPI_BOOT_CRYPT_CNT
+
+//For production use cases, it is highly recommended to burn all the eFuses listed below.
+-----------------------------------------------------------------------------------------------
+
+espefuse.py burn_efuse --port COM16 --do-not-confirm DIS_BOOT_REMAP 0x1 //Disable capability to Remap ROM to RAM address space
+espefuse.py --port COM16 write_protect_efuse DIS_BOOT_REMAP //Write protect security eFuses
+ 
+espefuse.py burn_efuse --port COM16 --do-not-confirm DIS_DOWNLOAD_ICACHE 0x1 //Disable UART cache
+espefuse.py --port COM16 write_protect_efuse DIS_DOWNLOAD_ICACHE //Write protect security eFuses
+
+espefuse.py burn_efuse --port COM16 DIS_DOWNLOAD_DCACHE 0x1 //Disable UART cache
+espefuse.py --port COM16 write_protect_efuse DIS_DOWNLOAD_DCACHE //Write protect security eFuses
+
+espefuse.py burn_efuse --port COM16 --do-not-confirm HARD_DIS_JTAG 0x1 //Hard disable JTAG peripheral
+espefuse.py --port COM16 write_protect_efuse HARD_DIS_JTAG //Write protect security eFuses
+
+espefuse.py burn_efuse --port COM16 --do-not-confirm DIS_LEGACY_SPI_BOOT 0x1 //Disable legacy SPI boot mode
+espefuse.py --port COM16 write_protect_efuse DIS_LEGACY_SPI_BOOT //Write protect security eFuses
+
+espefuse.py burn_efuse --port COM16 --do-not-confirm DIS_DOWNLOAD_MANUAL_ENCRYPT 0x1 //Disable UART bootloader encryption access
+espefuse.py --port COM16 write_protect_efuse DIS_DOWNLOAD_MANUAL_ENCRYPT //Write protect security eFuses
+
+espefuse.py --port COM16 write_protect_efuse DIS_ICACHE //Write protect security eFuses
+
+espefuse.py --port COM16 write_protect_efuse DISABLE_DL_ENCRYPT //not valid for esp32-s2
+espefuse.py --chip esp32s2 --do-not-confirm --port COM16 burn_efuse DIS_DOWNLOAD_MANUAL_ENCRYPT
+espefuse.py --port COM16 write_protect_efuse DIS_DOWNLOAD_MANUAL_ENCRYPT //Write protect security eFuses
+
+espefuse.py --chip esp32s2 --do-not-confirm --port COM16 burn_efuse DISABLE_DL_DECRYPT 0x1
+espefuse.py --port COM16 write_protect_efuse DISABLE_DL_DECRYPT //Write protect security eFuses
+
+espefuse.py --chip esp32s2 --do-not-confirm --port COM16 burn_efuse DISABLE_DL_CACHE 0x1
+espefuse.py --port COM16 write_protect_efuse DISABLE_DL_CACHE //Write protect security eFuses
+
+espefuse.py --chip esp32s2 --do-not-confirm --port COM16 burn_efuse JTAG_DISABLE 0x1
+espefuse.py --port COM16 write_protect_efuse JTAG_DISABLE //Write protect security eFuses
+-----------------------------------------------------------------------------------------------------
+
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash_encription_key\my_flash_encryption_key.bin" --address 0x1000 --output "crypted_binaries\bootloader-enc.bin" build\bootloader\bootloader.bin
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash_encription_key\my_flash_encryption_key.bin" --address 0x8000 --output "crypted_binaries\partitions-enc.bin" build\partition_table\partition-table.bin
+espsecure.py encrypt_flash_data --aes_xts --keyfile "flash_encription_key\my_flash_encryption_key.bin" --address 0x10000 --output "crypted_binaries\firmware-enc.bin" build\main.bin
+
+esptool.py --chip esp32s2 --port COM16 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x1000 "crypted_binaries\bootloader-enc.bin" 0x8000 "crypted_binaries\partitions-enc.bin" 0x10000 "crypted_binaries\firmware-enc.bin"

@@ -2148,6 +2148,15 @@ void drawAboutScreen()
 	const uint8_t optionsCount = 2;
 	const char* options[] = {"Go Back", "Rollback Firm. Update"};
 
+	bool canRollback = false;
+	const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
+	if (update_partition != NULL) {
+		uint8_t dst;
+		if (esp_partition_read(update_partition, 0, &dst, 1) == ESP_OK && dst == 0xE9) {
+			canRollback = true;
+		}
+	}
+
 	display->fillScreen(BLACK);
 
 	while (true)
@@ -2180,9 +2189,15 @@ void drawAboutScreen()
 
 			for (int16_t i = 0; i < optionsCount; i++)
 			{
+				if (i == 1 && !canRollback) {
+					display->setTextColor(DARKGREY);
+				} else {
+					display->setTextColor(WHITE);
+				}
 				display->setCursor(xMargin, yMargin + (ySpacing * i));
 				display->print(options[i]);
 			}
+			display->setTextColor(WHITE);
 
 			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultOptionIndex));
 			display->print("->");
@@ -2198,6 +2213,10 @@ void drawAboutScreen()
 			}
 			else if (resultOptionIndex == 1) // Rollback Firm. Update
 			{
+				if (!canRollback) {
+					continue;
+				}
+				
 				int16_t confirmStartEncoderVal = AlexEncoder::counter;
 				int8_t confirmPrevSelectedIndex = -1;
 				const uint8_t confirmOptionsCount = 2;
@@ -2259,7 +2278,6 @@ void drawAboutScreen()
 							display->fillScreen(BLACK);
 							drawStringHCentered("Rolling back...", 60);
 							
-							const esp_partition_t *update_partition = esp_ota_get_next_update_partition(NULL);
 							if (update_partition != NULL) {
 								esp_ota_set_boot_partition(update_partition);
 							}
