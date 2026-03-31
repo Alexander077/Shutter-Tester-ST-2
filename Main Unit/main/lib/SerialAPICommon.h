@@ -53,7 +53,7 @@ char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUA
 // Раскомментируйте строку ниже, чтобы включить отладочные логи [API_FLOW].
 // Закомментируйте, чтобы выводить ТОЛЬКО чистые JSON-ответы API.
 
-#define ENABLE_SERIAL_API_DEBUG_LOGS
+// #define ENABLE_SERIAL_API_DEBUG_LOGS
 
 #ifdef ENABLE_SERIAL_API_DEBUG_LOGS
 #define SERIAL_API_DEBUG_PRINT(...) \
