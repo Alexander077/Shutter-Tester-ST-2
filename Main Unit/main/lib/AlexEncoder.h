@@ -5,70 +5,75 @@
 class AlexEncoder
 {
 private:
-  static uint8_t _pinA;
-  static uint8_t _pinB;
-  static uint8_t currentStateA;
-  static uint8_t lastStateA;
+  static volatile uint8_t _pinA;
+  static volatile uint8_t _pinB;
+  static volatile uint8_t _lastStateA;
 
-  static void updateEncoder();
+  // Time-based debounce
+  static volatile uint32_t _lastInterruptTime;
+  static const uint32_t DEBOUNCE_US = 1000; // 0.5ms minimum between accepted edges
+
+  static void IRAM_ATTR updateEncoder();
 
 public:
-  static bool currentDir;
-  static int16_t counter;
-  static void init(uint8_t, uint8_t);
+  static volatile bool currentDir;   // true = CW, false = CCW
+  static volatile int16_t counter;
+  static void init(uint8_t pinA, uint8_t pinB);
 };
 
-uint8_t AlexEncoder::_pinA = 0;
-uint8_t AlexEncoder::_pinB = 0;
-int16_t AlexEncoder::counter = 0;
-uint8_t AlexEncoder::currentStateA = 0;
-uint8_t AlexEncoder::lastStateA = 0;
-bool AlexEncoder::currentDir = true;
+// ---- Static member definitions ----
 
-void AlexEncoder::updateEncoder()
+volatile uint8_t  AlexEncoder::_pinA              = 0;
+volatile uint8_t  AlexEncoder::_pinB              = 0;
+volatile uint8_t  AlexEncoder::_lastStateA        = 0;
+volatile uint32_t AlexEncoder::_lastInterruptTime = 0;
+volatile bool     AlexEncoder::currentDir         = true;
+volatile int16_t  AlexEncoder::counter            = 0;
+
+void IRAM_ATTR AlexEncoder::updateEncoder()
 {
-  // Read the current state of CLK
-  currentStateA = digitalRead(AlexEncoder::_pinA);
+  uint32_t now = micros();
 
-  // If last and current state of CLK are different, then pulse occurred
-  // React to only 1 state change to avoid double count
-  if (AlexEncoder::currentStateA != AlexEncoder::lastStateA && AlexEncoder::currentStateA == 1)
+  // Time-based debounce: discard any edge that arrives too soon after the last one.
+  if (now - _lastInterruptTime < DEBOUNCE_US)
+    return;
+  _lastInterruptTime = now;
+
+  uint8_t curStateA = digitalRead(_pinA);
+
+  // React only to rising edge of CLK (original counting logic — one count per cycle)
+  if (curStateA != _lastStateA && curStateA == HIGH)
   {
+    uint8_t stateB = digitalRead(_pinB);
 
-    // If the DT state is different than the CLK state then
-    // the encoder is rotating CCW so decrement
-    if (digitalRead(AlexEncoder::_pinB) != AlexEncoder::currentStateA)
+    // CCW: DT != CLK
+    if (stateB != curStateA)
     {
-      AlexEncoder::counter--;
-      AlexEncoder::currentDir = false;
+      counter--;
+      currentDir = false;
     }
+    // CW: DT == CLK
     else
     {
-      // Encoder is rotating CW so increment
-      AlexEncoder::counter++;
-      AlexEncoder::currentDir = true;
+      counter++;
+      currentDir = true;
     }
-
-    // Serial.print("Direction: ");
-    // Serial.print(AlexEncoder::currentDir);
-    // Serial.print(" | Counter: ");
-    // Serial.println(AlexEncoder::counter);
   }
 
-  // Remember last CLK state
-  AlexEncoder::lastStateA = AlexEncoder::currentStateA;
+  _lastStateA = curStateA;
 }
 
 void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
 {
-  AlexEncoder::_pinA = pinA;
-  AlexEncoder::_pinB = pinB;
+  _pinA = pinA;
+  _pinB = pinB;
 
-  pinMode(AlexEncoder::_pinA, INPUT);
-  pinMode(AlexEncoder::_pinB, INPUT);
+  pinMode(_pinA, INPUT_PULLUP);
+  pinMode(_pinB, INPUT_PULLUP);
 
-  AlexEncoder::lastStateA = digitalRead(AlexEncoder::_pinA);
+  _lastStateA        = digitalRead(_pinA);
+  _lastInterruptTime = 0;
 
-  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinA), AlexEncoder::updateEncoder, CHANGE);
-  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinB), AlexEncoder::updateEncoder, CHANGE);
+  // Interrupt only on CLK (pinA). Pin B is read synchronously inside the ISR.
+  attachInterrupt(digitalPinToInterrupt(_pinA), updateEncoder, CHANGE);
 }

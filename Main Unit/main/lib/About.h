@@ -18,6 +18,8 @@ public:
   ~About();
 };
 
+// HW_VERSION 1.2.0 version with encoder without pullups and with no RC circuits
+// HW_VERSION 1.2.1 Moved back to encoder with self pullups and RC circuits
 const char* const About::HW_VERSION = "1.2.1";
 const char *const About::SW_VERSION = "1.6.1";
 // const char* const About::CREDITS_HEADER = "This application uses the following third-party libraries:";

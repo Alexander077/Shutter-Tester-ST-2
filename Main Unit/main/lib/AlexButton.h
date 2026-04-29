@@ -13,7 +13,7 @@ private:
 	bool _InputPullUp = false;
 	int8_t _buttonPinNum = -1;
 	uint16_t _holdTimeOutMs = 500;
-	uint8_t _debounceTimeOutMs = 50;
+	uint8_t _debounceTimeOutMs = 150;
 	uint16_t _lastStateChangeTime = 0;
 
 public:
