@@ -74,6 +74,12 @@ void serialApiTask(void *pvParameters)
               isApiRequestReceived = true;
               apiRequestAction = ApiRequestAction::GO_TO_LIGHT_SETUP;
             }
+            else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_ABORT_OPERATION) == 0)
+            {
+              SERIAL_API_DEBUG_PRINT("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_ABORT_OPERATION);
+              isApiRequestReceived = true;
+              apiRequestAction = ApiRequestAction::NO_ACTION; // Просто сбрасываем флаг, чтобы текущая операция (если была) могла отреагировать на это и завершиться
+            }
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_MEASURE) == 0)
             {
               SERIAL_API_DEBUG_PRINT("[API_FLOW] -> Branch: %s\n", SerialAPIRequestAction::API_REQUEST_MEASURE);
@@ -88,6 +94,48 @@ void serialApiTask(void *pvParameters)
                 {
                   curSensorIndex = sensorItem->valueint;
                   curtainMovement = (CurtainMovement)curtainItem->valueint;
+
+                  // vTaskDelay(pdMS_TO_TICKS(700));
+
+                  // cJSON *json = cJSON_CreateObject();
+                  // cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_MEASURE);
+
+                  // // if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
+                  // // {
+                  //   cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
+
+                  //   // Записываем данные сенсоров
+                  //   cJSON_AddNumberToObject(json, "sensor0Time", (float)random(100,  1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "sensor1Time", (float)random(100,  1000) / 100.0f);
+
+                  //   // Записываем данные по шторкам (скорости и время)
+                  //   cJSON_AddNumberToObject(json, "curtain1spanAtime", (float)random(100, 1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "curtain1spanAspeed", (float)random(100, 1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "curtain2spanAtime", (float)random(100, 1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "curtain2spanAspeed", (float)random(100, 1000) / 100.0f);
+
+                  //   // Записываем данные ширины щели
+                  //   cJSON_AddNumberToObject(json, "slitWidthSensor0", (float)random(100, 1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "slitWidthSensor1", (float)random(100, 1000) / 100.0f);
+                  //   cJSON_AddNumberToObject(json, "slitWidthAverage", (float)random(100, 1000) / 100.0f);
+                  // // }
+                  // // else
+                  // // {
+                  // //   cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
+                  // //   cJSON_AddStringToObject(json, "error", "Invalid measurement data");
+                  // // }
+
+                  // char *json_str = cJSON_PrintUnformatted(json);
+
+                  // if (json_str != NULL)
+                  // {
+                  //   printf("%s\n", json_str);
+                  //   doubleFlush();
+                  //   free(json_str);
+                  // }
+
+                  // cJSON_Delete(json);
+
                   isApiRequestReceived = true;
                   apiRequestAction = ApiRequestAction::GO_TO_MEASURE;
 

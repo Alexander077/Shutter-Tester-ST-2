@@ -21,6 +21,7 @@ class SerialAPIRequestAction
 {
 public:
   static constexpr const char *API_REQUEST_LIGHT_SETUP = "API_REQUEST_LIGHT_SETUP";
+  static constexpr const char *API_REQUEST_ABORT_OPERATION = "API_REQUEST_ABORT_OPERATION";
   static constexpr const char *API_REQUEST_MEASURE = "API_REQUEST_MEASURE";
   static constexpr const char *API_REQUEST_GET_RECORDS_LIST = "API_REQUEST_GET_RECORDS_LIST";
   static constexpr const char *API_REQUEST_GET_RECORD = "API_REQUEST_GET_RECORD";

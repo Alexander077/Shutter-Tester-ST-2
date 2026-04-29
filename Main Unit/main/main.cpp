@@ -356,7 +356,7 @@ void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 void IRAM_ATTR onTimer()
 {
   button.tick();
-	AlexEncoder::tick();
+	// AlexEncoder::tick();
 }
 
 int16_t getMeasurementSaveRecordSize()
@@ -2632,7 +2632,33 @@ void setup()
   display->setTextColor(WHITE);
   display->setFont(u8g2_font_6x13_tf);
 
-  AlexEncoder::init(ENCODER_A_PIN, ENCODER_B_PIN);
+	// while (1)
+	// {
+	// 	display->fillScreen(BLACK);
+
+	// 	for (int i = 0; i < 10; i++)
+	// 	{
+	// 		for (size_t y = 0; y < 10; y++)
+	// 		{
+	// 			display->drawRect(i, y, 10, 10, GREEN);
+	// 		}
+	// 	}
+
+	// 	display->setCursor(10, 30);
+	// 	display->print("Display test");
+
+	// 	// delay(1000);
+	// 	// display->fillScreen(RED);
+	// 	// delay(1000);
+	// 	// display->fillScreen(GREEN);
+	// 	// delay(1000);
+	// 	// display->fillScreen(BLUE);
+	// 	// delay(1000);
+	// 	// display->fillScreen(WHITE);
+	// 	// delay(1000);
+	// }
+
+	AlexEncoder::init(ENCODER_A_PIN, ENCODER_B_PIN);
 
   auto timer = timerBegin(1000000);
   timerAttachInterrupt(timer, &onTimer);

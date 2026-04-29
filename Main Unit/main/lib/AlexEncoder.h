@@ -10,51 +10,53 @@ private:
   static uint8_t currentStateA;
   static uint8_t lastStateA;
 
-  
-  public:
+  static void updateEncoder();
+
+public:
   static bool currentDir;
   static int16_t counter;
   static void init(uint8_t, uint8_t);
-  static void tick();
 };
 
-uint8_t  AlexEncoder::_pinA = 0;
-uint8_t  AlexEncoder::_pinB = 0;
-int16_t  AlexEncoder::counter = 0;
+uint8_t AlexEncoder::_pinA = 0;
+uint8_t AlexEncoder::_pinB = 0;
+int16_t AlexEncoder::counter = 0;
 uint8_t AlexEncoder::currentStateA = 0;
 uint8_t AlexEncoder::lastStateA = 0;
-bool  AlexEncoder::currentDir = true;
+bool AlexEncoder::currentDir = true;
 
-void AlexEncoder::tick()
+void AlexEncoder::updateEncoder()
 {
-  // Читаем текущее состояние пина A
-  currentStateA = digitalRead(_pinA);
+  // Read the current state of CLK
+  currentStateA = digitalRead(AlexEncoder::_pinA);
 
-  // Реагируем только в момент изменения состояния пина A
-  if (currentStateA != lastStateA)
+  // If last and current state of CLK are different, then pulse occurred
+  // React to only 1 state change to avoid double count
+  if (AlexEncoder::currentStateA != AlexEncoder::lastStateA && AlexEncoder::currentStateA == 1)
   {
 
-    // Считаем только по спадающему фронту (когда пин замыкается на землю)
-    // Это предотвращает двойной счет на один физический клик энкодера
-    if (currentStateA == LOW)
+    // If the DT state is different than the CLK state then
+    // the encoder is rotating CCW so decrement
+    if (digitalRead(AlexEncoder::_pinB) != AlexEncoder::currentStateA)
     {
-
-      // Если состояние пина B отличается от пина A, крутим в одну сторону
-      if (digitalRead(_pinB) == HIGH)
-      {
-        counter--;         // Увеличиваем счетчик
-        currentDir = false; // Направление по часовой стрелке[cite: 1]
-      }
-      else
-      {
-        counter++;          // Уменьшаем счетчик[cite: 1]
-        currentDir = true; // Направление против часовой стрелки[cite: 1]
-      }
+      AlexEncoder::counter--;
+      AlexEncoder::currentDir = false;
     }
+    else
+    {
+      // Encoder is rotating CW so increment
+      AlexEncoder::counter++;
+      AlexEncoder::currentDir = true;
+    }
+
+    // Serial.print("Direction: ");
+    // Serial.print(AlexEncoder::currentDir);
+    // Serial.print(" | Counter: ");
+    // Serial.println(AlexEncoder::counter);
   }
 
-  // Обновляем предыдущее состояние для следующего тика[cite: 1]
-  lastStateA = currentStateA;
+  // Remember last CLK state
+  AlexEncoder::lastStateA = AlexEncoder::currentStateA;
 }
 
 void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
@@ -62,7 +64,11 @@ void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
   AlexEncoder::_pinA = pinA;
   AlexEncoder::_pinB = pinB;
 
-  pinMode(AlexEncoder::_pinA, INPUT_PULLUP);
-  pinMode(AlexEncoder::_pinB, INPUT_PULLUP);
-}
+  pinMode(AlexEncoder::_pinA, INPUT);
+  pinMode(AlexEncoder::_pinB, INPUT);
 
+  AlexEncoder::lastStateA = digitalRead(AlexEncoder::_pinA);
+
+  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinA), AlexEncoder::updateEncoder, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(AlexEncoder::_pinB), AlexEncoder::updateEncoder, CHANGE);
+}
