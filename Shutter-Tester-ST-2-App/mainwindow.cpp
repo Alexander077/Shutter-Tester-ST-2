@@ -1600,7 +1600,7 @@ void MainWindow::onAboutTriggered()
             "designed for measuring and calibrating film camera shutters.</p>"
             "<p>Copyright &copy; 2026 Alexander Litvinov</p>"
             "<hr>"
-            "<p><b>License</b></p>"
+            "<p><b>License</b></p> "
             "<p>This program is free software: you can redistribute it and/or modify "
             "it under the terms of the <b>GNU General Public License v3.0</b> "
             "as published by the Free Software Foundation.</p>"
