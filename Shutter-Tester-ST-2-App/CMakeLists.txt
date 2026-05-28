@@ -15,8 +15,11 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Widgets SerialPort PrintSupport Charts)
 
 qt_standard_project_setup(REQUIRES 6.8)
 
-# Generate Windows VERSIONINFO resource from template
-configure_file(${CMAKE_SOURCE_DIR}/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+# Generate Windows VERSIONINFO resource from template (Windows only)
+if(WIN32)
+    configure_file(${CMAKE_SOURCE_DIR}/version.rc.in ${CMAKE_CURRENT_BINARY_DIR}/version.rc @ONLY)
+    set(PLATFORM_SOURCES resources.rc ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
+endif()
 
 qt_add_executable(appShutterTesterApp
     main.cpp
@@ -31,8 +34,7 @@ qt_add_executable(appShutterTesterApp
     LightSetupDialog.h
     ConnectionDialog.cpp
     ConnectionDialog.h
-    resources.rc
-    ${CMAKE_CURRENT_BINARY_DIR}/version.rc
+    ${PLATFORM_SOURCES}
 )
 
 set_target_properties(appShutterTesterApp PROPERTIES

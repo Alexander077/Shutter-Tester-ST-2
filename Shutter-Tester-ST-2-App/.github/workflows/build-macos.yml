@@ -1,0 +1,49 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:  # позволяет запустить вручную из вкладки Actions
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.0'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+          modules: 'qtserialport qtcharts'
+          cache: true
+
+      - name: Configure (CMake)
+        working-directory: Shutter-Tester-ST-2-App
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=$Qt6_DIR
+
+      - name: Build
+        working-directory: Shutter-Tester-ST-2-App
+        run: cmake --build build --parallel $(sysctl -n hw.logicalcpu)
+
+      - name: Deploy (macdeployqt)
+        working-directory: Shutter-Tester-ST-2-App
+        run: |
+          macdeployqt "build/Shutter Tester ST-2 App.app" -dmg
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShutterTesterApp-macOS
+          path: "Shutter-Tester-ST-2-App/build/*.dmg"
+          retention-days: 30
