@@ -909,7 +909,17 @@ void MainWindow::updateDetailPanel(int row)
 
 QString MainWindow::generateReportHtml()
 {
+    #ifdef Q_OS_MAC
+    // On Mac, go up one level from MacOS/ and enter Resources/
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
+    dir.cd("Resources");
+    QString templatePath = dir.absolutePath() + "/assets/st2_fp_report_template.html";
+    #else
+    // On Windows/Linux everything remains the same
     QString templatePath = QCoreApplication::applicationDirPath() + "/assets/st2_fp_report_template.html";
+    #endif
+
     QFile file(templatePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QMessageBox::warning(this, "Report Error", QString("Cannot open template file:\n%1").arg(templatePath));
@@ -1600,7 +1610,7 @@ void MainWindow::onAboutTriggered()
             "designed for measuring and calibrating film camera shutters.</p>"
             "<p>Copyright &copy; 2026 Alexander Litvinov</p>"
             "<hr>"
-            "<p><b>License</b></p> "
+            "<p><b>License</b></p>"
             "<p>This program is free software: you can redistribute it and/or modify "
             "it under the terms of the <b>GNU General Public License v3.0</b> "
             "as published by the Free Software Foundation.</p>"

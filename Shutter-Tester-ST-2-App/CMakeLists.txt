@@ -21,6 +21,14 @@ if(WIN32)
     set(PLATFORM_SOURCES resources.rc ${CMAKE_CURRENT_BINARY_DIR}/version.rc)
 endif()
 
+# --- FOR MACOS ---
+# 1. Collect all files from assets folder
+file(GLOB_RECURSE ASSET_FILES "assets/*")
+
+# 2. Set path inside macOS bundle (Contents/Resources/assets)
+set_source_files_properties(${ASSET_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets")
+# ---------------------------
+
 qt_add_executable(appShutterTesterApp
     main.cpp
     mainwindow.cpp
@@ -34,7 +42,9 @@ qt_add_executable(appShutterTesterApp
     LightSetupDialog.h
     ConnectionDialog.cpp
     ConnectionDialog.h
+    resources.qrc
     ${PLATFORM_SOURCES}
+    ${ASSET_FILES}
 )
 
 set_target_properties(appShutterTesterApp PROPERTIES
@@ -44,6 +54,15 @@ set_target_properties(appShutterTesterApp PROPERTIES
     WIN32_EXECUTABLE TRUE
     OUTPUT_NAME "Shutter Tester ST-2 App"
 )
+
+if(NOT APPLE)
+    add_custom_command(TARGET appShutterTesterApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets"
+        "$<TARGET_FILE_DIR:appShutterTesterApp>/assets"
+        COMMENT "Copying assets directory to build output..."
+    )
+endif()
 
 target_link_libraries(appShutterTesterApp
     PRIVATE Qt6::Widgets Qt6::SerialPort Qt6::PrintSupport Qt6::Charts

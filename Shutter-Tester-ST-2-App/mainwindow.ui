@@ -15,7 +15,8 @@
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>assets/camera_icon_64x64.png</normaloff>assets/camera_icon_64x64.png</iconset>
+    <normaloff>:/assets/camera_icon_64x64.png</normaloff>:/assets/camera_icon_64x64.png
+   </iconset>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="horizontalLayout">
