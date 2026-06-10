@@ -6,6 +6,7 @@ class About
 {
 private:
 public:
+  static const char* const DEVICE_NAME;
   static const char* const HW_VERSION;
   static const char* const SW_VERSION;
 
@@ -20,7 +21,8 @@ public:
 
 // HW_VERSION 1.2.0 version with encoder without pullups and with no RC circuits
 // HW_VERSION 1.2.1 Moved back to encoder with self pullups and RC circuits
-const char* const About::HW_VERSION = "1.2.1";
+const char *const About::DEVICE_NAME = "Shutter Tester ST-2";
+const char *const About::HW_VERSION = "1.2.1";
 const char *const About::SW_VERSION = "1.6.1";
 // const char* const About::CREDITS_HEADER = "This application uses the following third-party libraries:";
 // const char* const About::ADAFRUIT_GFX_LICENSE_HEADER = "This is the core graphics library for all our displays, providing a common set of graphics primitives (points, lines, circles, etc.). It needs to be paired with a hardware-specific library for each display device we carry (to handle the lower-level functions).\n\nAdafruit invests time and resources providing this open source code, please support Adafruit and open-source hardware by purchasing products from Adafruit!\n\nWritten by Limor Fried/Ladyada for Adafruit Industries. BSD license, check license.txt for more information. All text above must be included in any redistribution.";

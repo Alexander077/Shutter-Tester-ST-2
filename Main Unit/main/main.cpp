@@ -1456,13 +1456,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		}
 
 		char *json_str = cJSON_PrintUnformatted(json);
-
-		if (json_str != NULL)
-		{
-			printf("%s\n", json_str);
-			doubleFlush();
-			free(json_str);
-		}
+		safePrintJson(json_str);
+		free(json_str);
 
 		cJSON_Delete(json);
 		return;
@@ -2118,13 +2113,8 @@ void drawLightCheckScreen()
 			cJSON_AddStringToObject(json, "lightQuality", serialApiLightQualityStatusesStr[(int8_t)resLightQualityStatus]);
 
 			char *json_str = cJSON_PrintUnformatted(json);
-
-			if (json_str != NULL) 
-			{
-				printf("%s\n", json_str);
-				doubleFlush();
-				free(json_str);
-			}
+			safePrintJson(json_str);
+			free(json_str);
 
 			cJSON_Delete(json);
 		}
@@ -2668,7 +2658,12 @@ void setup()
 	initStorage();
 
 	storage.begin();
+
+	// Инициализируем мьютекс для безопасного вывода в последовательный порт
+	serialPrintMutex = xSemaphoreCreateMutex();
+
 	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8 * 1024, NULL, 1, NULL, 0);
+	xTaskCreatePinnedToCore(aliveTask, "AliveTask", 3 * 1024, NULL, 1, NULL, 0);
 
 	esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
 	// esp_ota_mark_app_invalid_rollback_and_reboot();//mark as invalid in case of system test if failed

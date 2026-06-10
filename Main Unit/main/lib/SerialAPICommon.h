@@ -50,6 +50,10 @@ public:
 
 char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};
 
+// --- Мьютекс для синхронизации вывода в последовательный порт ---
+extern SemaphoreHandle_t serialPrintMutex;
+// -------------------------------------------------------------
+
 // --- НАСТРОЙКА ЛОГИРОВАНИЯ ---
 // Раскомментируйте строку ниже, чтобы включить отладочные логи [API_FLOW].
 // Закомментируйте, чтобы выводить ТОЛЬКО чистые JSON-ответы API.

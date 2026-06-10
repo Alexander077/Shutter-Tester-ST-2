@@ -17,12 +17,77 @@ volatile bool isApiRequestReceived = false;
 // Объявляем глобальный экземпляр хранилища
 extern RecordsStorageManager storage;
 
-
 void doubleFlush()
 {
   fflush(stdout);
   printf("\n");
   fflush(stdout);
+}
+
+// Определение мьютекса для синхронизации вывода в последовательный порт
+SemaphoreHandle_t serialPrintMutex = NULL;
+
+/**
+ * @brief Безопасно выводит отформатированную строку в stdout, 
+ *        захватывая мьютекс serialPrintMutex.
+ *        После вывода вызывает fflush(stdout).
+ */
+void safePrint(const char *fmt, ...)
+{
+  if (serialPrintMutex != NULL)
+    xSemaphoreTake(serialPrintMutex, portMAX_DELAY);
+
+  va_list args;
+  va_start(args, fmt);
+  vprintf(fmt, args);
+  va_end(args);
+  fflush(stdout);
+
+  if (serialPrintMutex != NULL)
+    xSemaphoreGive(serialPrintMutex);
+}
+
+/**
+ * @brief Выводит строку в stdout с мьютексом, завершая doubleFlush().
+ *        Аналог старого паттерна printf + doubleFlush.
+ *        Принимает уже готовую строку (например, из cJSON_PrintUnformatted).
+ */
+void safePrintJson(const char *json_str)
+{
+  if (json_str == NULL)
+    return;
+
+  if (serialPrintMutex != NULL)
+    xSemaphoreTake(serialPrintMutex, portMAX_DELAY);
+
+  printf("%s\n", json_str);
+  doubleFlush();
+
+  if (serialPrintMutex != NULL)
+    xSemaphoreGive(serialPrintMutex);
+}
+
+/**
+ * @brief Таска отправляет ALIVE-статус каждые 500 мс.
+ *        Использует мьютекс, чтобы не мешать serialApiTask.
+ */
+void aliveTask(void *pvParameters)
+{
+  while (true)
+  {
+    cJSON *msg = cJSON_CreateObject();
+    cJSON_AddStringToObject(msg, "cmd", "ALIVE");
+    cJSON_AddStringToObject(msg, "deviceName", About::DEVICE_NAME);
+    cJSON_AddStringToObject(msg, "hwVersion", About::HW_VERSION);
+    cJSON_AddStringToObject(msg, "swVersion", About::SW_VERSION);
+
+    char *alive_str = cJSON_PrintUnformatted(msg);
+    safePrintJson(alive_str);
+    free(alive_str);
+    cJSON_Delete(msg);
+
+    vTaskDelay(pdMS_TO_TICKS(500));
+  }
 }
 
 void serialApiTask(void *pvParameters)
@@ -174,14 +239,11 @@ void serialApiTask(void *pvParameters)
               cJSON_AddItemToObject(response, "records", records_array);
 
               char *json_str = cJSON_PrintUnformatted(response);
-
-              // Прямой вывод JSON-ответа (не отключается)
-              printf("%s\n", json_str);
-              doubleFlush();
+              safePrintJson(json_str);
+              free(json_str);
 
               SERIAL_API_DEBUG_PRINT("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORDS_LIST);
 
-              free(json_str);
               cJSON_Delete(response);
             }
             // --- CRUD API: ЧТЕНИЕ КОНКРЕТНОЙ ЗАПИСИ ---
@@ -237,14 +299,11 @@ void serialApiTask(void *pvParameters)
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
-
-              // Прямой вывод JSON-ответа
-              printf("%s\n", json_str);
-              doubleFlush();
+              safePrintJson(json_str);
+              free(json_str);
 
               SERIAL_API_DEBUG_PRINT("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_GET_RECORD);
 
-              free(json_str);
               cJSON_Delete(response);
             }
             // --- CRUD API: УДАЛЕНИЕ ЗАПИСИ ---
@@ -284,14 +343,11 @@ void serialApiTask(void *pvParameters)
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
-
-              // Прямой вывод JSON-ответа
-              printf("%s\n", json_str);
-              doubleFlush();
+              safePrintJson(json_str);
+              free(json_str);
 
               SERIAL_API_DEBUG_PRINT("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_DELETE_RECORD);
 
-              free(json_str);
               cJSON_Delete(response);
             }
             // --- CRUD API: СОЗДАНИЕ И ИЗМЕНЕНИЕ ЗАПИСИ ---
@@ -363,14 +419,11 @@ void serialApiTask(void *pvParameters)
               }
 
               char *json_str = cJSON_PrintUnformatted(response);
-
-              // Прямой вывод JSON-ответа
-              printf("%s\n", json_str);
-              doubleFlush();
+              safePrintJson(json_str);
+              free(json_str);
 
               SERIAL_API_DEBUG_PRINT("[API_FLOW] <- Response sent for %s\n", SerialAPIRequestAction::API_REQUEST_SAVE_RECORD);
 
-              free(json_str);
               cJSON_Delete(response);
             }
             else if (strcmp(cmd_item->valuestring, SerialAPIRequestAction::API_REQUEST_FIRMWARE_UPDATE) == 0)
@@ -384,19 +437,14 @@ void serialApiTask(void *pvParameters)
               cJSON *response = cJSON_CreateObject();
               cJSON_AddStringToObject(response, "cmd", SerialAPIRequestAction::API_REQUEST_ECHO);
               cJSON_AddStringToObject(response, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
-              cJSON_AddStringToObject(response, "deviceName", "Shutter Tester ST-2");
+              cJSON_AddStringToObject(response, "deviceName", About::DEVICE_NAME);
               cJSON_AddStringToObject(response, "hwVersion", About::HW_VERSION);
               cJSON_AddStringToObject(response, "swVersion", About::SW_VERSION);
               cJSON_AddStringToObject(response, "deviceStatus", "Device is ready to accept instructions");
 
               char *json_str = cJSON_PrintUnformatted(response);
-              if (json_str != NULL)
-              {
-                // Прямой вывод JSON-ответа
-                printf("%s\n", json_str);
-                doubleFlush();
-                free(json_str);
-              }
+              safePrintJson(json_str);
+              free(json_str);
               cJSON_Delete(response);
             }
             else
