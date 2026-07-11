@@ -31,7 +31,6 @@ FirmwareUpdateDialog::FirmwareUpdateDialog(SerialController *controller, QWidget
     , m_controller(controller)
 {
     setWindowTitle("Firmware Update");
-    setMinimumWidth(450);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
 
@@ -83,6 +82,12 @@ FirmwareUpdateDialog::FirmwareUpdateDialog(SerialController *controller, QWidget
     }
 
     onConnectedChanged();
+
+    // Make the dialog non-resizable with a fixed width
+    // Note: QLayout::SetFixedSize overrides setFixedWidth, so we use
+    // adjustSize() to compute the natural height, then fix both dimensions.
+    adjustSize();
+    setFixedSize(450, height());
 }
 
 FirmwareUpdateDialog::~FirmwareUpdateDialog() = default;

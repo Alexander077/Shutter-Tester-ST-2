@@ -17,7 +17,6 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "FirmwareUpdateDialog.h"
-#include "LightSetupDialog.h"
 #include "ConnectionDialog.h"
 #include <QJsonDocument>
 #include <QMessageBox>
@@ -44,6 +43,8 @@
 #include <QFile>
 #include <QTextDocument>
 #include <QPdfWriter>
+#include <QPrinter>
+#include <QPrintDialog>
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QDir>
@@ -56,6 +57,7 @@
 #include <QScrollArea>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QFrame>
 #include <QtCharts/QChartView>
 #include <QtCharts/QChart>
 #include <QtCharts/QLineSeries>
@@ -84,7 +86,7 @@ const ParamDef paramDefs[] = {
 const int paramCount = sizeof(paramDefs) / sizeof(paramDefs[0]);
 }
 
-const QString MainWindow::APP_VERSION = "0.6.0 alpha";
+const QString MainWindow::APP_VERSION = "0.9.0 alpha";
 
 class BlinkingRowDelegate : public QStyledItemDelegate {
 public:
@@ -145,8 +147,10 @@ MainWindow::MainWindow(QWidget *parent)
     ui->frameSizeComboBox->addItems({"35 mm", "6x45", "6x6", "6x7"/* , "6x9" */});
     ui->shutterTypeComboBox->addItems({"Focal Plane - Horizontal", "Focal Plane - Vertical", "Leaf Shutter"});
     ui->runsPerSpeedComboBox->addItems({"1", "2", "3", "4", "5"});
+    ui->acceptanceThresholdCombo->addItems({"0.05 EV", "0.1 EV", "0.2 EV", "0.5 EV"});
 
-    ui->deleteSeriesButton->setIcon(style()->standardIcon(QStyle::SP_TrashIcon));
+    ui->deleteSeriesButton->setIcon(QIcon(":/assets/cross.png"));
+    ui->deleteSeriesButton->setAutoRaise(true);
     ui->deleteSeriesButton->setEnabled(false);
 
     // Initial Splitter sizes
@@ -163,14 +167,23 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&m_serialController, &SerialController::errorOccurred, this, &MainWindow::onErrorOccurred);
     connect(&m_serialController, &SerialController::measurementReceived, this, &MainWindow::onMeasurementReceived);
     connect(&m_serialController, &SerialController::deviceInfoChanged, this, &MainWindow::updateDeviceStatusBar);
-    connect(ui->actionGenerate_Report, &QAction::triggered, this, &MainWindow::onGenerateReportClicked);
+    connect(ui->actionSave_PDF_Report, &QAction::triggered, this, &MainWindow::onSavePDFReportClicked);
+    connect(ui->actionSave_HTML_Report, &QAction::triggered, this, &MainWindow::onSaveHTMLReportClicked);
+    connect(ui->actionPrint_Report, &QAction::triggered, this, &MainWindow::onPrintReportTriggered);
+    connect(ui->actionReport_Settings, &QAction::triggered, this, &MainWindow::onReportSettingsTriggered);
     connect(ui->actionFirmware_Update, &QAction::triggered, this, &MainWindow::onFirmwareUpdateTriggered);
-    connect(ui->actionLight_Setup, &QAction::triggered, this, &MainWindow::onLightSetupTriggered);
     connect(ui->actionConnect_To_Device, &QAction::triggered, this, &MainWindow::onConnectToDeviceTriggered);
     connect(ui->actionSave_Current_Session, &QAction::triggered, this, &MainWindow::onSaveSessionTriggered);
     connect(ui->actionRestore_Session, &QAction::triggered, this, &MainWindow::onRestoreSessionTriggered);
     connect(ui->actionExit, &QAction::triggered, this, &MainWindow::onExitTriggered);
     connect(ui->actionAbout, &QAction::triggered, this, &MainWindow::onAboutTriggered);
+
+    // Connect measurement toolbar buttons
+    connect(ui->startMeasurementsButton, &QToolButton::clicked, this, &MainWindow::onStartMeasurementsClicked);
+    connect(ui->stopCurrentSpeedMeasurementButton, &QToolButton::clicked, this, &MainWindow::onStopCurrentSpeedMeasurementClicked);
+    connect(ui->clearAllResultsButton, &QToolButton::clicked, this, &MainWindow::onClearAllResultsClicked);
+    connect(ui->moveToPrevSpeedButton, &QToolButton::clicked, this, &MainWindow::onMoveToPrevSpeedClicked);
+    connect(ui->moveToNextSpeedButton, &QToolButton::clicked, this, &MainWindow::onMoveToNextSpeedClicked);
 
     QLayoutItem *spacerItem = ui->verticalLayoutRight->itemAt(ui->verticalLayoutRight->count() - 1);
     if (spacerItem && spacerItem->spacerItem()) {
@@ -206,6 +219,9 @@ MainWindow::MainWindow(QWidget *parent)
     m_deviceStatusLabel->setStyleSheet("padding: 2px 8px;");
     statusBar()->addWidget(m_deviceStatusLabel);
     updateDeviceStatusBar();
+
+    // Setup Light Setup panel in the left sidebar
+    setupLightSetupPanel();
 
     onAvailablePortsChanged();
     QTimer::singleShot(0, this, &MainWindow::onConnectToDeviceTriggered);
@@ -475,14 +491,14 @@ void MainWindow::onAvailablePortsChanged()
 void MainWindow::onIsConnectedChanged()
 {
     if (m_serialController.isConnected()) {
-        ui->errorText->clear();
+        // ui->errorText->clear();
     }
     updateDeviceStatusBar();
 }
 
 void MainWindow::onErrorOccurred(const QString &errorString)
 {
-    ui->errorText->setText(errorString);
+    // ui->errorText->setText(errorString);
 }
 
 void MainWindow::onBlinkTimerTimeout()
@@ -511,7 +527,7 @@ void MainWindow::onBlinkTimerTimeout()
 
 double MainWindow::getAcceptanceThresholdEV()
 {
-    int val = ui->acceptanceSlider->value();
+    int val = ui->acceptanceThresholdCombo->currentIndex();
     if (val == 0) return 0.05;
     if (val == 1) return 0.1;
     if (val == 2) return 0.2;
@@ -755,10 +771,6 @@ void MainWindow::finalizeMeasurement(bool aborted)
         }
     }
 
-    if (!aborted) {
-        QMessageBox::information(this, "Measurement Complete", QString("Averaged result over %1 runs:\nSen. 1: %2 ms\nSen. 2: %3 ms\nAvg: %4 ms\nTarget: %5 ms")
-            .arg(m_measurementsDone).arg(avg0, 0, 'f', 2).arg(avg1, 0, 'f', 2).arg(avg, 0, 'f', 2).arg(targetTimeMs, 0, 'f', 2));
-    }
 
     // Mark session as changed (unsaved) when measurements were completed
     if (!aborted && m_measurementsDone > 0)
@@ -772,6 +784,204 @@ void MainWindow::finalizeMeasurement(bool aborted)
     if (ui->speedsTableWidget->currentRow() == completedRow) {
         updateDetailPanel(completedRow);
     }
+
+    // Auto-advance to next row if session measurements are active and not aborted
+    if (m_sessionMeasurementsActive && !aborted) {
+        int nextRow = completedRow + 1;
+        if (nextRow < ui->speedsTableWidget->rowCount()) {
+            QTimer::singleShot(250, this, [this, nextRow]() {
+                startMeasurement(nextRow);
+            });
+        } else {
+            m_sessionMeasurementsActive = false;
+            QMessageBox::information(this, "Session Complete",
+                                     "All measurements in the session have been completed.");
+        }
+    }
+}
+
+void MainWindow::onStartMeasurementsClicked()
+{
+    if (!m_serialController.isConnected()) {
+        QMessageBox::warning(this, "Error", "Device not connected.");
+        return;
+    }
+
+    // If a measurement is already in progress, abort it
+    if (m_currentMeasurementRow >= 0) {
+        m_serialController.abortOperation();
+        finalizeMeasurement(true);
+        m_sessionMeasurementsActive = false;
+    }
+
+    // Clear all existing results before starting fresh
+    m_rowMeasurements.clear();
+    m_rowsData.clear();
+    int rowCount = ui->speedsTableWidget->rowCount();
+    for (int i = 0; i < rowCount; ++i) {
+        for (int col = 1; col <= 5; ++col) {
+            QTableWidgetItem *item = ui->speedsTableWidget->item(i, col);
+            if (item) item->setText("-");
+        }
+        QTableWidgetItem *progressItem = ui->speedsTableWidget->item(i, 6);
+        if (progressItem) progressItem->setText("-/-");
+        QTableWidgetItem *statusItem = ui->speedsTableWidget->item(i, 7);
+        if (statusItem) {
+            statusItem->setText("-");
+            statusItem->setData(Qt::ForegroundRole, QVariant());
+            QFont font = statusItem->font();
+            font.setBold(false);
+            statusItem->setFont(font);
+        }
+    }
+    updateDetailPanel(-1);
+
+    m_sessionMeasurementsActive = true;
+    QTimer::singleShot(250, this, [this]() {
+        startMeasurement(0);
+    });
+}
+
+void MainWindow::onStopCurrentSpeedMeasurementClicked()
+{
+    if (m_currentMeasurementRow >= 0) {
+        m_serialController.abortOperation();
+        // Store row index before finalize clears it
+        int row = m_currentMeasurementRow;
+        finalizeMeasurement(true);
+        // Clear the results for this row since measurement was aborted
+        for (int col = 1; col <= 5; ++col) {
+            QTableWidgetItem *item = ui->speedsTableWidget->item(row, col);
+            if (item) item->setText("-");
+        }
+        QTableWidgetItem *progressItem = ui->speedsTableWidget->item(row, 6);
+        if (progressItem) progressItem->setText("-/-");
+        QTableWidgetItem *statusItem = ui->speedsTableWidget->item(row, 7);
+        if (statusItem) {
+            statusItem->setText("-");
+            statusItem->setData(Qt::ForegroundRole, QVariant());
+            QFont font = statusItem->font();
+            font.setBold(false);
+            statusItem->setFont(font);
+        }
+        m_rowMeasurements.remove(row);
+        if (row < m_rowsData.size()) {
+            m_rowsData[row] = RowData();
+        }
+    }
+    m_sessionMeasurementsActive = false;
+}
+
+void MainWindow::onClearAllResultsClicked()
+{
+    QMessageBox::StandardButton reply = QMessageBox::question(this, "Clear All Results",
+                                  "Are you sure you want to clear all measurement results?",
+                                  QMessageBox::Yes | QMessageBox::No);
+    if (reply != QMessageBox::Yes) return;
+
+    m_sessionMeasurementsActive = false;
+
+    // Abort any ongoing measurement
+    if (m_currentMeasurementRow >= 0) {
+        m_serialController.abortOperation();
+        finalizeMeasurement(true);
+    }
+
+    // Clear all data
+    m_rowMeasurements.clear();
+    m_rowsData.clear();
+
+    int rowCount = ui->speedsTableWidget->rowCount();
+    for (int i = 0; i < rowCount; ++i) {
+        for (int col = 1; col <= 5; ++col) {
+            QTableWidgetItem *item = ui->speedsTableWidget->item(i, col);
+            if (item) item->setText("-");
+        }
+        QTableWidgetItem *progressItem = ui->speedsTableWidget->item(i, 6);
+        if (progressItem) progressItem->setText("-/-");
+        QTableWidgetItem *statusItem = ui->speedsTableWidget->item(i, 7);
+        if (statusItem) {
+            statusItem->setText("-");
+            statusItem->setData(Qt::ForegroundRole, QVariant());
+            QFont font = statusItem->font();
+            font.setBold(false);
+            statusItem->setFont(font);
+        }
+    }
+
+    updateDetailPanel(-1);
+}
+
+void MainWindow::onMoveToPrevSpeedClicked()
+{
+    if (m_currentMeasurementRow < 0) return;
+
+    int currentRow = m_currentMeasurementRow;
+
+    // Abort current measurement
+    m_serialController.abortOperation();
+    finalizeMeasurement(true);
+
+    // Clear results of the current row (as per task description: "сбросив его результаты, если они есть")
+    for (int col = 1; col <= 5; ++col) {
+        QTableWidgetItem *item = ui->speedsTableWidget->item(currentRow, col);
+        if (item) item->setText("-");
+    }
+    QTableWidgetItem *progressItem = ui->speedsTableWidget->item(currentRow, 6);
+    if (progressItem) progressItem->setText("-/-");
+    QTableWidgetItem *statusItem = ui->speedsTableWidget->item(currentRow, 7);
+    if (statusItem) {
+        statusItem->setText("-");
+        statusItem->setData(Qt::ForegroundRole, QVariant());
+        QFont font = statusItem->font();
+        font.setBold(false);
+        statusItem->setFont(font);
+    }
+    m_rowMeasurements.remove(currentRow);
+    if (currentRow < m_rowsData.size()) {
+        m_rowsData[currentRow] = RowData();
+    }
+
+    int targetRow = qMax(0, currentRow - 1);
+    QTimer::singleShot(250, this, [this, targetRow]() {
+        startMeasurement(targetRow);
+    });
+}
+
+void MainWindow::onMoveToNextSpeedClicked()
+{
+    if (m_currentMeasurementRow < 0) return;
+
+    int currentRow = m_currentMeasurementRow;
+
+    // Abort current measurement
+    m_serialController.abortOperation();
+    finalizeMeasurement(true);
+
+    // Clear results of the current row (as per task description: "удалив результаты")
+    for (int col = 1; col <= 5; ++col) {
+        QTableWidgetItem *item = ui->speedsTableWidget->item(currentRow, col);
+        if (item) item->setText("-");
+    }
+    QTableWidgetItem *progressItem = ui->speedsTableWidget->item(currentRow, 6);
+    if (progressItem) progressItem->setText("-/-");
+    QTableWidgetItem *statusItem = ui->speedsTableWidget->item(currentRow, 7);
+    if (statusItem) {
+        statusItem->setText("-");
+        statusItem->setData(Qt::ForegroundRole, QVariant());
+        QFont font = statusItem->font();
+        font.setBold(false);
+        statusItem->setFont(font);
+    }
+    m_rowMeasurements.remove(currentRow);
+    if (currentRow < m_rowsData.size()) {
+        m_rowsData[currentRow] = RowData();
+    }
+
+    int targetRow = qMin(currentRow + 1, ui->speedsTableWidget->rowCount() - 1);
+    QTimer::singleShot(250, this, [this, targetRow]() {
+        startMeasurement(targetRow);
+    });
 }
 
 void MainWindow::onSpeedsTableSelectionChanged()
@@ -871,7 +1081,7 @@ void MainWindow::updateDetailPanel(int row)
             QChart *chart = new QChart();
             chart->addSeries(series);
             chart->legend()->hide();
-            chart->setMargins(QMargins(20, 20, 20, 20));
+            chart->setMargins(QMargins(3, 3, 3, 3));
             chart->setMinimumSize(200, 150);
 
             QValueAxis *axisX = new QValueAxis();
@@ -907,7 +1117,7 @@ void MainWindow::updateDetailPanel(int row)
     m_detailContentLayout->addStretch();
 }
 
-QString MainWindow::generateReportHtml()
+QString MainWindow::generateReportHtml(const QJsonObject &reportStyle, bool printCurtainTable, bool curtainTableOnSecondPage, bool renderUntestedSpeedRows)
 {
     #ifdef Q_OS_MAC
     // On Mac, go up one level from MacOS/ and enter Resources/
@@ -947,6 +1157,12 @@ QString MainWindow::generateReportHtml()
     QString speedRowsHtml;
     int rowCount = ui->speedsTableWidget->rowCount();
     for (int i = 0; i < rowCount; ++i) {
+        // Skip untested rows if the option is not enabled
+        if (!renderUntestedSpeedRows) {
+            bool hasData = (i < m_rowsData.size() && !m_rowsData[i].runs.isEmpty());
+            if (!hasData) continue;
+        }
+
         QString rowHtml = speedRowTemplate;
         QString speedText = ui->speedsTableWidget->item(i, 0)->text();
         QString s1Text = ui->speedsTableWidget->item(i, 1)->text();
@@ -1006,6 +1222,12 @@ QString MainWindow::generateReportHtml()
     // Build curtain rows
     QString curtainRowsHtml;
     for (int i = 0; i < rowCount; ++i) {
+        // Skip untested rows if the option is not enabled
+        if (!renderUntestedSpeedRows) {
+            bool hasData = (i < m_rowsData.size() && !m_rowsData[i].runs.isEmpty());
+            if (!hasData) continue;
+        }
+
         QString rowHtml = curtainRowTemplate;
         QString speedText = ui->speedsTableWidget->item(i, 0)->text();
 
@@ -1055,6 +1277,40 @@ QString MainWindow::generateReportHtml()
     html.replace(speedRowRe, speedRowsHtml);
     html.replace(curtainRowRe, curtainRowsHtml);
 
+    // Process curtain table visibility and page divider markers
+    // NEXT_PAGE_DIVIDER is a single HTML comment: <!--NEXT_PAGE_DIVIDER_START\n<div .../>\nNEXT_PAGE_DIVIDER_END-->
+    static const QRegularExpression nextPageDividerRe(
+        QStringLiteral("<!--NEXT_PAGE_DIVIDER_START(.*?)NEXT_PAGE_DIVIDER_END-->"),
+        QRegularExpression::DotMatchesEverythingOption);
+    // CURTAINS_DATA_TABLE is bounded by two separate HTML comments
+    static const QRegularExpression curtainTableRe(
+        QStringLiteral("<!--CURTAINS_DATA_TABLE_START-->(.*?)<!--CURTAINS_DATA_TABLE_END-->"),
+        QRegularExpression::DotMatchesEverythingOption);
+
+    if (!printCurtainTable) {
+        // Remove curtain table block entirely
+        html.remove(curtainTableRe);
+        // Remove page divider entirely
+        html.remove(nextPageDividerRe);
+    } else {
+        // Keep curtain table — strip markers, leaving inner content
+        QRegularExpressionMatch curtainTableMatch = curtainTableRe.match(html);
+        if (curtainTableMatch.hasMatch()) {
+            html.replace(curtainTableRe, curtainTableMatch.captured(1).trimmed());
+        }
+        // Handle page divider
+        QRegularExpressionMatch dividerMatch = nextPageDividerRe.match(html);
+        if (curtainTableOnSecondPage) {
+            // Replace marker block with the inner divider content (the <div> page-break element)
+            if (dividerMatch.hasMatch()) {
+                html.replace(nextPageDividerRe, dividerMatch.captured(1).trimmed());
+            }
+        } else {
+            // Remove page divider entirely (curtain table stays on same page)
+            html.remove(nextPageDividerRe);
+        }
+    }
+
     // Overall stats
     int tested = 0, passed = 0, failed = 0;
     QString overallStatus = "PASS";
@@ -1089,7 +1345,7 @@ QString MainWindow::generateReportHtml()
     // Global placeholders
     html.replace("{{DATE}}", QDateTime::currentDateTime().toString("yyyy-MM-dd"));
     html.replace("{{FIRMWARE}}", m_serialController.swVersion().isEmpty() ? QString("ST-2 FW N/A") : QString("ST-2 FW %1").arg(m_serialController.swVersion()));
-    html.replace("{{APP_VERSION}}", QString("v1.0"));
+    html.replace("{{APP_VERSION}}", QString(APP_VERSION));
     html.replace("{{CAMERA_MODEL}}", ui->cameraModelField->text().toHtmlEscaped());
     html.replace("{{SERIAL_NUMBER}}", ui->serialNumberField->text().toHtmlEscaped());
     html.replace("{{SHUTTER_NAME}}", QString("Shutter").toHtmlEscaped());
@@ -1103,7 +1359,122 @@ QString MainWindow::generateReportHtml()
     html.replace("{{TOLERANCE}}", QString("&plusmn;%1 EV").arg(tol));
     html.replace("{{NOTES}}", ui->notesTextEdit->toPlainText().toHtmlEscaped().replace("\n", "<br>"));
 
+    // Remove footer section from main HTML (it will be rendered separately on last page)
+    static const QRegularExpression footerRe(
+        QStringLiteral("<!--FOOTER_START-->.*?<!--FOOTER_END-->"),
+        QRegularExpression::DotMatchesEverythingOption);
+    html.remove(footerRe);
+
+    // Apply report style if provided
+    if (!reportStyle.isEmpty()) {
+        applyReportStyleToHtml(html, reportStyle);
+    }
+
     return html;
+}
+
+QString MainWindow::generateFooterHtml(const QJsonObject &reportStyle)
+{
+    // Read the same template to extract footer section
+    #ifdef Q_OS_MAC
+    QDir dir(QCoreApplication::applicationDirPath());
+    dir.cdUp();
+    dir.cd("Resources");
+    QString templatePath = dir.absolutePath() + "/assets/st2_fp_report_template.html";
+    #else
+    QString templatePath = QCoreApplication::applicationDirPath() + "/assets/st2_fp_report_template.html";
+    #endif
+
+    QFile file(templatePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+    QString templateHtml = QString::fromUtf8(file.readAll());
+    file.close();
+
+    // Extract footer content between markers
+    static const QRegularExpression footerRe(
+        QStringLiteral("<!--FOOTER_START-->(.*?)<!--FOOTER_END-->"),
+        QRegularExpression::DotMatchesEverythingOption);
+    QRegularExpressionMatch footerMatch = footerRe.match(templateHtml);
+    if (!footerMatch.hasMatch()) {
+        return QString();
+    }
+    QString footerContent = footerMatch.captured(1).trimmed();
+
+    // Extract CSS styles from the template <style> block
+    static const QRegularExpression styleRe(
+        QStringLiteral("<style>(.*?)</style>"),
+        QRegularExpression::DotMatchesEverythingOption);
+    QRegularExpressionMatch styleMatch = styleRe.match(templateHtml);
+    QString cssContent = styleMatch.hasMatch() ? styleMatch.captured(1) : QString();
+
+    // Build a self-contained HTML document for the footer
+    QString footerHtml = QStringLiteral(
+        "<!DOCTYPE html>\n"
+        "<html>\n<head>\n<meta charset=\"UTF-8\">\n"
+        "<style>\n%1\n</style>\n"
+        "</head>\n<body>\n%2\n</body>\n</html>"
+    ).arg(cssContent, footerContent);
+
+    // Replace placeholders
+    footerHtml.replace("{{DATE}}", QDateTime::currentDateTime().toString("yyyy-MM-dd"));
+    footerHtml.replace("{{FIRMWARE}}", m_serialController.swVersion().isEmpty() ? QString("ST-2 FW N/A") : QString("ST-2 FW %1").arg(m_serialController.swVersion()));
+    footerHtml.replace("{{APP_VERSION}}", QString(APP_VERSION));
+
+    // Apply report style if provided
+    if (!reportStyle.isEmpty()) {
+        applyReportStyleToHtml(footerHtml, reportStyle);
+    }
+
+    return footerHtml;
+}
+
+void MainWindow::applyReportStyleToHtml(QString &html, const QJsonObject &style)
+{
+    QJsonObject colors = style["colors"].toObject();
+
+    // Colors
+    html.replace("{{PRIMARY_FONT_COLOR}}", colors["PRIMARY_FONT_COLOR"].toString("#f0ead8"));
+    html.replace("{{SECONDARY_FONT_COLOR}}", colors["SECONDARY_FONT_COLOR"].toString("#c8a96e"));
+    html.replace("{{INSTRUMENT_ID_LABEL_FONT_COLOR}}", colors["INSTRUMENT_ID_LABEL_FONT_COLOR"].toString("#777770"));
+    html.replace("{{VALUES_1_FONT_COLOR}}", colors["VALUES_1_FONT_COLOR"].toString("#1a1a1e"));
+    html.replace("{{TABLE_BG_COLOR}}", colors["TABLE_BG_COLOR"].toString("#faf8f4"));
+    html.replace("{{CURTAINS_DATA_TABLE_BG_COLOR}}", colors["CURTAINS_DATA_TABLE_BG_COLOR"].toString("#faf8f4"));
+    html.replace("{{FONT_FAMILY}}", colors["FONT_FAMILY"].toString("Arial"));
+
+    // Font size and padding
+    html.replace("{{TABLES_FONT_SIZE}}", style["TABLES_FONT_SIZE"].toString("8pt"));
+    html.replace("{{TABLES_CELL_PADDING}}", style["TABLE_CELL_PADDING"].toString("5px"));
+
+    // Header image
+    QString imageBase64 = style["HEADER_IMAGE_BASE64"].toString();
+    html.replace("{{HEADER_IMAGE_BASE64}}", imageBase64);
+}
+
+QJsonObject MainWindow::selectReportStyle(bool &printCurtainTable, bool &curtainTableOnSecondPage, bool &renderUntestedSpeedRows)
+{
+    // Show curtain table options only for focal plane shutters (not Leaf Shutter)
+    bool isFocalPlane = ui->shutterTypeComboBox->currentText() != "Leaf Shutter";
+
+    ReportStyleSelectionDialog dialog(isFocalPlane, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        printCurtainTable = dialog.printCurtainTable();
+        curtainTableOnSecondPage = dialog.curtainTableOnSecondPage();
+        renderUntestedSpeedRows = dialog.renderUntestedSpeedRows();
+        return dialog.selectedProfile();
+    }
+    // User cancelled — set defaults
+    printCurtainTable = false;
+    curtainTableOnSecondPage = false;
+    renderUntestedSpeedRows = false;
+    return QJsonObject();
+}
+
+void MainWindow::onReportSettingsTriggered()
+{
+    ReportSettingsDialog dialog(this);
+    dialog.exec();
 }
 
 void MainWindow::onFirmwareUpdateTriggered()
@@ -1112,15 +1483,254 @@ void MainWindow::onFirmwareUpdateTriggered()
     dialog.exec();
 }
 
-void MainWindow::onLightSetupTriggered()
+void MainWindow::setupLightSetupPanel()
 {
-    // If a measurement is in progress, abort it first
-    if (m_currentMeasurementRow >= 0) {
-        m_serialController.abortOperation();
-        finalizeMeasurement(true);
+    QVBoxLayout *contentLayout = ui->lightSetupContentLayout;
+
+    QVBoxLayout *groupBoxLayout = ui->verticalLayoutLightSetup;
+
+    // Create toggle button - placed directly in the group box outer layout, centered
+    m_lightSetupToggleButton = new QPushButton("Light Setup", this);
+    m_lightSetupToggleButton->setMinimumHeight(28);
+    m_lightSetupToggleButton->setMaximumWidth(200);
+    m_lightSetupToggleButton->setStyleSheet("font-size: 11px;");
+
+    // Create quality label (hidden initially)
+    m_lightSetupQualityLabel = new QLabel("Waiting for data...", this);
+    m_lightSetupQualityLabel->setAlignment(Qt::AlignCenter);
+    m_lightSetupQualityLabel->setStyleSheet("font-size: 10px; padding: 2px 4px; border-radius: 2px;");
+    m_lightSetupQualityLabel->hide();
+
+    // Sensor 1 title
+    QLabel *sensor1Title = new QLabel("Sensor 1", this);
+    QFont sensorFont = sensor1Title->font();
+    sensorFont.setBold(false);
+    sensorFont.setPointSize(9);
+    sensor1Title->setFont(sensorFont);
+    sensor1Title->hide();
+    sensor1Title->setObjectName("sensor1Title");
+
+    m_lightSetupSensor1Bar = new QProgressBar(this);
+    m_lightSetupSensor1Bar->setRange(0, 100);
+    m_lightSetupSensor1Bar->setValue(0);
+    m_lightSetupSensor1Bar->setTextVisible(true);
+    m_lightSetupSensor1Bar->setMinimumHeight(18);
+    m_lightSetupSensor1Bar->setMaximumHeight(18);
+    m_lightSetupSensor1Bar->setFormat("%p% — Waiting...");
+    m_lightSetupSensor1Bar->setStyleSheet(
+        "QProgressBar { border: 1px solid #ccc; border-radius: 3px; text-align: center; "
+        "font-size: 9px; font-weight: bold; color: #000000; "
+        "background-color: #f0f0f0; }"
+        "QProgressBar::chunk { background-color: #9E9E9E; border-radius: 2px; }");
+    m_lightSetupSensor1Bar->hide();
+
+    // Sensor 2 title
+    QLabel *sensor2Title = new QLabel("Sensor 2", this);
+    sensor2Title->setFont(sensorFont);
+    sensor2Title->hide();
+    sensor2Title->setObjectName("sensor2Title");
+
+    m_lightSetupSensor2Bar = new QProgressBar(this);
+    m_lightSetupSensor2Bar->setRange(0, 100);
+    m_lightSetupSensor2Bar->setValue(0);
+    m_lightSetupSensor2Bar->setTextVisible(true);
+    m_lightSetupSensor2Bar->setMinimumHeight(18);
+    m_lightSetupSensor2Bar->setMaximumHeight(18);
+    m_lightSetupSensor2Bar->setFormat("%p% — Waiting...");
+    m_lightSetupSensor2Bar->setStyleSheet(
+        "QProgressBar { border: 1px solid #ccc; border-radius: 3px; text-align: center; "
+        "font-size: 9px; font-weight: bold; color: #000000; "
+        "background-color: #f0f0f0; }"
+        "QProgressBar::chunk { background-color: #9E9E9E; border-radius: 2px; }");
+    m_lightSetupSensor2Bar->hide();
+
+    // Add quality layout
+    QVBoxLayout *qualityLayout = new QVBoxLayout();
+    QLabel *qualityTitle = new QLabel("Light Quality", this);
+    qualityTitle->hide();
+    qualityTitle->setObjectName("qualityTitle");
+    qualityLayout->addWidget(qualityTitle);
+    qualityLayout->addWidget(m_lightSetupQualityLabel);
+
+    // Add all sensor widgets to content layout (hidden initially)
+    contentLayout->addWidget(sensor1Title);
+    contentLayout->addWidget(m_lightSetupSensor1Bar);
+    contentLayout->addWidget(sensor2Title);
+    contentLayout->addWidget(m_lightSetupSensor2Bar);
+    contentLayout->addLayout(qualityLayout);
+
+    // Button goes into the group box outer layout, between two stretches for centering
+    groupBoxLayout->addStretch(1);
+    groupBoxLayout->addWidget(m_lightSetupToggleButton, 0, Qt::AlignCenter);
+    groupBoxLayout->addStretch(1);
+
+    // Connect toggle button
+    connect(m_lightSetupToggleButton, &QPushButton::clicked, this, &MainWindow::onLightSetupToggleClicked);
+
+    // Connect serial data
+    connect(&m_serialController, &SerialController::lightSetupDataReceived,
+            this, &MainWindow::onLightSetupDataReceived);
+
+    // Show initial idle state
+    hideLightSetupContent();
+}
+
+void MainWindow::showLightSetupContent()
+{
+    // Show the quality label directly (it was hidden in the inner layout)
+    m_lightSetupQualityLabel->show();
+    m_lightSetupToggleButton->setText("Exit Light Setup");
+
+    // Show all hidden widgets in the content layout (sensor titles, bars, quality)
+    for (int i = 0; i < ui->lightSetupContentLayout->count(); ++i) {
+        QLayoutItem *item = ui->lightSetupContentLayout->itemAt(i);
+        if (item->widget()) {
+            item->widget()->show();
+        }
     }
-    LightSetupDialog dialog(&m_serialController, this);
-    dialog.exec();
+
+    // Show widgets inside the quality layout (which is nested inside the content layout)
+    QLabel *qualityTitle = ui->groupBoxLightSetup->findChild<QLabel*>("qualityTitle");
+    if (qualityTitle) {
+        qualityTitle->show();
+    }
+
+    // Remove max height limit so group box can expand to show all sensor widgets
+    ui->groupBoxLightSetup->setMaximumHeight(QWIDGETSIZE_MAX);
+    ui->groupBoxLightSetup->setMinimumHeight(150);
+
+    m_lightSetupActive = true;
+}
+
+void MainWindow::hideLightSetupContent()
+{
+    // Hide all widgets in the content layout (sensor titles, bars, quality label)
+    for (int i = 0; i < ui->lightSetupContentLayout->count(); ++i) {
+        QLayoutItem *item = ui->lightSetupContentLayout->itemAt(i);
+        if (item->widget()) {
+            item->widget()->hide();
+        }
+    }
+
+    // Hide widgets inside the quality layout (which is nested inside the content layout)
+    m_lightSetupQualityLabel->hide();
+    QLabel *qualityTitle = ui->groupBoxLightSetup->findChild<QLabel*>("qualityTitle");
+    if (qualityTitle) {
+        qualityTitle->hide();
+    }
+
+    m_lightSetupToggleButton->setText("Light Setup");
+
+    // Compact the group box - just enough for title bar + button height + margins
+    ui->groupBoxLightSetup->setMinimumHeight(0);
+    ui->groupBoxLightSetup->setMaximumHeight(70);
+
+    m_lightSetupActive = false;
+}
+
+void MainWindow::onLightSetupToggleClicked()
+{
+    if (!m_lightSetupActive) {
+        // Enter light setup mode
+        if (!m_serialController.isConnected()) {
+            QMessageBox::warning(this, "Error", "Device not connected.");
+            return;
+        }
+
+        // If a measurement is in progress, abort it first
+        if (m_currentMeasurementRow >= 0) {
+            m_serialController.abortOperation();
+            finalizeMeasurement(true);
+        }
+
+        showLightSetupContent();
+        m_serialController.requestLightSetup();
+    } else {
+        // Exit light setup mode
+        if (m_serialController.isConnected()) {
+            m_serialController.abortOperation();
+        }
+        hideLightSetupContent();
+    }
+}
+
+void MainWindow::onLightSetupDataReceived(const QJsonObject &data)
+{
+    int sensor1Level = data["sensor1Level"].toInt(0);
+    int sensor2Level = data["sensor2Level"].toInt(0);
+    QString sensor1Status = data["sensor1Status"].toString("LIGHT_STATUS_UNKNOWN");
+    QString sensor2Status = data["sensor2Status"].toString("LIGHT_STATUS_UNKNOWN");
+    QString lightQuality = data["lightQuality"].toString("LIGHT_QUALITY_UNKNOWN");
+
+    // Update sensor 1 UI — status and level shown in progress bar text
+    m_lightSetupSensor1Bar->setValue(qBound(0, sensor1Level, 100));
+    {
+        QString statusKeyword;
+        QString chunkColor;
+        if (sensor1Status == "LIGHT_STATUS_OK") {
+            statusKeyword = "OK";
+            chunkColor = "#4CAF50";
+        } else if (sensor1Status == "LIGHT_STATUS_TOO_DIM") {
+            statusKeyword = "Too dim";
+            chunkColor = "#FF9800";
+        } else if (sensor1Status == "LIGHT_STATUS_TOO_BRIGHT") {
+            statusKeyword = "Too bright";
+            chunkColor = "#F44336";
+        } else {
+            statusKeyword = "Unknown";
+            chunkColor = "#9E9E9E";
+        }
+        m_lightSetupSensor1Bar->setFormat(QString("%p% — %1").arg(statusKeyword));
+        m_lightSetupSensor1Bar->setStyleSheet(
+            QString("QProgressBar { border: 1px solid #ccc; border-radius: 3px; text-align: center; "
+                    "font-size: 9px; font-weight: bold; color: #000000; "
+                    "background-color: #f0f0f0; }"
+                    "QProgressBar::chunk { background-color: %1; border-radius: 2px; }").arg(chunkColor));
+    }
+
+    // Update sensor 2 UI — status and level shown in progress bar text
+    m_lightSetupSensor2Bar->setValue(qBound(0, sensor2Level, 100));
+    {
+        QString statusKeyword;
+        QString chunkColor;
+        if (sensor2Status == "LIGHT_STATUS_OK") {
+            statusKeyword = "OK";
+            chunkColor = "#4CAF50";
+        } else if (sensor2Status == "LIGHT_STATUS_TOO_DIM") {
+            statusKeyword = "Too dim";
+            chunkColor = "#FF9800";
+        } else if (sensor2Status == "LIGHT_STATUS_TOO_BRIGHT") {
+            statusKeyword = "Too bright";
+            chunkColor = "#F44336";
+        } else {
+            statusKeyword = "Unknown";
+            chunkColor = "#9E9E9E";
+        }
+        m_lightSetupSensor2Bar->setFormat(QString("%p% — %1").arg(statusKeyword));
+        m_lightSetupSensor2Bar->setStyleSheet(
+            QString("QProgressBar { border: 1px solid #ccc; border-radius: 3px; text-align: center; "
+                    "font-size: 9px; font-weight: bold; color: #000000; "
+                    "background-color: #f0f0f0; }"
+                    "QProgressBar::chunk { background-color: %1; border-radius: 2px; }").arg(chunkColor));
+    }
+
+    // Update overall quality
+    if (lightQuality == "LIGHT_QUALITY_OK") {
+        m_lightSetupQualityLabel->setText("OK");
+        m_lightSetupQualityLabel->setStyleSheet(
+            "font-weight: bold; font-size: 12px; padding: 4px 8px; "
+            "border-radius: 2px; background-color: #4CAF50; color: white;");
+    } else if (lightQuality == "LIGHT_QUALITY_BAD") {
+        m_lightSetupQualityLabel->setText("BAD");
+        m_lightSetupQualityLabel->setStyleSheet(
+            "font-weight: bold; font-size: 12px; padding: 4px 8px; "
+            "border-radius: 2px; background-color: #F44336; color: white;");
+    } else {
+        m_lightSetupQualityLabel->setText("UNKNOWN");
+        m_lightSetupQualityLabel->setStyleSheet(
+            "font-weight: bold; font-size: 12px; padding: 4px 8px; "
+            "border-radius: 2px; background-color: #FF9800; color: white;");
+    }
 }
 
 void MainWindow::onConnectToDeviceTriggered()
@@ -1130,37 +1740,175 @@ void MainWindow::onConnectToDeviceTriggered()
     dialog.exec();
 }
 
-void MainWindow::onGenerateReportClicked()
+void MainWindow::renderReportWithFooter(QPagedPaintDevice *device, const QString &mainHtml, const QString &footerHtml)
 {
-    QString html = generateReportHtml();
-    if (html.isEmpty()) return;
+    // Get device resolution (DPI)
+    int deviceDpi = device->logicalDpiX();
+    
+    // Scale factor from points (72 DPI) to device DPI
+    qreal scale = deviceDpi / 72.0;
+    
+    // Page dimensions in points (A4 with 10mm margins)
+    qreal pageWidthPt = (210.0 - 20.0) * 72.0 / 25.4;   // ~538.58 pt
+    qreal pageHeightPt = (297.0 - 20.0) * 72.0 / 25.4;  // ~785.2 pt
+    
+    // Create main document (using point-based coordinates)
+    QTextDocument mainDoc;
+    mainDoc.setDocumentMargin(0);
+    mainDoc.setTextWidth(pageWidthPt);
+    mainDoc.setPageSize(QSizeF(pageWidthPt, pageHeightPt));
+    mainDoc.setHtml(mainHtml);
+    
+    // Create footer document
+    QTextDocument footerDoc;
+    footerDoc.setDocumentMargin(0);
+    footerDoc.setTextWidth(pageWidthPt);
+    footerDoc.setHtml(footerHtml);
+    QSizeF footerSize = footerDoc.size();
+    
+    // Get page count
+    int pageCount = mainDoc.pageCount();
+    if (pageCount < 1) pageCount = 1;
+    
+    // Render page by page
+    QPainter painter(device);
+    
+    for (int i = 0; i < pageCount; ++i) {
+        if (i > 0) {
+            device->newPage();
+        }
+        
+        painter.save();
+        
+        // Scale painter to match device resolution with document's point-based coordinates
+        painter.scale(scale, scale);
+        
+        // Clip to page area (in points)
+        painter.setClipRect(QRectF(0, 0, pageWidthPt, pageHeightPt));
+        
+        // Translate to show this page's portion of the document
+        qreal yOffset = -i * pageHeightPt;
+        painter.translate(0, yOffset);
+        
+        // Draw the entire document (only the clipped page area will be visible)
+        mainDoc.drawContents(&painter);
+        
+        painter.restore();
+        
+        // On the last page, draw footer at the bottom
+        if (i == pageCount - 1) {
+            painter.save();
+            painter.scale(scale, scale);
+            qreal footerY = pageHeightPt - footerSize.height();
+            painter.translate(0, footerY);
+            footerDoc.drawContents(&painter);
+            painter.restore();
+        }
+    }
+    
+    painter.end();
+}
 
-    QString docsPath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    QString defaultReport = docsPath + QDir::separator() + "ST-2_Report.pdf";
-    QString fileName = QFileDialog::getSaveFileName(this, "Save Report", defaultReport, "PDF Files (*.pdf)");
+void MainWindow::onSavePDFReportClicked()
+{
+    // Show report style selection dialog
+    bool printCurtainTable = false;
+    bool curtainTableOnSecondPage = false;
+    bool renderUntestedSpeedRows = false;
+    QJsonObject reportStyle = selectReportStyle(printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (reportStyle.isEmpty()) return; // User cancelled
+
+    QString html = generateReportHtml(reportStyle, printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (html.isEmpty()) return;
+    
+    QString footerHtml = generateFooterHtml(reportStyle);
+
+    // Determine the starting directory: use last used dir from settings,
+    // or default to the user's Documents location.
+    QString lastDir = m_settings.value("lastReportDir").toString();
+    if (lastDir.isEmpty() || !QDir(lastDir).exists()) {
+        lastDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    QString defaultReport = lastDir + QDir::separator() + "ST-2_Report.pdf";
+    QString fileName = QFileDialog::getSaveFileName(this, "Save PDF Report", defaultReport, "PDF Files (*.pdf)");
     if (fileName.isEmpty()) return;
 
-    // Save HTML alongside PDF
-    QFileInfo fi(fileName);
-    QString htmlFileName = fi.path() + "/" + fi.completeBaseName() + ".html";
-    QFile htmlFile(htmlFileName);
-    if (htmlFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        htmlFile.write(html.toUtf8());
-        htmlFile.close();
-    }
-
-    QTextDocument doc;
-    doc.setDocumentMargin(0);
-    doc.setPageSize(QSizeF(210, 297) * 72.0 / 25.4); // A4 size in points
-    doc.setHtml(html);
+    // Remember the directory for next time
+    m_settings.setValue("lastReportDir", QFileInfo(fileName).absolutePath());
 
     QPdfWriter writer(fileName);
     writer.setPageSize(QPageSize::A4);
     writer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout::Millimeter);
+    writer.setResolution(72);  // Use 72 DPI to match QTextDocument point-based coordinates
 
-    doc.print(&writer);
+    // Render report with footer on last page
+    renderReportWithFooter(&writer, html, footerHtml);
 
-    QMessageBox::information(this, "Report Generated", QString("PDF saved to:\n%1\n\nHTML saved to:\n%2").arg(fileName).arg(htmlFileName));
+    QMessageBox::information(this, "Report Saved", QString("PDF saved to:\n%1").arg(fileName));
+}
+
+void MainWindow::onSaveHTMLReportClicked()
+{
+    // Show report style selection dialog
+    bool printCurtainTable = false;
+    bool curtainTableOnSecondPage = false;
+    bool renderUntestedSpeedRows = false;
+    QJsonObject reportStyle = selectReportStyle(printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (reportStyle.isEmpty()) return; // User cancelled
+
+    QString html = generateReportHtml(reportStyle, printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (html.isEmpty()) return;
+
+    // Determine the starting directory: use last used dir from settings,
+    // or default to the user's Documents location.
+    QString lastDir = m_settings.value("lastReportDir").toString();
+    if (lastDir.isEmpty() || !QDir(lastDir).exists()) {
+        lastDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    }
+    QString defaultReport = lastDir + QDir::separator() + "ST-2_Report.html";
+    QString fileName = QFileDialog::getSaveFileName(this, "Save HTML Report", defaultReport, "HTML Files (*.html)");
+    if (fileName.isEmpty()) return;
+
+    // Remember the directory for next time
+    m_settings.setValue("lastReportDir", QFileInfo(fileName).absolutePath());
+
+    QFile file(fileName);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", QString("Cannot save HTML report to:\n%1").arg(fileName));
+        return;
+    }
+    file.write(html.toUtf8());
+    file.close();
+
+    QMessageBox::information(this, "Report Saved", QString("HTML saved to:\n%1").arg(fileName));
+}
+
+void MainWindow::onPrintReportTriggered()
+{
+    // Show report style selection dialog
+    bool printCurtainTable = false;
+    bool curtainTableOnSecondPage = false;
+    bool renderUntestedSpeedRows = false;
+    QJsonObject reportStyle = selectReportStyle(printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (reportStyle.isEmpty()) return; // User cancelled
+
+    QString html = generateReportHtml(reportStyle, printCurtainTable, curtainTableOnSecondPage, renderUntestedSpeedRows);
+    if (html.isEmpty()) return;
+    
+    QString footerHtml = generateFooterHtml(reportStyle);
+
+    QPrinter printer(QPrinter::HighResolution);
+    printer.setPageSize(QPageSize::A4);
+    printer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout::Millimeter);
+
+    QPrintDialog printDialog(&printer, this);
+    printDialog.setWindowTitle("Print Report");
+    if (printDialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    // Render report with footer on last page
+    renderReportWithFooter(&printer, html, footerHtml);
 }
 
 void MainWindow::updateDeviceStatusBar()
@@ -1212,7 +1960,7 @@ bool MainWindow::saveSessionInteractive()
     session["frameSizeIndex"] = ui->frameSizeComboBox->currentIndex();
     session["shutterTypeIndex"] = ui->shutterTypeComboBox->currentIndex();
     session["runsPerSpeedIndex"] = ui->runsPerSpeedComboBox->currentIndex();
-    session["acceptanceThresholdIndex"] = ui->acceptanceSlider->value();
+    session["acceptanceThresholdIndex"] = ui->acceptanceThresholdCombo->currentIndex();
     session["notes"] = ui->notesTextEdit->toPlainText();
 
     // Save speed series - smart handling
@@ -1315,7 +2063,7 @@ void MainWindow::onRestoreSessionTriggered()
     ui->frameSizeComboBox->setCurrentIndex(session["frameSizeIndex"].toInt(0));
     ui->shutterTypeComboBox->setCurrentIndex(session["shutterTypeIndex"].toInt(0));
     ui->runsPerSpeedComboBox->setCurrentIndex(session["runsPerSpeedIndex"].toInt(0));
-    ui->acceptanceSlider->setValue(session["acceptanceThresholdIndex"].toInt(1));
+    ui->acceptanceThresholdCombo->setCurrentIndex(session["acceptanceThresholdIndex"].toInt(1));
     ui->notesTextEdit->setPlainText(session["notes"].toString());
 
     // Restore speed series selection
@@ -1605,7 +2353,7 @@ void MainWindow::onAboutTriggered()
 {
     QMessageBox::about(this, QString("About Shutter Tester App v%1").arg(APP_VERSION),
         QString(
-            "<h3>Shutter Tester ST-2 Client App v%1</h3>"
+            "<h3>Shutter Tester ST-2 App v%1</h3>"
             "<p>A desktop application for the ST-2 shutter speed tester &mdash; "
             "designed for measuring and calibrating film camera shutters.</p>"
             "<p>Copyright &copy; 2026 Alexander Litvinov</p>"
@@ -1618,13 +2366,16 @@ void MainWindow::onAboutTriggered()
             "but <b>WITHOUT ANY WARRANTY</b>; without even the implied warranty of "
             "<b>MERCHANTABILITY</b> or <b>FITNESS FOR A PARTICULAR PURPOSE</b>. See the "
             "<a href='https://www.gnu.org/licenses/gpl-3.0.html'>GNU GPLv3</a> for more details.</p>"
-            "<p>Source code: <a href='https://github.com/Alexander077/Shutter-tester-ST-2-Client-App-Private'>GitHub</a></p>"
+            "<p>Source code: <a href='https://github.com/Alexander077/Shutter-Tester-ST-2'>GitHub</a></p>"
             "<hr>"
             "<p><b>Qt Framework Attribution</b></p>"
             "<p>This application uses the <a href='https://www.qt.io'>Qt framework</a>. "
             "Core and GUI modules are licensed under the LGPLv3, while the Qt Charts module is licensed under the GPLv3.</p>"
             "<p>Copyright &copy; The Qt Company Ltd and other licensors.<br>"
             "Qt source code is available at <a href='https://code.qt.io'>code.qt.io</a>.</p>"
-        ).arg(APP_VERSION)
+             "<hr>"
+             "<p><b>Icons</b></p>"
+             "<p>Uicons by <a href='https://www.flaticon.com/uicons'>Flaticon</a></p>"
+         ).arg(APP_VERSION)
     );
 }

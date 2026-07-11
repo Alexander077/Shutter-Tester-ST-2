@@ -2,7 +2,7 @@
 
 ; HM NIS Edit Wizard helper defines
 !define PRODUCT_NAME "Shutter Tester ST-2 App"
-!define PRODUCT_VERSION "0.6.0"
+!define PRODUCT_VERSION "0.9.0"
 !define PRODUCT_PUBLISHER "Alexander Litvinov"
 !define PRODUCT_WEB_SITE "https://github.com/Alexander077/Shutter-Tester-ST-2"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\Shutter Tester ST-2 App.exe"
@@ -38,7 +38,7 @@
 ; MUI end ------
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION}"
-OutFile "..\..\dist\Shutter Tester ST-2 App v0.6.0 Alpha Setup.exe"
+OutFile "..\..\dist\Shutter Tester ST-2 App v0.9.0 Alpha Setup.exe"
 InstallDir "$PROGRAMFILES\Shutter Tester ST-2 App"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 ShowInstDetails show
@@ -47,7 +47,6 @@ ShowUnInstDetails show
 Section "MainSection" SEC01
   SetOutPath "$INSTDIR\assets"
   SetOverwrite try
-  File "..\payload\assets\camera_icon_64x64.png"
   File "..\payload\assets\st2_fp_report_template.html"
   SetOutPath "$INSTDIR"
   File "..\payload\D3Dcompiler_47.dll"
@@ -80,7 +79,9 @@ Section "MainSection" SEC01
   File "..\payload\Qt6SerialPort.dll"
   File "..\payload\Qt6Svg.dll"
   File "..\payload\Qt6Widgets.dll"
+  File "..\payload\Qt6PrintSupport.dll"
   File "..\payload\Shutter Tester ST-2 App.exe"
+  File "..\payload\report_style_configs.json"
   CreateDirectory "$SMPROGRAMS\Shutter Tester ST-2 App"
   CreateShortCut "$SMPROGRAMS\Shutter Tester ST-2 App\Shutter Tester ST-2 App.lnk" "$INSTDIR\Shutter Tester ST-2 App.exe"
   CreateShortCut "$DESKTOP\Shutter Tester ST-2 App.lnk" "$INSTDIR\Shutter Tester ST-2 App.exe"
@@ -215,7 +216,7 @@ Section Uninstall
   Delete "$INSTDIR\generic\qtuiotouchplugin.dll"
   Delete "$INSTDIR\D3Dcompiler_47.dll"
   Delete "$INSTDIR\assets\st2_fp_report_template.html"
-  Delete "$INSTDIR\assets\camera_icon_64x64.png"
+  Delete "$INSTDIR\report_style_configs.json"
 
   Delete "$SMPROGRAMS\Shutter Tester ST-2 App\Uninstall.lnk"
   Delete "$SMPROGRAMS\Shutter Tester ST-2 App\Website.lnk"

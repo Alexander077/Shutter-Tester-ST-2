@@ -1,5 +1,24 @@
 <RCC>
     <qresource prefix="/">
+        <file>assets/file-pdf.png</file>
+        <file>assets/print.png</file>
+        <file>assets/html-file.png</file>
+        <file>assets/brightness.png</file>
+        <file>assets/plug-connection.png</file>
         <file>assets/camera_icon_64x64.png</file>
+        <file>assets/cross-circle.png</file>
+        <file>assets/play.png</file>
+        <file>assets/angle-double-right.png</file>
+        <file>assets/angle-double-left.png</file>
+        <file>assets/cross.png</file>
+        <file>assets/stop.png</file>
+        <file>assets/add-document.png</file>
+        <file>assets/refresh.png</file>
+        <file>assets/exit.png</file>
+        <file>assets/disk.png</file>
+        <file>assets/folder-open.png</file>
+        <file>assets/document-gear.png</file>
+        <file>assets/info.png</file>
+        <file>assets/upload.png</file>
     </qresource>
 </RCC>

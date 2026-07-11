@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(ShutterTesterApp VERSION 0.6.0 LANGUAGES CXX)
+project(ShutterTesterApp VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -27,6 +27,14 @@ file(GLOB_RECURSE ASSET_FILES "assets/*")
 
 # 2. Set path inside macOS bundle (Contents/Resources/assets)
 set_source_files_properties(${ASSET_FILES} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/assets")
+
+# 3. Include report_style_configs.json in macOS bundle (Contents/MacOS — next to the binary)
+if(APPLE)
+    set_source_files_properties("${CMAKE_SOURCE_DIR}/report_style_configs.json" PROPERTIES MACOSX_PACKAGE_LOCATION "MacOS")
+    set(REPORT_STYLE_CONFIG_SOURCE "${CMAKE_SOURCE_DIR}/report_style_configs.json")
+else()
+    set(REPORT_STYLE_CONFIG_SOURCE "")
+endif()
 # ---------------------------
 
 qt_add_executable(appShutterTesterApp
@@ -42,9 +50,14 @@ qt_add_executable(appShutterTesterApp
     LightSetupDialog.h
     ConnectionDialog.cpp
     ConnectionDialog.h
+    ReportSettingsDialog.cpp
+    ReportSettingsDialog.h
+    ReportStyleSelectionDialog.cpp
+    ReportStyleSelectionDialog.h
     resources.qrc
     ${PLATFORM_SOURCES}
     ${ASSET_FILES}
+    ${REPORT_STYLE_CONFIG_SOURCE}
 )
 
 set_target_properties(appShutterTesterApp PROPERTIES
@@ -61,6 +74,13 @@ if(NOT APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:appShutterTesterApp>/assets"
         COMMENT "Copying assets directory to build output..."
+    )
+    # Copy report_style_configs.json to build output (next to executable)
+    add_custom_command(TARGET appShutterTesterApp POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+        "${CMAKE_CURRENT_SOURCE_DIR}/report_style_configs.json"
+        "$<TARGET_FILE_DIR:appShutterTesterApp>/report_style_configs.json"
+        COMMENT "Copying report_style_configs.json to build output..."
     )
 endif()
 

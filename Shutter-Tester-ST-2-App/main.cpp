@@ -22,7 +22,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setOrganizationName("ShutterTester");
     app.setOrganizationDomain("shuttertester.com");
-    app.setApplicationName("ST-2 Client App");
+    app.setApplicationName("ST-2 App");
 
     MainWindow w;
     w.show();

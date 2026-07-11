@@ -40,7 +40,6 @@ ConnectionDialog::ConnectionDialog(SerialController *controller, bool isStartup,
     , m_isStartup(isStartup)
 {
     setWindowTitle(tr("Connect To Device"));
-    setMinimumWidth(300);
 
     QVBoxLayout *mainLayout = new QVBoxLayout(this);
 
@@ -75,6 +74,12 @@ ConnectionDialog::ConnectionDialog(SerialController *controller, bool isStartup,
 
     onAvailablePortsChanged();
     m_controller->refreshPorts();
+
+    // Make the dialog non-resizable with a fixed width
+    // Note: QLayout::SetFixedSize overrides setFixedWidth, so we use
+    // adjustSize() to compute the natural height, then fix both dimensions.
+    adjustSize();
+    setFixedSize(300, height());
 }
 
 void ConnectionDialog::onConnectClicked()

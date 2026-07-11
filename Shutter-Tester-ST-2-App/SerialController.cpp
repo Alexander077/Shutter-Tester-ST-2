@@ -103,8 +103,8 @@ void SerialController::connectToPort(const QString &portName)
 
     if (m_serial.open(QIODevice::ReadWrite)) {
         // As per specs: setting DTR/RTS to false can prevent unwanted reboots
-        m_serial.setDataTerminalReady(false);
-        m_serial.setRequestToSend(false);
+        // m_serial.setDataTerminalReady(false);
+        // m_serial.setRequestToSend(false);
 
         m_readBuffer.clear();
         emit isConnectedChanged();

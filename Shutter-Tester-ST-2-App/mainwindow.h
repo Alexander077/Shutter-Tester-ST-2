@@ -25,8 +25,14 @@
 #include <QMap>
 #include <QScrollArea>
 #include <QVBoxLayout>
+#include <QGroupBox>
+#include <QPushButton>
+#include <QProgressBar>
+#include <QLabel>
 #include "SerialController.h"
 #include "FirmwareUpdateDialog.h"
+#include "ReportSettingsDialog.h"
+#include "ReportStyleSelectionDialog.h"
 
 class BlinkingRowDelegate;
 class QLabel;
@@ -76,16 +82,24 @@ private slots:
     void onIsConnectedChanged();
     void onErrorOccurred(const QString &errorString);
     void onMeasurementReceived(const QJsonObject &result);
-    void onGenerateReportClicked();
+    void onSavePDFReportClicked();
+    void onSaveHTMLReportClicked();
+    void onPrintReportTriggered();
     void onSpeedsTableSelectionChanged();
     void onFirmwareUpdateTriggered();
-    void onLightSetupTriggered();
+    void onLightSetupToggleClicked();
+    void onLightSetupDataReceived(const QJsonObject &data);
     void onConnectToDeviceTriggered();
     void onSaveSessionTriggered();
     void onRestoreSessionTriggered();
     void onAboutTriggered();
     void onExitTriggered();
-
+    void onStartMeasurementsClicked();
+    void onStopCurrentSpeedMeasurementClicked();
+    void onClearAllResultsClicked();
+    void onMoveToPrevSpeedClicked();
+    void onMoveToNextSpeedClicked();
+    void onReportSettingsTriggered();
 protected:
     void closeEvent(QCloseEvent *event) override;
 
@@ -108,10 +122,21 @@ private:
     void updateDetailPanel(int row);
     void updateDeviceStatusBar();
 
+    void setupLightSetupPanel();
+    void showLightSetupContent();
+    void hideLightSetupContent();
+
     Ui::MainWindow *ui;
     QSettings m_settings;
     SerialController m_serialController;
     int m_previousSpeedSeriesIndex = 0;
+    
+    // Light Setup panel members
+    bool m_lightSetupActive = false;
+    QPushButton *m_lightSetupToggleButton = nullptr;
+    QLabel *m_lightSetupQualityLabel = nullptr;
+    QProgressBar *m_lightSetupSensor1Bar = nullptr;
+    QProgressBar *m_lightSetupSensor2Bar = nullptr;
     
     int m_currentMeasurementRow = -1;
     int m_measurementsTotal = 0;
@@ -121,7 +146,13 @@ private:
     QVector<MeasurementRun> m_currentRuns;
     QVector<RowData> m_rowsData;
 
-    QString generateReportHtml();
+    QString generateReportHtml(const QJsonObject &reportStyle = QJsonObject(), bool printCurtainTable = true, bool curtainTableOnSecondPage = false, bool renderUntestedSpeedRows = false);
+    QString generateFooterHtml(const QJsonObject &reportStyle = QJsonObject());
+    void applyReportStyleToHtml(QString &html, const QJsonObject &style);
+    QJsonObject selectReportStyle(bool &printCurtainTable, bool &curtainTableOnSecondPage, bool &renderUntestedSpeedRows);
+    void renderReportWithFooter(QPagedPaintDevice *device, const QString &mainHtml, const QString &footerHtml);
+
+    bool m_sessionMeasurementsActive = false;
 
     QTimer m_blinkTimer;
     BlinkingRowDelegate *m_delegate = nullptr;
