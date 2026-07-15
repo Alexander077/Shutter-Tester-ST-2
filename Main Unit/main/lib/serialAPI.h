@@ -67,29 +67,6 @@ void safePrintJson(const char *json_str)
     xSemaphoreGive(serialPrintMutex);
 }
 
-/**
- * @brief Таска отправляет ALIVE-статус каждые 500 мс.
- *        Использует мьютекс, чтобы не мешать serialApiTask.
- */
-void aliveTask(void *pvParameters)
-{
-  while (true)
-  {
-    cJSON *msg = cJSON_CreateObject();
-    cJSON_AddStringToObject(msg, "cmd", "ALIVE");
-    cJSON_AddStringToObject(msg, "deviceName", About::DEVICE_NAME);
-    cJSON_AddStringToObject(msg, "hwVersion", About::HW_VERSION);
-    cJSON_AddStringToObject(msg, "swVersion", About::SW_VERSION);
-
-    char *alive_str = cJSON_PrintUnformatted(msg);
-    safePrintJson(alive_str);
-    free(alive_str);
-    cJSON_Delete(msg);
-
-    vTaskDelay(pdMS_TO_TICKS(500));
-  }
-}
-
 void serialApiTask(void *pvParameters)
 {
   SERIAL_API_DEBUG_PRINT("[API_FLOW] --- Task serialApiTask started ---\n");

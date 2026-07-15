@@ -2615,6 +2615,17 @@ void setup()
 	// delay(2000);
 	// halt();
 
+	// for (int i = 0; i < 3; i++)
+	// {
+	// 	digitalWrite(15, HIGH);
+	// 	delay(500);
+	// 	digitalWrite(15, LOW);
+	// 	delay(500);
+	// }
+
+	// dacWrite(DAC1, 0);
+	// delay(1000000000);
+
 	// esp_log_level_set("*", ESP_LOG_NONE);
 
 	display->begin();
@@ -2663,7 +2674,6 @@ void setup()
 	serialPrintMutex = xSemaphoreCreateMutex();
 
 	xTaskCreatePinnedToCore(serialApiTask, "SerialAPI", 8 * 1024, NULL, 1, NULL, 0);
-	xTaskCreatePinnedToCore(aliveTask, "AliveTask", 3 * 1024, NULL, 1, NULL, 0);
 
 	esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
 	// esp_ota_mark_app_invalid_rollback_and_reboot();//mark as invalid in case of system test if failed
