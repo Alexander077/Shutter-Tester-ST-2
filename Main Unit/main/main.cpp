@@ -147,7 +147,7 @@ typedef enum
 #define ADC_OUTPUT_TYPE ADC_DIGI_OUTPUT_FORMAT_TYPE1
 #define ADC_GET_CHANNEL(p_data) ((p_data)->type1.channel)
 #define ADC_GET_DATA(p_data) ((p_data)->type1.data)
-static adc_channel_t channel[2] = {ADC_CHANNEL_1, ADC_CHANNEL_2};
+static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
 
 // static TaskHandle_t s_task_handle;
 adc_continuous_handle_t handle = NULL;
@@ -158,7 +158,7 @@ static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_c
 {
 	BaseType_t mustYield = pdFALSE;
 	// Notify that ADC continuous driver has done enough number of conversions
-	vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
+	// vTaskNotifyGiveFromISR(s_task_handle, &mustYield);
 
 	return (mustYield == pdTRUE);
 }
@@ -1495,31 +1495,28 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 void drawMeasuringScreen()
 {
-		sensor0Max = 0;
-		sensor1Max = 0;
+		// sensor0Max = 0;
+		// sensor1Max = 0;
 
-		uint32_t sensor1ADCSamplesCounter = 0;
-		bool isSensor1Opened = false;
-		bool isSensor1Closed = false;
-		uint32_t sensor2ADCSamplesCounter = 0;
-		bool isSensor2Opened = false;
-		bool isSensor2Closed = false;
-		uint32_t time = 0;
+		// uint32_t sensor1ADCSamplesCounter = 0;
+		// bool isSensor1Opened = false;
+		// bool isSensor1Closed = false;
+		// uint32_t sensor2ADCSamplesCounter = 0;
+		// bool isSensor2Opened = false;
+		// bool isSensor2Closed = false;
+		// uint32_t time = 0;
 
-		esp_err_t adcReadRes;
-		uint32_t retNum = 0;
-		uint8_t result[ADC_READ_LEN] = {0};
-		memset(result, 0xcc, ADC_READ_LEN);
+		vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
 
-		const uint16_t resArrLength = UINT8_MAX + 1;
-		uint16_t sensor1ResArr[resArrLength] = {};
-		uint16_t sensor2ResArr[resArrLength] = {};
-		uint8_t sensor1ResArrInd = 0;
-		uint8_t sensor2ResArrInd = 0;
-		uint32_t curtain1ADCSamplesCounter = 0;
-		uint32_t curtain2ADCSamplesCounter = 0;
-		int8_t curtain1firstOpenedSensor = -1;
-		int8_t curtain2firstClosedSensor = -1;
+		// const uint16_t resArrLength = UINT8_MAX + 1;
+		// uint16_t sensor1ResArr[resArrLength] = {};
+		// uint16_t sensor2ResArr[resArrLength] = {};
+		// uint8_t sensor1ResArrInd = 0;
+		// uint8_t sensor2ResArrInd = 0;
+		// uint32_t curtain1ADCSamplesCounter = 0;
+		// uint32_t curtain2ADCSamplesCounter = 0;
+		// int8_t curtain1firstOpenedSensor = -1;
+		// int8_t curtain2firstClosedSensor = -1;
 
 		display->fillScreen(BLACK);
 		display->setTextSize(2);
@@ -1546,6 +1543,17 @@ void drawMeasuringScreen()
 
 		// char unit[] = ADC_UNIT_STR(ADC_UNIT);
 
+		esp_err_t adcReadRes;
+		uint32_t retNum = 0;
+		uint8_t result[EXAMPLE_READ_LEN] = {0};
+		memset(result, 0xcc, EXAMPLE_READ_LEN);
+
+		// --- Переменные для расчета длительности импульса ---
+		static pulse_state_t p_state = STATE_IDLE;
+		static uint32_t pulse_sample_count = 0;
+		static uint16_t max_val = 0;
+		static uint16_t edge_buffer[EDGE_BUFFER_SIZE] = {0};
+
 		while (true)
 		{
 			if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
@@ -1554,112 +1562,102 @@ void drawMeasuringScreen()
 				return;
 			}
 
-			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
+			adcReadRes = adc_continuous_read(handle, result, EXAMPLE_READ_LEN, &retNum, UINT32_MAX);
 
 			if (adcReadRes == ESP_OK)
 			{
-				// ESP_LOGI("TASK", "ret is %x, ret_num is %" PRIu32 " bytes", ret, ret_num);
-				for (int i = 0; i < retNum; i += SOC_ADC_DIGI_RESULT_BYTES)
+				// Быстрый ручной парсинг: каждый сэмпл — 2 байта (SOC_ADC_DIGI_RESULT_BYTES = 2)
+				// Формат ESP32 (type1): [15:12] = канал, [11:0] = данные
+				uint16_t *raw = (uint16_t *)result;
+				uint32_t num_samples = retNum / SOC_ADC_DIGI_RESULT_BYTES;
+
+				for (uint32_t i = 0; i < num_samples; i++)
 				{
-					adc_digi_output_data_t *p = (adc_digi_output_data_t *)&result[i];
-					uint32_t chan_num = ADC_GET_CHANNEL(p);
-					uint16_t adcVal = ADC_GET_DATA(p);
+					uint16_t ch = (raw[i] >> 12) & 0xF;
+					uint16_t val = raw[i] & 0xFFF;
+					// ch   — номер канала АЦП
+					// val  — значение АЦП (0..4095 для 12 бит)
 
-					if (chan_num == ADC_CHANNEL_1) // senosor 1
+					if (ch == ADC_CHANNEL_6)
 					{
-						if (adcVal > sensor0Max)
+						// Реализация конечного автомата для ADC_CHANNEL_6
+						if (p_state == STATE_IDLE)
 						{
-							sensor0Max = adcVal;
+							if (val > NOISE_THRESHOLD)
+							{
+								// Начало импульса
+								p_state = STATE_PULSE_ACTIVE;
+								max_val = val;
+								pulse_sample_count = 0;
+								edge_buffer[0] = val;
+							}
 						}
-
-						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor1Opened)
+						else if (p_state == STATE_PULSE_ACTIVE)
 						{
-							isSensor1Opened = true;
-							// ESP_LOGI("", "On");
+							pulse_sample_count++;
+
+							// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
+							if (pulse_sample_count < EDGE_BUFFER_SIZE)
+							{
+								edge_buffer[pulse_sample_count] = val;
+							}
+
+							// Постоянно обновляем значение вершины
+							if (val > max_val)
+							{
+								max_val = val;
+							}
+
+							// Ловим спад: текущее значение упало ниже половины от найденного максимума
+							if (val < (max_val / 2) && max_val >= MIN_VALID_PEAK)
+							{
+								uint32_t end_sample = pulse_sample_count;
+								uint32_t start_sample = 0;
+								uint16_t half_max = max_val / 2;
+
+								// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
+								uint32_t limit = (pulse_sample_count < EDGE_BUFFER_SIZE) ? pulse_sample_count : EDGE_BUFFER_SIZE;
+
+								for (uint32_t j = 0; j < limit; j++)
+								{
+									if (edge_buffer[j] >= half_max)
+									{
+										start_sample = j;
+										break;
+									}
+								}
+
+								// Считаем длительность (1 сэмпл = 2 мкс, т.к. 500 кГц на канал)
+								uint32_t width_samples = end_sample - start_sample;
+								// uint32_t width_us = (width_samples * 2);
+								uint32_t width_us = width_samples * 1.1;
+
+								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
+
+								// Переходим в режим ожидания полного спада сигнала
+								p_state = STATE_WAIT_FOR_ZERO;
+							}
 						}
-
-						if (adcVal < sensor0Max - SHUTTER_OPEN_LEVEL && !isSensor1Closed)
+						else if (p_state == STATE_WAIT_FOR_ZERO)
 						{
-							isSensor1Closed = true;
-							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
-						}
-
-						if (isSensor1Opened && !isSensor1Closed)
-						{
-							sensor1ADCSamplesCounter++;
-						}
-
-						if (!isSensor1Closed || (isSensor1Closed && adcVal > 50))
-						{
-							sensor1ResArr[sensor1ResArrInd] = adcVal;
-							sensor1ResArrInd++;
+							// Ждем пока сигнал опустится до нуля (или почти до нуля)
+							if (val < RESET_THRESHOLD)
+							{
+								p_state = STATE_IDLE;
+							}
 						}
 					}
-					else // sensor 2
+					else if (ch == ADC_CHANNEL_7 && val > 100)
 					{
-						if (adcVal > sensor1Max)
-						{
-							sensor1Max = adcVal;
-						}
-
-						if (adcVal > SHUTTER_OPEN_LEVEL && !isSensor2Opened)
-						{
-							isSensor2Opened = true;
-							// ESP_LOGI("", "On");
-						}
-
-						if (adcVal < sensor1Max - SHUTTER_OPEN_LEVEL && !isSensor2Closed)
-						{
-							isSensor2Closed = true;
-							// ESP_LOGI("", "Off. ADC %" PRIu16 ", max: %" PRIi16, adcVal, sensor0Max);
-						}
-
-						if (isSensor2Opened && !isSensor2Closed)
-						{
-							sensor2ADCSamplesCounter++;
-						}
-
-						if (!isSensor2Closed || (isSensor2Closed && adcVal > 50))
-						{
-							sensor2ResArr[sensor2ResArrInd] = adcVal;
-							sensor2ResArrInd++;
-						}
+						// digitalWrite(TEST_PIN_2_NUM, testPin2State);
+						// testPin2State = !testPin2State;
 					}
-
-					if ((isSensor1Opened && !isSensor2Opened) ||
-							(!isSensor1Opened && isSensor2Opened))
-					{
-						curtain1ADCSamplesCounter++;
-					}
-
-					if ((!isSensor1Closed && isSensor2Closed) ||
-								(isSensor1Closed && !isSensor2Closed))
-					{
-						curtain2ADCSamplesCounter++;
-					}
-
-					// /* Check the channel number validation, the data is invalid if the channel num exceed the maximum channel */
-					// if (chan_num < SOC_ADC_CHANNEL_NUM(EXAMPLE_ADC_UNIT))
-					// {
-					// ESP_LOGI(TAG, "Unit: %s, Channel: %" PRIu32 ", Value: %" PRIu32, unit, chan_num, data);
-					// }
-					// else
-					// {
-					//   ESP_LOGW(TAG, "Invalid data [%s_%" PRIu32 "_%" PRIx32 "]", unit, chan_num, data);
-					// }
 				}
-
-				/**
-				 * Because printing is slow, so every time you call `ulTaskNotifyTake`, it will immediately return.
-				 * To avoid a task watchdog timeout, add a delay here. When you replace the way you process the data,
-				 * usually you don't need this delay (as this task will block for a while).
-				 */
-				// vTaskDelay(1);
 			}
 			else if (adcReadRes == ESP_ERR_TIMEOUT)
 			{
 				// We try to read `EXAMPLE_READ_LEN` until API returns timeout, which means there's no available data
-				ESP_LOGW("", "ADC timed out");
+				// ESP_LOGW("", "ADC timed out");
 				break;
 			}
 
@@ -1668,34 +1666,34 @@ void drawMeasuringScreen()
 				ESP_ERROR_CHECK(adc_continuous_stop(handle));
 				return;
 			}
-			else if (((isSensor1Opened && isSensor1Closed) ||
-								(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
-			{
-				if (time == 0)
-				{
-					time = millis();
-				}
+			// else if (((isSensor1Opened && isSensor1Closed) ||
+			// 					(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
+			// {
+			// 	if (time == 0)
+			// 	{
+			// 		time = millis();
+			// 	}
 
-				// wait for other sensors to get data
-				if (millis() - time > 500)
-				{
-					ESP_ERROR_CHECK(adc_continuous_stop(handle));
-					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
-					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+			// 	// wait for other sensors to get data
+			// 	if (millis() - time > 500)
+			// 	{
+			// 		ESP_ERROR_CHECK(adc_continuous_stop(handle));
+			// 		SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+			// 		SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-														 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-														 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+			// 		drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+			// 											 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+			// 											 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+			// 											 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
-					/* for (uint8_t i = 0; i < resArrLength - 1; i++)
-					{
-						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-					} */
+			// 		/* for (uint8_t i = 0; i < resArrLength - 1; i++)
+			// 		{
+			// 			ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
+			// 		} */
 
-					return;
-				}
-			}
+			// 		return;
+			// 	}
+			// }
 		}
 		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
@@ -1924,8 +1922,8 @@ void drawLightCheckScreen()
 
 	esp_err_t adcReadRes;
 	uint32_t retNum = 0;
-	uint8_t result[ADC_READ_LEN] = {0};
-	memset(result, 0xcc, ADC_READ_LEN);
+	uint8_t result[EXAMPLE_READ_LEN] = {0};
+	memset(result, 0xcc, EXAMPLE_READ_LEN);
 
 	const char *lightQualityBrightnessLabel = "Light quality";
 	char *lightQualityStatusesStr[3] = {"Unknown", "Ok", "Bad"};
@@ -1966,7 +1964,7 @@ void drawLightCheckScreen()
 				return;
 			}
 
-			adcReadRes = adc_continuous_read(handle, result, ADC_READ_LEN, &retNum, UINT32_MAX);
+			adcReadRes = adc_continuous_read(handle, result, EXAMPLE_READ_LEN, &retNum, UINT32_MAX);
 
 			if (adcReadRes == ESP_OK)
 			{
