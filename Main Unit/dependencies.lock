@@ -428,5 +428,5 @@ direct_dependencies:
 - espressif/arduino-esp32
 - joltwallet/littlefs
 manifest_hash: b522c400f363a27beb670da53a441a752dbdde83f59787bd05ab94534939c276
-target: esp32s2
+target: esp32
 version: 2.0.0
