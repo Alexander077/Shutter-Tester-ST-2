@@ -18,7 +18,7 @@
 #include "lib/AlexEncoder.h"
 #include "lib/AlexButton.h"
 #include "lib/Common.h"
-#include "lib/DisplayManager.h"
+#include "lib/MeasuredResult.h"
 #include "lib/StoredMeasuredResult.h"
 #include "lib/About.h"
 #include "lib/Images.h"
@@ -27,11 +27,13 @@
 
 #include "esp_partition.h"
 
-// #define DISPLAY_CS SS
+#define DISPLAY_CS SS
+#define DISPLAY_SCK SCK
+#define DISPLAY_MOSI MOSI
 #define DISPLAY_RESET 17
 #define DISPLAY_DC 16
 
-#define ENCODER_B_PIN 12
+#define ENCODER_B_PIN 27
 #define ENCODER_A_PIN 13
 #define BUTTON_PIN 14
 
@@ -60,7 +62,7 @@ RecordsStorageManager storage(RECORDS_FILE_PATH);
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
-Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, SS, SCK, MOSI);
+Arduino_DataBus *bus = new Arduino_HWSPI(DISPLAY_DC, DISPLAY_CS, DISPLAY_SCK, DISPLAY_MOSI);
 
 /* More display class: https://github.com/moononournation/Arduino_GFX/wiki/Display-Class */
 Arduino_GFX *display = new Arduino_ST7735(
@@ -102,8 +104,6 @@ enum class CurtainMovementSelectionScreenResult
 	GO_BACK,
 	GO_TO_MAIN_MENU
 };
-
-DisplayManager displayManager;
 
 uint16_t sensor0Max = 0;
 uint16_t sensor1Max = 0;
@@ -1499,13 +1499,13 @@ void drawMeasuringScreen()
 		// sensor0Max = 0;
 		// sensor1Max = 0;
 
-		// uint32_t sensor1ADCSamplesCounter = 0;
-		// bool isSensor1Opened = false;
-		// bool isSensor1Closed = false;
-		// uint32_t sensor2ADCSamplesCounter = 0;
-		// bool isSensor2Opened = false;
-		// bool isSensor2Closed = false;
-		// uint32_t time = 0;
+		uint32_t sensor1ADCSamplesCounter = 0;
+		bool isSensor1Opened = false;
+		bool isSensor1Closed = false;
+		uint32_t sensor2ADCSamplesCounter = 0;
+		bool isSensor2Opened = false;
+		bool isSensor2Closed = false;
+		uint32_t time = 0;
 
 		vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
 
@@ -1514,8 +1514,8 @@ void drawMeasuringScreen()
 		// uint16_t sensor2ResArr[resArrLength] = {};
 		// uint8_t sensor1ResArrInd = 0;
 		// uint8_t sensor2ResArrInd = 0;
-		// uint32_t curtain1ADCSamplesCounter = 0;
-		// uint32_t curtain2ADCSamplesCounter = 0;
+		uint32_t curtain1ADCSamplesCounter = 0;
+		uint32_t curtain2ADCSamplesCounter = 0;
 		// int8_t curtain1firstOpenedSensor = -1;
 		// int8_t curtain2firstClosedSensor = -1;
 
@@ -1574,10 +1574,8 @@ void drawMeasuringScreen()
 
 				for (uint32_t i = 0; i < num_samples; i++)
 				{
-					uint16_t ch = (raw[i] >> 12) & 0xF;
-					uint16_t val = raw[i] & 0xFFF;
-					// ch   — номер канала АЦП
-					// val  — значение АЦП (0..4095 для 12 бит)
+					uint16_t ch = (raw[i] >> 12) & 0xF; // номер канала АЦП
+					uint16_t val = raw[i] & 0xFFF;			// значение АЦП (0..4095 для 12 бит)
 
 					if (ch == ADC_CHANNEL_6)
 					{
@@ -1628,10 +1626,9 @@ void drawMeasuringScreen()
 									}
 								}
 
-								// Считаем длительность (1 сэмпл = 2 мкс, т.к. 500 кГц на канал)
+								// Считаем длительность 
 								uint32_t width_samples = end_sample - start_sample;
-								// uint32_t width_us = (width_samples * 2);
-								uint32_t width_us = width_samples * 1.1;
+								uint32_t width_us = width_samples * 2.2;
 
 								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
 
@@ -1650,8 +1647,6 @@ void drawMeasuringScreen()
 					}
 					else if (ch == ADC_CHANNEL_7 && val > 100)
 					{
-						// digitalWrite(TEST_PIN_2_NUM, testPin2State);
-						// testPin2State = !testPin2State;
 					}
 				}
 			}
@@ -1667,34 +1662,34 @@ void drawMeasuringScreen()
 				ESP_ERROR_CHECK(adc_continuous_stop(handle));
 				return;
 			}
-			// else if (((isSensor1Opened && isSensor1Closed) ||
-			// 					(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
-			// {
-			// 	if (time == 0)
-			// 	{
-			// 		time = millis();
-			// 	}
+			else if (((isSensor1Opened && isSensor1Closed) ||
+								(isSensor2Opened && isSensor2Closed))) // Check if at least one sensor has data
+			{
+				if (time == 0)
+				{
+					time = millis();
+				}
 
-			// 	// wait for other sensors to get data
-			// 	if (millis() - time > 500)
-			// 	{
-			// 		ESP_ERROR_CHECK(adc_continuous_stop(handle));
-			// 		SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
-			// 		SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+				// wait for other sensors to get data
+				if (millis() - time > 500)
+				{
+					ESP_ERROR_CHECK(adc_continuous_stop(handle));
+					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 1: %" PRIu32, sensor1ADCSamplesCounter);
+					SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-			// 		drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-			// 											 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-			// 											 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-			// 											 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+					drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+														 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
+														 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+														 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
-			// 		/* for (uint8_t i = 0; i < resArrLength - 1; i++)
-			// 		{
-			// 			ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-			// 		} */
+					/* for (uint8_t i = 0; i < resArrLength - 1; i++)
+					{
+						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
+					} */
 
-			// 		return;
-			// 	}
-			// }
+					return;
+				}
+			}
 		}
 		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
@@ -2646,18 +2641,14 @@ void setup()
   display->fillScreen(BLACK);
   display->setTextColor(WHITE);
   display->setFont(u8g2_font_6x13_tf);
-
-	// while (1)
+	
+	// while (true)
 	// {
-	// 	display->fillScreen(BLACK);
-
-	// 	for (int i = 0; i < 10; i++)
+	// 	for (size_t y = 0; y < 50; y+=5)
 	// 	{
-	// 		for (size_t y = 0; y < 10; y++)
-	// 		{
-	// 			display->drawRect(i, y, 10, 10, GREEN);
-	// 		}
+	// 		display->drawRect(y, y, 10, 10, GREEN);
 	// 	}
+	// }
 
 	// 	display->setCursor(10, 30);
 	// 	display->print("Display test");

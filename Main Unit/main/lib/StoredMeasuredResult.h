@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include "Direction.h"
 
 #pragma once
 
@@ -7,8 +6,6 @@ struct StoredMeasuredResult
 {
   int32_t recordNumber;
   bool isDeleted;
-
-  // Direction curtainMovementDirection;
 
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds

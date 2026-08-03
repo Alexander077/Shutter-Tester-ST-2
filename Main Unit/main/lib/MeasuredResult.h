@@ -1,12 +1,9 @@
 #pragma once
 
-#include "Direction.h"
 #include "Common.h"
 
 struct MeasuredResult
 {
-  // Direction curtainMovementDirection;
-
   double sensor0Time; // In milliseconds
   double sensor1Time; // In milliseconds
 
