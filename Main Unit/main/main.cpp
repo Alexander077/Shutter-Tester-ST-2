@@ -1914,7 +1914,7 @@ void drawLightCheckScreen()
 	uint32_t sensor1OpenADCSamplesCounter = 0;
 	uint32_t sensor2TotalADCSamplesCounter = 0;
 	uint32_t sensor2OpenADCSamplesCounter = 0;
-	const uint16_t displayUpdateSamplesCount = 8000;//200ms interval
+	const uint16_t displayUpdateSamplesCount = 80000;//200ms interval
 
 	esp_err_t adcReadRes;
 	uint32_t retNum = 0;
@@ -1970,7 +1970,7 @@ void drawLightCheckScreen()
 					uint32_t chan_num = ADC_GET_CHANNEL(p);
 					uint16_t adcVal = ADC_GET_DATA(p);
 
-					if (chan_num == ADC_CHANNEL_1) // senosor 1
+					if (chan_num == ADC_CHANNEL_6) // senosor 1
 					{
 						if (adcVal > sensor0Max)
 						{
