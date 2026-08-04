@@ -1,5 +1,10 @@
 #pragma once
 
+#define MM_IN_M 1000
+#define US_IN_SECOND 1000000
+#define US_IN_MINUTE 60000000
+#define US_IN_MILLISECOND 1000
+
 #define RESULT_PAGES_COUNT 4
 
 #define SHUTTER_OPEN_LEVEL 1120
