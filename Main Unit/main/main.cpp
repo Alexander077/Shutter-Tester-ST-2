@@ -132,8 +132,8 @@ enum class SensorMesuringState
 };
 
 #define EDGE_BUFFER_SIZE 500 // Храним первые 500 мкс (250 сэмплов) импульса
-#define NOISE_THRESHOLD 200	 // Порог начала импульса
-#define RESET_THRESHOLD 300	 // Порог сброса в ноль
+#define NOISE_THRESHOLD 100	 // Порог начала импульса
+#define RESET_THRESHOLD 100	 // Порог сброса в ноль
 #define MIN_VALID_PEAK 300	 // Минимальная вершина, чтобы считать это импульсом, а не помехой
 
 void startFirmwareUpdate();
@@ -1528,6 +1528,15 @@ void drawMeasuringScreen()
 		edgeBuffer[EDGE_BUFFER_SIZE] = {0};
 		uint32_t sensorPulseWidthUs = 0;
 
+		static const uint16_t waveformRecordbufferLength = 5000;
+		static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
+		static uint16_t waveformRecordbufferIndex = 0;
+		waveformRecordbufferIndex = 0;
+		waveformRecordbuffer[waveformRecordbufferLength] = {0};
+
+		printf("ADC reading started\n");
+		fflush(stdout);
+
 		while (true)
 		{
 			if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
@@ -1562,6 +1571,7 @@ void drawMeasuringScreen()
 								maxVal = val;
 								pulseSampleCount = 0;
 								edgeBuffer[0] = val;
+								waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 							}
 						}
 						else if (sensor1State == SensorMesuringState::PulseActive)
@@ -1573,6 +1583,8 @@ void drawMeasuringScreen()
 							{
 								edgeBuffer[pulseSampleCount] = val;
 							}
+
+							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 
 							// Постоянно обновляем значение вершины
 							if (val > maxVal)
@@ -1601,7 +1613,7 @@ void drawMeasuringScreen()
 
 								// Считаем длительность 
 								uint32_t width_samples = end_sample - start_sample;
-								sensorPulseWidthUs = width_samples * 2.2;
+								sensorPulseWidthUs = width_samples * 2.5;
 
 								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
 
@@ -1611,6 +1623,8 @@ void drawMeasuringScreen()
 						}
 						else if (sensor1State == SensorMesuringState::WaitForZero)
 						{
+							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+
 							// Ждем пока сигнал опустится до нуля (или почти до нуля)
 							if (val < RESET_THRESHOLD)
 							{
@@ -1646,8 +1660,17 @@ void drawMeasuringScreen()
 				if (millis() - time > 500)
 				{
 					ESP_ERROR_CHECK(adc_continuous_stop(handle));
+
+					for (size_t i = 0; i < waveformRecordbufferIndex; i++)
+					{
+						printf("%u\n", waveformRecordbuffer[i]);
+					}
+
 					printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensorPulseWidthUs);
+					
 					fflush(stdout);
+					
+					// fflush(stdout);
 					// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
 					// drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
@@ -2694,6 +2717,18 @@ void loop()
 	// drawViewRecordsScreen();
 
 	// halt();
+
+	while (true)
+	{
+		if (true /* button.isClicked() */)
+		{
+			curSensorIndex = 0;
+			curtainMovement = CurtainMovement::VERTICAL;
+			drawMeasuringScreen();
+		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
+	}
 
 	drawMainMenu();
 }
