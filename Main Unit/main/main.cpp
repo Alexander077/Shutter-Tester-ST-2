@@ -1495,8 +1495,8 @@ void drawMeasuringScreen()
 		// uint16_t sensor2ResArr[resArrLength] = {};
 		// uint8_t sensor1ResArrInd = 0;
 		// uint8_t sensor2ResArrInd = 0;
-		uint32_t curtain1ADCSamplesCounter = 0;
-		uint32_t curtain2ADCSamplesCounter = 0;
+		// uint32_t curtain1ADCSamplesCounter = 0;
+		// uint32_t curtain2ADCSamplesCounter = 0;
 		// int8_t curtain1firstOpenedSensor = -1;
 		// int8_t curtain2firstClosedSensor = -1;
 
@@ -1514,29 +1514,29 @@ void drawMeasuringScreen()
 		memset(result, 0xcc, READ_LEN);
 
 		// --- Переменные для расчета длительности импульса ---
+		static SensorMesuringState sensor0State = SensorMesuringState::Idle;
+		static uint32_t sensor0SampleCount = 0;
+		static uint16_t sensor0EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+		sensor0State = SensorMesuringState::Idle;
+		sensor0SampleCount = 0;
+		sensor0Max = 0;
+		uint32_t sensor0PulseWidthUs = 0;
+		memset(sensor0EdgeBuffer, 0, sizeof(sensor0EdgeBuffer));
+
 		static SensorMesuringState sensor1State = SensorMesuringState::Idle;
 		static uint32_t sensor1SampleCount = 0;
 		static uint16_t sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
 		sensor1State = SensorMesuringState::Idle;
 		sensor1SampleCount = 0;
 		sensor1Max = 0;
-		sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+		memset(sensor1EdgeBuffer, 0, sizeof(sensor1EdgeBuffer));
 		uint32_t sensor1PulseWidthUs = 0;
-
-		static SensorMesuringState sensor2State = SensorMesuringState::Idle;
-		static uint32_t sensor2SampleCount = 0;
-		static uint16_t sensor2EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
-		sensor2State = SensorMesuringState::Idle;
-		sensor2SampleCount = 0;
-		// sensor2Max = 0;
-		sensor2EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
-		uint32_t sensor2PulseWidthUs = 0;
 
 		static const uint16_t waveformRecordbufferLength = 5000;
 		static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
 		static uint16_t waveformRecordbufferIndex = 0;
 		waveformRecordbufferIndex = 0;
-		waveformRecordbuffer[waveformRecordbufferLength] = {0};
+		memset(waveformRecordbuffer, 0, sizeof(waveformRecordbuffer));
 
 		printf("ADC reading started\n");
 		fflush(stdout);
@@ -1566,6 +1566,57 @@ void drawMeasuringScreen()
 					if (ch == ADC_CHANNEL_6)
 					{
 						// Реализация конечного автомата для ADC_CHANNEL_6
+						if (sensor0State == SensorMesuringState::Idle)
+						{
+							if (val > NOISE_THRESHOLD)
+							{
+								// Начало импульса
+								sensor0State = SensorMesuringState::PulseActive;
+								sensor0Max = val;
+								sensor0SampleCount = 0;
+								sensor0EdgeBuffer[0] = val;
+								waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+							}
+						}
+						else if (sensor0State == SensorMesuringState::PulseActive)
+						{
+							sensor0SampleCount++;
+
+							// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
+							if (sensor0SampleCount < EDGE_BUFFER_SIZE)
+							{
+								sensor0EdgeBuffer[sensor0SampleCount] = val;
+							}
+
+							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+
+							// Постоянно обновляем значение вершины
+							if (val > sensor0Max)
+							{
+								sensor0Max = val;
+							}
+
+							// Ловим спад: текущее значение упало ниже половины от найденного максимума
+							if (val < sensor0Max / 2)
+							{
+								sensor0State = SensorMesuringState::WaitForZero;
+								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
+							}
+						}
+						else if (sensor0State == SensorMesuringState::WaitForZero)
+						{
+							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+
+							// Ждем пока сигнал опустится до нуля (или почти до нуля)
+							if (val < RESET_THRESHOLD)
+							{
+								sensor0State = SensorMesuringState::MeasurementFinished;
+							}
+						}
+					}
+					else // ch == ADC_CHANNEL_7
+					{
+						// Реализация конечного автомата для ADC_CHANNEL_6
 						if (sensor1State == SensorMesuringState::Idle)
 						{
 							if (val > NOISE_THRESHOLD)
@@ -1575,7 +1626,6 @@ void drawMeasuringScreen()
 								sensor1Max = val;
 								sensor1SampleCount = 0;
 								sensor1EdgeBuffer[0] = val;
-								waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 							}
 						}
 						else if (sensor1State == SensorMesuringState::PulseActive)
@@ -1588,8 +1638,6 @@ void drawMeasuringScreen()
 								sensor1EdgeBuffer[sensor1SampleCount] = val;
 							}
 
-							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
-
 							// Постоянно обновляем значение вершины
 							if (val > sensor1Max)
 							{
@@ -1599,46 +1647,17 @@ void drawMeasuringScreen()
 							// Ловим спад: текущее значение упало ниже половины от найденного максимума
 							if (val < sensor1Max / 2)
 							{
-								uint32_t end_sample = sensor1SampleCount;
-								uint32_t start_sample = 0;
-								uint16_t half_max = sensor1Max / 2;
-
-								// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
-								uint32_t limit = (sensor1SampleCount < EDGE_BUFFER_SIZE) ? sensor1SampleCount : EDGE_BUFFER_SIZE;
-
-								for (uint32_t j = 0; j < limit; j++)
-								{
-									if (sensor1EdgeBuffer[j] >= half_max)
-									{
-										start_sample = j;
-										break;
-									}
-								}
-
-								// Считаем длительность 
-								uint32_t width_samples = end_sample - start_sample;
-								sensor1PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
-
-								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
-
-								// Переходим в режим ожидания полного спада сигнала
 								sensor1State = SensorMesuringState::WaitForZero;
 							}
 						}
 						else if (sensor1State == SensorMesuringState::WaitForZero)
 						{
-							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
-
 							// Ждем пока сигнал опустится до нуля (или почти до нуля)
 							if (val < RESET_THRESHOLD)
 							{
 								sensor1State = SensorMesuringState::MeasurementFinished;
 							}
 						}
-					}
-					else // ch == ADC_CHANNEL_7
-					{
-						
 					}
 				}
 			}
@@ -1654,7 +1673,8 @@ void drawMeasuringScreen()
 				ESP_ERROR_CHECK(adc_continuous_stop(handle));
 				return;
 			}
-			else if (sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
+			else if (sensor0State == SensorMesuringState::MeasurementFinished ||
+							 sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
 			{
 				if (time == 0)
 				{
@@ -1666,16 +1686,61 @@ void drawMeasuringScreen()
 				{
 					ESP_ERROR_CHECK(adc_continuous_stop(handle));
 
-					for (size_t i = 0; i < waveformRecordbufferIndex; i++)
+					if (sensor0State == SensorMesuringState::MeasurementFinished)
 					{
-						printf("%u\n", waveformRecordbuffer[i]);
+						uint32_t end_sample = sensor0SampleCount;
+						uint32_t start_sample = 0;
+						uint16_t half_max = sensor0Max / 2;
+
+						// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
+						uint32_t limit = (sensor0SampleCount < EDGE_BUFFER_SIZE) ? sensor0SampleCount : EDGE_BUFFER_SIZE;
+
+						for (uint32_t j = 0; j < limit; j++)
+						{
+							if (sensor0EdgeBuffer[j] >= half_max)
+							{
+								start_sample = j;
+								break;
+							}
+						}
+
+						// Считаем длительность
+						uint32_t width_samples = end_sample - start_sample;
+						sensor0PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
 					}
 
-					printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensor1PulseWidthUs);
+					if (sensor1State == SensorMesuringState::MeasurementFinished)
+					{
+						uint32_t end_sample = sensor1SampleCount;
+						uint32_t start_sample = 0;
+						uint16_t half_max = sensor1Max / 2;
+
+						// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
+						uint32_t limit = (sensor1SampleCount < EDGE_BUFFER_SIZE) ? sensor1SampleCount : EDGE_BUFFER_SIZE;
+
+						for (uint32_t j = 0; j < limit; j++)
+						{
+							if (sensor1EdgeBuffer[j] >= half_max)
+							{
+								start_sample = j;
+								break;
+							}
+						}
+
+						// Считаем длительность
+						uint32_t width_samples = end_sample - start_sample;
+						sensor1PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
+					}
 					
-					fflush(stdout);
-					
+
+					// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
+					// {
+					// 	printf("%u\n", waveformRecordbuffer[i]);
+					// }
+
+					// printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensor1PulseWidthUs);
 					// fflush(stdout);
+					
 					// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
 					// drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
