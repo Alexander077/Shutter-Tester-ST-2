@@ -130,10 +130,9 @@ enum class SensorMesuringState
 	MeasurementFinished
 };
 
-#define EDGE_BUFFER_SIZE 500 // Храним первые 500 мкс (250 сэмплов) импульса
+#define EDGE_BUFFER_SIZE 500 
 #define NOISE_THRESHOLD 100	 // Порог начала импульса
 #define RESET_THRESHOLD 100	 // Порог сброса в ноль
-#define MIN_VALID_PEAK 300	 // Минимальная вершина, чтобы считать это импульсом, а не помехой
 
 void startFirmwareUpdate();
 
@@ -1516,15 +1515,22 @@ void drawMeasuringScreen()
 
 		// --- Переменные для расчета длительности импульса ---
 		static SensorMesuringState sensor1State = SensorMesuringState::Idle;
-		static uint32_t pulseSampleCount = 0;
-		static uint16_t maxVal = 0;
-		static uint16_t edgeBuffer[EDGE_BUFFER_SIZE] = {0};
-
+		static uint32_t sensor1SampleCount = 0;
+		static uint16_t sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
 		sensor1State = SensorMesuringState::Idle;
-		pulseSampleCount = 0;
-		maxVal = 0;
-		edgeBuffer[EDGE_BUFFER_SIZE] = {0};
-		uint32_t sensorPulseWidthUs = 0;
+		sensor1SampleCount = 0;
+		sensor1Max = 0;
+		sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+		uint32_t sensor1PulseWidthUs = 0;
+
+		static SensorMesuringState sensor2State = SensorMesuringState::Idle;
+		static uint32_t sensor2SampleCount = 0;
+		static uint16_t sensor2EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+		sensor2State = SensorMesuringState::Idle;
+		sensor2SampleCount = 0;
+		// sensor2Max = 0;
+		sensor2EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+		uint32_t sensor2PulseWidthUs = 0;
 
 		static const uint16_t waveformRecordbufferLength = 5000;
 		static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
@@ -1566,43 +1572,43 @@ void drawMeasuringScreen()
 							{
 								// Начало импульса
 								sensor1State = SensorMesuringState::PulseActive;
-								maxVal = val;
-								pulseSampleCount = 0;
-								edgeBuffer[0] = val;
+								sensor1Max = val;
+								sensor1SampleCount = 0;
+								sensor1EdgeBuffer[0] = val;
 								waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 							}
 						}
 						else if (sensor1State == SensorMesuringState::PulseActive)
 						{
-							pulseSampleCount++;
+							sensor1SampleCount++;
 
 							// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
-							if (pulseSampleCount < EDGE_BUFFER_SIZE)
+							if (sensor1SampleCount < EDGE_BUFFER_SIZE)
 							{
-								edgeBuffer[pulseSampleCount] = val;
+								sensor1EdgeBuffer[sensor1SampleCount] = val;
 							}
 
 							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 
 							// Постоянно обновляем значение вершины
-							if (val > maxVal)
+							if (val > sensor1Max)
 							{
-								maxVal = val;
+								sensor1Max = val;
 							}
 
 							// Ловим спад: текущее значение упало ниже половины от найденного максимума
-							if (val < (maxVal / 2) && maxVal >= MIN_VALID_PEAK)
+							if (val < sensor1Max / 2)
 							{
-								uint32_t end_sample = pulseSampleCount;
+								uint32_t end_sample = sensor1SampleCount;
 								uint32_t start_sample = 0;
-								uint16_t half_max = maxVal / 2;
+								uint16_t half_max = sensor1Max / 2;
 
 								// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
-								uint32_t limit = (pulseSampleCount < EDGE_BUFFER_SIZE) ? pulseSampleCount : EDGE_BUFFER_SIZE;
+								uint32_t limit = (sensor1SampleCount < EDGE_BUFFER_SIZE) ? sensor1SampleCount : EDGE_BUFFER_SIZE;
 
 								for (uint32_t j = 0; j < limit; j++)
 								{
-									if (edgeBuffer[j] >= half_max)
+									if (sensor1EdgeBuffer[j] >= half_max)
 									{
 										start_sample = j;
 										break;
@@ -1611,7 +1617,7 @@ void drawMeasuringScreen()
 
 								// Считаем длительность 
 								uint32_t width_samples = end_sample - start_sample;
-								sensorPulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
+								sensor1PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
 
 								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
 
@@ -1630,8 +1636,9 @@ void drawMeasuringScreen()
 							}
 						}
 					}
-					else if (ch == ADC_CHANNEL_7 && val > 100)
+					else // ch == ADC_CHANNEL_7
 					{
+						
 					}
 				}
 			}
@@ -1664,7 +1671,7 @@ void drawMeasuringScreen()
 						printf("%u\n", waveformRecordbuffer[i]);
 					}
 
-					printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensorPulseWidthUs);
+					printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensor1PulseWidthUs);
 					
 					fflush(stdout);
 					
