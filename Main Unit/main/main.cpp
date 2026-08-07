@@ -1686,18 +1686,17 @@ void drawMeasuringScreen()
 				{
 					ESP_ERROR_CHECK(adc_continuous_stop(handle));
 
-					if (sensor0State == SensorMesuringState::MeasurementFinished)
+					auto calculatePulseWidth = [](uint32_t sampleCount, uint16_t maxValue, const uint16_t *edgeBuffer) -> uint32_t
 					{
-						uint32_t end_sample = sensor0SampleCount;
 						uint32_t start_sample = 0;
-						uint16_t half_max = sensor0Max / 2;
+						uint16_t half_max = maxValue / 2;
 
 						// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
-						uint32_t limit = (sensor0SampleCount < EDGE_BUFFER_SIZE) ? sensor0SampleCount : EDGE_BUFFER_SIZE;
+						uint32_t limit = (sampleCount < EDGE_BUFFER_SIZE) ? sampleCount : EDGE_BUFFER_SIZE;
 
 						for (uint32_t j = 0; j < limit; j++)
 						{
-							if (sensor0EdgeBuffer[j] >= half_max)
+							if (edgeBuffer[j] >= half_max)
 							{
 								start_sample = j;
 								break;
@@ -1705,31 +1704,18 @@ void drawMeasuringScreen()
 						}
 
 						// Считаем длительность
-						uint32_t width_samples = end_sample - start_sample;
-						sensor0PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
+						uint32_t width_samples = sampleCount - start_sample;
+						return width_samples * ONE_ADC_CONVERSION_TIME_US;
+					};
+
+					if (sensor0State == SensorMesuringState::MeasurementFinished)
+					{
+						sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
 					}
 
 					if (sensor1State == SensorMesuringState::MeasurementFinished)
 					{
-						uint32_t end_sample = sensor1SampleCount;
-						uint32_t start_sample = 0;
-						uint16_t half_max = sensor1Max / 2;
-
-						// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
-						uint32_t limit = (sensor1SampleCount < EDGE_BUFFER_SIZE) ? sensor1SampleCount : EDGE_BUFFER_SIZE;
-
-						for (uint32_t j = 0; j < limit; j++)
-						{
-							if (sensor1EdgeBuffer[j] >= half_max)
-							{
-								start_sample = j;
-								break;
-							}
-						}
-
-						// Считаем длительность
-						uint32_t width_samples = end_sample - start_sample;
-						sensor1PulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
+						sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
 					}
 					
 
