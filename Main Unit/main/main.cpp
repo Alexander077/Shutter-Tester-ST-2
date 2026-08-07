@@ -43,8 +43,6 @@
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
 
-#define ONE_ADC_CONVERSION_TIME_US 24.7746
-
 #define TOTAL_RECORDS_COUNT 100
 
 #define LITTLEFS_PARTITION_LABEL "storage"
@@ -121,6 +119,7 @@ adc_continuous_handle_t handle = NULL;
 #define ADC_ATTEN ADC_ATTEN_DB_12
 #define ADC_BIT_WIDTH SOC_ADC_DIGI_MAX_BITWIDTH
 #define READ_LEN 4096
+#define ONE_ADC_CONVERSION_TIME_US 2.5
 
 // --- Добавленные состояния и константы для конечного автомата ---
 enum class SensorMesuringState
@@ -153,8 +152,7 @@ static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc
 
 	adc_continuous_handle_cfg_t adc_config = {
 			.max_store_buf_size = 16384,
-			.conv_frame_size = READ_LEN//,
-			// .flags.flush_pool = 1,
+			.conv_frame_size = READ_LEN
 	};
 	ESP_ERROR_CHECK(adc_continuous_new_handle(&adc_config, &handle));
 
@@ -1613,7 +1611,7 @@ void drawMeasuringScreen()
 
 								// Считаем длительность 
 								uint32_t width_samples = end_sample - start_sample;
-								sensorPulseWidthUs = width_samples * 2.5;
+								sensorPulseWidthUs = width_samples * ONE_ADC_CONVERSION_TIME_US;
 
 								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
 
