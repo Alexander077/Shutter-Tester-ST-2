@@ -1477,273 +1477,269 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 void drawMeasuringScreen()
 {
-		// sensor0Max = 0;
-		// sensor1Max = 0;
+	vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
 
-		// uint32_t sensor1ADCSamplesCounter = 0;
-		// bool isSensor1Opened = false;
-		// bool isSensor1Closed = false;
-		// uint32_t sensor2ADCSamplesCounter = 0;
-		// bool isSensor2Opened = false;
-		// bool isSensor2Closed = false;
-		uint32_t time = 0;
+	uint32_t waitForSensorTime = 0;
 
-		vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
+	uint32_t curtain1ADCSamplesCounter = 0;
+	uint32_t curtain2ADCSamplesCounter = 0;
 
-		// const uint16_t resArrLength = UINT8_MAX + 1;
-		// uint16_t sensor1ResArr[resArrLength] = {};
-		// uint16_t sensor2ResArr[resArrLength] = {};
-		// uint8_t sensor1ResArrInd = 0;
-		// uint8_t sensor2ResArrInd = 0;
-		// uint32_t curtain1ADCSamplesCounter = 0;
-		// uint32_t curtain2ADCSamplesCounter = 0;
-		// int8_t curtain1firstOpenedSensor = -1;
-		// int8_t curtain2firstClosedSensor = -1;
+	display->fillScreen(BLACK);
+	display->setTextSize(2);
+	drawStringHCentered("MEASURING", 40);
+	display->setTextSize(1);
+	drawStringHCentered("Release camera shutter", 60);
 
-		display->fillScreen(BLACK);
-		display->setTextSize(2);
-		drawStringHCentered("MEASURING", 40);
-		display->setTextSize(1);
-		drawStringHCentered("Release camera shutter", 60);
+	ESP_ERROR_CHECK(adc_continuous_start(handle));
 
-		ESP_ERROR_CHECK(adc_continuous_start(handle));
+	esp_err_t adcReadRes;
+	uint32_t retNum = 0;
+	uint8_t result[READ_LEN] = {0};
+	memset(result, 0xcc, READ_LEN);
 
-		esp_err_t adcReadRes;
-		uint32_t retNum = 0;
-		uint8_t result[READ_LEN] = {0};
-		memset(result, 0xcc, READ_LEN);
+	// --- Переменные для расчета длительности импульса ---
+	static SensorMesuringState sensor0State = SensorMesuringState::Idle;
+	static uint32_t sensor0SampleCount = 0;
+	static uint16_t sensor0EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+	sensor0State = SensorMesuringState::Idle;
+	sensor0SampleCount = 0;
+	sensor0Max = 0;
+	uint32_t sensor0PulseWidthUs = 0;
+	memset(sensor0EdgeBuffer, 0, sizeof(sensor0EdgeBuffer));
 
-		// --- Переменные для расчета длительности импульса ---
-		static SensorMesuringState sensor0State = SensorMesuringState::Idle;
-		static uint32_t sensor0SampleCount = 0;
-		static uint16_t sensor0EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
-		sensor0State = SensorMesuringState::Idle;
-		sensor0SampleCount = 0;
-		sensor0Max = 0;
-		uint32_t sensor0PulseWidthUs = 0;
-		memset(sensor0EdgeBuffer, 0, sizeof(sensor0EdgeBuffer));
+	static SensorMesuringState sensor1State = SensorMesuringState::Idle;
+	static uint32_t sensor1SampleCount = 0;
+	static uint16_t sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
+	sensor1State = SensorMesuringState::Idle;
+	sensor1SampleCount = 0;
+	sensor1Max = 0;
+	memset(sensor1EdgeBuffer, 0, sizeof(sensor1EdgeBuffer));
+	uint32_t sensor1PulseWidthUs = 0;
 
-		static SensorMesuringState sensor1State = SensorMesuringState::Idle;
-		static uint32_t sensor1SampleCount = 0;
-		static uint16_t sensor1EdgeBuffer[EDGE_BUFFER_SIZE] = {0};
-		sensor1State = SensorMesuringState::Idle;
-		sensor1SampleCount = 0;
-		sensor1Max = 0;
-		memset(sensor1EdgeBuffer, 0, sizeof(sensor1EdgeBuffer));
-		uint32_t sensor1PulseWidthUs = 0;
+	static const uint16_t waveformRecordbufferLength = 5000;
+	static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
+	static uint16_t waveformRecordbufferIndex = 0;
+	waveformRecordbufferIndex = 0;
+	memset(waveformRecordbuffer, 0, sizeof(waveformRecordbuffer));
 
-		static const uint16_t waveformRecordbufferLength = 5000;
-		static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
-		static uint16_t waveformRecordbufferIndex = 0;
-		waveformRecordbufferIndex = 0;
-		memset(waveformRecordbuffer, 0, sizeof(waveformRecordbuffer));
+	printf("ADC reading started\n");
+	fflush(stdout);
 
-		printf("ADC reading started\n");
-		fflush(stdout);
-
-		while (true)
+	while (true)
+	{
+		if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
 		{
-			if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
+			ESP_ERROR_CHECK(adc_continuous_stop(handle));
+			return;
+		}
+
+		adcReadRes = adc_continuous_read(handle, result, READ_LEN, &retNum, UINT32_MAX);
+
+		if (adcReadRes == ESP_OK)
+		{
+			// Быстрый ручной парсинг: каждый сэмпл — 2 байта (SOC_ADC_DIGI_RESULT_BYTES = 2)
+			// Формат ESP32 (type1): [15:12] = канал, [11:0] = данные
+			uint16_t *raw = (uint16_t *)result;
+			uint32_t numSamples = retNum / SOC_ADC_DIGI_RESULT_BYTES;
+
+			for (uint32_t i = 0; i < numSamples; i++)
 			{
-				ESP_ERROR_CHECK(adc_continuous_stop(handle));
-				return;
-			}
+				uint16_t ch = (raw[i] >> 12) & 0xF; // номер канала АЦП
+				uint16_t val = raw[i] & 0xFFF;			// значение АЦП (0..4095 для 12 бит)
 
-			adcReadRes = adc_continuous_read(handle, result, READ_LEN, &retNum, UINT32_MAX);
-
-			if (adcReadRes == ESP_OK)
-			{
-				// Быстрый ручной парсинг: каждый сэмпл — 2 байта (SOC_ADC_DIGI_RESULT_BYTES = 2)
-				// Формат ESP32 (type1): [15:12] = канал, [11:0] = данные
-				uint16_t *raw = (uint16_t *)result;
-				uint32_t numSamples = retNum / SOC_ADC_DIGI_RESULT_BYTES;
-
-				for (uint32_t i = 0; i < numSamples; i++)
+				if (ch == ADC_CHANNEL_6)
 				{
-					uint16_t ch = (raw[i] >> 12) & 0xF; // номер канала АЦП
-					uint16_t val = raw[i] & 0xFFF;			// значение АЦП (0..4095 для 12 бит)
-
-					if (ch == ADC_CHANNEL_6)
+					// Реализация конечного автомата для ADC_CHANNEL_6
+					if (sensor0State == SensorMesuringState::Idle)
 					{
-						// Реализация конечного автомата для ADC_CHANNEL_6
-						if (sensor0State == SensorMesuringState::Idle)
+						if (val > NOISE_THRESHOLD)
 						{
-							if (val > NOISE_THRESHOLD)
-							{
-								// Начало импульса
-								sensor0State = SensorMesuringState::PulseActive;
-								sensor0Max = val;
-								sensor0SampleCount = 0;
-								sensor0EdgeBuffer[0] = val;
-								waveformRecordbuffer[waveformRecordbufferIndex++] = val;
-							}
-						}
-						else if (sensor0State == SensorMesuringState::PulseActive)
-						{
-							sensor0SampleCount++;
-
-							// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
-							if (sensor0SampleCount < EDGE_BUFFER_SIZE)
-							{
-								sensor0EdgeBuffer[sensor0SampleCount] = val;
-							}
-
+							// Начало импульса
+							sensor0State = SensorMesuringState::PulseActive;
+							sensor0Max = val;
+							sensor0SampleCount = 0;
+							sensor0EdgeBuffer[0] = val;
 							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
-
-							// Постоянно обновляем значение вершины
-							if (val > sensor0Max)
-							{
-								sensor0Max = val;
-							}
-
-							// Ловим спад: текущее значение упало ниже половины от найденного максимума
-							if (val < sensor0Max / 2)
-							{
-								sensor0State = SensorMesuringState::WaitForZero;
-								// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
-							}
-						}
-						else if (sensor0State == SensorMesuringState::WaitForZero)
-						{
-							waveformRecordbuffer[waveformRecordbufferIndex++] = val;
-
-							// Ждем пока сигнал опустится до нуля (или почти до нуля)
-							if (val < RESET_THRESHOLD)
-							{
-								sensor0State = SensorMesuringState::MeasurementFinished;
-							}
 						}
 					}
-					else // ch == ADC_CHANNEL_7
+					else if (sensor0State == SensorMesuringState::PulseActive)
 					{
-						// Реализация конечного автомата для ADC_CHANNEL_6
-						if (sensor1State == SensorMesuringState::Idle)
+						sensor0SampleCount++;
+
+						// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
+						if (sensor0SampleCount < EDGE_BUFFER_SIZE)
 						{
-							if (val > NOISE_THRESHOLD)
-							{
-								// Начало импульса
-								sensor1State = SensorMesuringState::PulseActive;
-								sensor1Max = val;
-								sensor1SampleCount = 0;
-								sensor1EdgeBuffer[0] = val;
-							}
+							sensor0EdgeBuffer[sensor0SampleCount] = val;
 						}
-						else if (sensor1State == SensorMesuringState::PulseActive)
+
+						waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+
+						// Постоянно обновляем значение вершины
+						if (val > sensor0Max)
 						{
-							sensor1SampleCount++;
-
-							// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
-							if (sensor1SampleCount < EDGE_BUFFER_SIZE)
-							{
-								sensor1EdgeBuffer[sensor1SampleCount] = val;
-							}
-
-							// Постоянно обновляем значение вершины
-							if (val > sensor1Max)
-							{
-								sensor1Max = val;
-							}
-
-							// Ловим спад: текущее значение упало ниже половины от найденного максимума
-							if (val < sensor1Max / 2)
-							{
-								sensor1State = SensorMesuringState::WaitForZero;
-							}
+							sensor0Max = val;
 						}
-						else if (sensor1State == SensorMesuringState::WaitForZero)
+
+						// Ловим спад: текущее значение упало ниже половины от найденного максимума
+						if (val < sensor0Max / 2)
 						{
-							// Ждем пока сигнал опустится до нуля (или почти до нуля)
-							if (val < RESET_THRESHOLD)
-							{
-								sensor1State = SensorMesuringState::MeasurementFinished;
-							}
+							sensor0State = SensorMesuringState::WaitForZero;
+							// ESP_LOGI(TAG, "Measured pulse: %" PRIu32 " us (Peak ADC: %u, Half-Max: %u)", width_us, max_val, half_max);
+						}
+					}
+					else if (sensor0State == SensorMesuringState::WaitForZero)
+					{
+						waveformRecordbuffer[waveformRecordbufferIndex++] = val;
+
+						// Ждем пока сигнал опустится до нуля (или почти до нуля)
+						if (val < RESET_THRESHOLD)
+						{
+							sensor0State = SensorMesuringState::MeasurementFinished;
 						}
 					}
 				}
-			}
-			else if (adcReadRes == ESP_ERR_TIMEOUT)
-			{
-				// We try to read `READ_LEN` until API returns timeout, which means there's no available data
-				// ESP_LOGW("", "ADC timed out");
-				break;
-			}
-
-			if (button.isClicked())
-			{
-				ESP_ERROR_CHECK(adc_continuous_stop(handle));
-				return;
-			}
-			else if (sensor0State == SensorMesuringState::MeasurementFinished ||
-							 sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
-			{
-				if (time == 0)
+				else // ch == ADC_CHANNEL_7
 				{
-					time = millis();
-				}
-
-				// wait for other sensors to get data
-				if (millis() - time > 500)
-				{
-					ESP_ERROR_CHECK(adc_continuous_stop(handle));
-
-					auto calculatePulseWidth = [](uint32_t sampleCount, uint16_t maxValue, const uint16_t *edgeBuffer) -> uint32_t
+					// Реализация конечного автомата для ADC_CHANNEL_6
+					if (sensor1State == SensorMesuringState::Idle)
 					{
-						uint32_t start_sample = 0;
-						uint16_t half_max = maxValue / 2;
-
-						// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
-						uint32_t limit = (sampleCount < EDGE_BUFFER_SIZE) ? sampleCount : EDGE_BUFFER_SIZE;
-
-						for (uint32_t j = 0; j < limit; j++)
+						if (val > NOISE_THRESHOLD)
 						{
-							if (edgeBuffer[j] >= half_max)
-							{
-								start_sample = j;
-								break;
-							}
+							// Начало импульса
+							sensor1State = SensorMesuringState::PulseActive;
+							sensor1Max = val;
+							sensor1SampleCount = 0;
+							sensor1EdgeBuffer[0] = val;
+						}
+					}
+					else if (sensor1State == SensorMesuringState::PulseActive)
+					{
+						sensor1SampleCount++;
+
+						// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
+						if (sensor1SampleCount < EDGE_BUFFER_SIZE)
+						{
+							sensor1EdgeBuffer[sensor1SampleCount] = val;
 						}
 
-						// Считаем длительность
-						uint32_t width_samples = sampleCount - start_sample;
-						return width_samples * ONE_ADC_CONVERSION_TIME_US;
-					};
+						// Постоянно обновляем значение вершины
+						if (val > sensor1Max)
+						{
+							sensor1Max = val;
+						}
 
-					if (sensor0State == SensorMesuringState::MeasurementFinished)
-					{
-						sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
+						// Ловим спад: текущее значение упало ниже половины от найденного максимума
+						if (val < sensor1Max / 2)
+						{
+							sensor1State = SensorMesuringState::WaitForZero;
+						}
 					}
-
-					if (sensor1State == SensorMesuringState::MeasurementFinished)
+					else if (sensor1State == SensorMesuringState::WaitForZero)
 					{
-						sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
+						// Ждем пока сигнал опустится до нуля (или почти до нуля)
+						if (val < RESET_THRESHOLD)
+						{
+							sensor1State = SensorMesuringState::MeasurementFinished;
+						}
 					}
-					
+				}
 
-					// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
-					// {
-					// 	printf("%u\n", waveformRecordbuffer[i]);
-					// }
+				// Датчик "открыт", если его автомат покинул Idle (автомат не возвращается в Idle)
+				bool isSensor0Opened = sensor0State != SensorMesuringState::Idle;
+				bool isSensor1Opened = sensor1State != SensorMesuringState::Idle;
+				// Датчик "закрыт", если зафиксирован спад импульса (WaitForZero или MeasurementFinished)
+				bool isSensor0Closed = sensor0State >= SensorMesuringState::WaitForZero;
+				bool isSensor1Closed = sensor1State >= SensorMesuringState::WaitForZero;
 
-					// printf("Measured pulse width for sensor 1: %" PRIu32 " us\n", sensor1PulseWidthUs);
-					// fflush(stdout);
-					
-					// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+				// Считаем время, пока 1-я шторка открыла ровно один из двух датчиков
+				if (isSensor0Opened != isSensor1Opened)
+				{
+					curtain1ADCSamplesCounter++;
+				}
 
-					// drawMeasuredScreen(sensor1ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-					// 									 sensor2ADCSamplesCounter * ONE_ADC_CONVERSION_TIME_US,
-					// 									 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-					// 									 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
-
-					/* for (uint8_t i = 0; i < resArrLength - 1; i++)
-					{
-						ESP_LOGI("", "$%" PRIu16 " %" PRIu16 ";", sensor1ResArr[i], sensor2ResArr[i]);
-					} */
-
-					return;
+				// Считаем время, пока 2-я шторка закрыла ровно один из двух датчиков
+				if (isSensor0Closed != isSensor1Closed)
+				{
+					curtain2ADCSamplesCounter++;
 				}
 			}
 		}
-		// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
+		else if (adcReadRes == ESP_ERR_TIMEOUT)
+		{
+			// We try to read `READ_LEN` until API returns timeout, which means there's no available data
+			// ESP_LOGW("", "ADC timed out");
+			break;
+		}
+
+		if (button.isClicked())
+		{
+			ESP_ERROR_CHECK(adc_continuous_stop(handle));
+			return;
+		}
+		else if (sensor0State == SensorMesuringState::MeasurementFinished ||
+						 sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
+		{
+			if (waitForSensorTime == 0)
+			{
+				waitForSensorTime = millis();
+			}
+
+			// wait for other sensor to get data
+			if (millis() - waitForSensorTime > 500)
+			{
+				ESP_ERROR_CHECK(adc_continuous_stop(handle));
+
+				auto calculatePulseWidth = [](uint32_t sampleCount, uint16_t maxValue, const uint16_t *edgeBuffer) -> uint32_t
+				{
+					uint32_t startSample = 0;
+					uint16_t halfMax = maxValue / 2;
+
+					// Ищем точку на начальном склоне (в буфере), которая ближе всего пересекла half_max
+					uint32_t limit = (sampleCount < EDGE_BUFFER_SIZE) ? sampleCount : EDGE_BUFFER_SIZE;
+
+					for (uint32_t j = 0; j < limit; j++)
+					{
+						if (edgeBuffer[j] >= halfMax)
+						{
+							startSample = j;
+							break;
+						}
+					}
+
+					// Считаем длительность
+					uint32_t widthSamples = sampleCount - startSample;
+					return widthSamples * ONE_ADC_CONVERSION_TIME_US;
+				};
+
+				if (sensor0State == SensorMesuringState::MeasurementFinished)
+				{
+					sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
+				}
+
+				if (sensor1State == SensorMesuringState::MeasurementFinished)
+				{
+					sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
+				}
+
+				// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
+				// {
+				// 	printf("%u\n", waveformRecordbuffer[i]);
+				// }
+
+				// fflush(stdout);
+
+				// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
+
+				drawMeasuredScreen(sensor0PulseWidthUs,
+													 sensor1PulseWidthUs,
+													 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+													 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+
+				return;
+			}
+		}
+	}
+	// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
 }
 
 CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
