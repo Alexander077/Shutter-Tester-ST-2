@@ -1,5 +1,8 @@
 #pragma once
 
+#define TEST_PIN_1 4
+#define TEST_PIN_2 5
+
 #define MM_IN_M 1000
 #define US_IN_SECOND 1000000
 #define US_IN_MINUTE 60000000
@@ -76,19 +79,6 @@ enum class ZeroRecordsMeasurementSaveMenuItems
   BACK_TO_MEASUREMENT_RESULT
 };
 
-enum class Screens
-{
-  MAIN_MENU = 'm',
-  MEASURING = 'n',
-  MEASURED = 'r',
-  ABOUT = 'a',
-  CURTAN_MOVEMENT_SELECTION = 'd',
-  LIGHT_CHECK = 'l',
-  MEASUREMENT_SAVE_SCREEN = 's',
-  MEASUREMENT_RECORD_SELECTION = 'h',
-  MESSAGE = 'g',
-  TEST = 't',
-};
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
 int8_t curSensorIndex = -1;

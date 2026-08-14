@@ -37,9 +37,6 @@
 #define ENCODER_A_PIN 27 
 #define BUTTON_PIN 14
 
-#define TEST_PIN_1 4
-#define TEST_PIN_2 5
-
 #define USER_INPUT_POLLING_FREQ_HZ 300
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
@@ -141,8 +138,8 @@ volatile bool testFlag2 = false;
 
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
-	digitalWrite(TEST_PIN_1, testFlag1);
-	testFlag1 = !testFlag1;
+	// digitalWrite(TEST_PIN_1, testFlag1);
+	// testFlag1 = !testFlag1;
 
   BaseType_t mustYield = pdFALSE;
   // Notify that ADC continuous driver has done enough number of conversions
@@ -1483,6 +1480,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 
 void drawMeasuringScreen()
 {
+	printf("Starting ADC continuous reading...\n");
+
 	vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
 	ESP_ERROR_CHECK(adc_continuous_start(handle));
 
@@ -1491,12 +1490,11 @@ void drawMeasuringScreen()
 	uint32_t curtain1ADCSamplesCounter = 0;
 	uint32_t curtain2ADCSamplesCounter = 0;
 
-	// display->fillScreen(BLACK);
-	// display->setTextSize(2);
-	// drawStringHCentered("MEASURING", 40);
-	// display->setTextSize(1);
-	// drawStringHCentered("Release camera shutter", 60);
-
+	display->fillScreen(BLACK);
+	display->setTextSize(2);
+	drawStringHCentered("MEASURING", 40);
+	display->setTextSize(1);
+	drawStringHCentered("Release camera shutter", 60);
 
 	esp_err_t adcReadRes;
 	uint32_t retNum = 0;
@@ -1726,12 +1724,15 @@ void drawMeasuringScreen()
 					sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
 				}
 
-				// printf("%" PRIu32 "\n", sensor0PulseWidthUs);
+				printf("s1 time: %" PRIu32 "\n", sensor0PulseWidthUs);
 
 				if (sensor1State == SensorMesuringState::MeasurementFinished)
 				{
 					sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
 				}
+
+				printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
+				printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
 
 				// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
 				// {
@@ -1742,10 +1743,10 @@ void drawMeasuringScreen()
 
 				// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-				drawMeasuredScreen(sensor0PulseWidthUs,
-													 sensor1PulseWidthUs,
-													 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-													 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+				// drawMeasuredScreen(sensor0PulseWidthUs,
+				// 									 sensor1PulseWidthUs,
+				// 									 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+				// 									 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
 				return;
 			}
@@ -2688,8 +2689,8 @@ void setup()
 	// delay(2000);
 	// halt();
 
-	// pinMode(TEST_PIN_1, OUTPUT);
-	// pinMode(TEST_PIN_2, OUTPUT);
+	pinMode(TEST_PIN_1, OUTPUT);
+	pinMode(TEST_PIN_2, OUTPUT);
 
 	// for (int i = 0; i < 3; i++)
 	// {
@@ -2792,17 +2793,17 @@ void loop()
 	// 	drawMeasuringScreen();
 	// }
 
-	while (true)
-	{
-		if (button.isClicked())
-		{
-			curSensorIndex = 0;
-			curtainMovement = CurtainMovement::VERTICAL;
-			drawMeasuringScreen();
-		}
+	// while (true)
+	// {
+	// 	if (button.isClicked())
+	// 	{
+	// 		curSensorIndex = 0;
+	// 		curtainMovement = CurtainMovement::VERTICAL;
+	// 		drawMeasuringScreen();
+	// 	}
 
-		vTaskDelay(1 / portTICK_PERIOD_MS);
-	}
+	// 	vTaskDelay(1 / portTICK_PERIOD_MS);
+	// }
 
 	drawMainMenu();
 }
