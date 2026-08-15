@@ -117,7 +117,7 @@ adc_continuous_handle_t handle = NULL;
 #define ADC_ATTEN ADC_ATTEN_DB_12
 #define ADC_BIT_WIDTH SOC_ADC_DIGI_MAX_BITWIDTH
 #define READ_LEN 4096
-#define ONE_ADC_CONVERSION_TIME_US 2.6
+#define ONE_ADC_CONVERSION_TIME_US 2.5
 
 // --- Добавленные состояния и константы для конечного автомата ---
 enum class SensorMesuringState
@@ -1264,8 +1264,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	bool sensor1DataOk = false;
 	// double rawSensor0TimeTakenUs = -1;
 	// double rawSensor1TimeTakenUs = -1;
-	double correctedSensor0TimeTakenUs = -1;
-	double correctedSensor1TimeTakenUs = -1;
+	// double correctedSensor0TimeTakenUs = -1;
+	// double correctedSensor1TimeTakenUs = -1;
 
 	MeasuredResult res;
 	res.selectedCurtainMovement = curtainMovement;
@@ -1280,8 +1280,9 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	}
 	else
 	{
-		correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
-		res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+		// correctedSensor0TimeTakenUs = getCorrectedSensorValue(rawSensor0TimeTakenUs, sensor0Max); // in microseconds
+		// res.sensor0Time = correctedSensor0TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+		res.sensor0Time = (double)rawSensor0TimeTakenUs / US_IN_MILLISECOND; // in milliseconds, no correction for new algorythm
 
 		if (res.sensor0Time < TOO_SHORT_SENSOR_TIME)
 		{
@@ -1303,8 +1304,9 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	}
 	else
 	{
-		correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
-		res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+		// correctedSensor1TimeTakenUs = getCorrectedSensorValue(rawSensor1TimeTakenUs, sensor1Max); // in microseconds
+		// res.sensor1Time = correctedSensor1TimeTakenUs / US_IN_MILLISECOND;												// in milliseconds
+		res.sensor1Time = (double)rawSensor1TimeTakenUs / US_IN_MILLISECOND; // in milliseconds, no correction for new algorythm
 
 		if (res.sensor1Time < TOO_SHORT_SENSOR_TIME)
 		{
@@ -1320,8 +1322,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	SERIAL_API_DEBUG_PRINT("Sensor 1 max: %" PRIu16, sensor1Max);
 	SERIAL_API_DEBUG_PRINT("Sensor 0 raw time: %" PRIu32, rawSensor0TimeTakenUs);
 	SERIAL_API_DEBUG_PRINT("Sensor 1 raw time: %" PRIu32, rawSensor1TimeTakenUs);
-	SERIAL_API_DEBUG_PRINT("Sensor 0 corrected time: %" PRIu32, (uint32_t)correctedSensor0TimeTakenUs);
-	SERIAL_API_DEBUG_PRINT("Sensor 1 corrected time: %" PRIu32, (uint32_t)correctedSensor1TimeTakenUs);
+	// SERIAL_API_DEBUG_PRINT("Sensor 0 corrected time: %" PRIu32, (uint32_t)correctedSensor0TimeTakenUs);
+	// SERIAL_API_DEBUG_PRINT("Sensor 1 corrected time: %" PRIu32, (uint32_t)correctedSensor1TimeTakenUs);
 	SERIAL_API_DEBUG_PRINT("Curtain 1 time: %" PRIu32, curtain1TimeUs);
 	SERIAL_API_DEBUG_PRINT("Curtain 2 time: %" PRIu32, curtain2TimeUs);
 
@@ -1369,7 +1371,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 				sensorDistance = curSensorData.VerticalSensorDistance; // in millimiters
 			}
 
-			calculateResults(res, curtainTimings, sensorDistance, frameSize, correctedSensor0TimeTakenUs, correctedSensor1TimeTakenUs);
+			calculateResults(res, curtainTimings, sensorDistance, frameSize, rawSensor0TimeTakenUs, rawSensor1TimeTakenUs);
 
 			if (res.curtain1spanAspeed < 0 ||
 					res.curtain1spanAtime < 0 ||
@@ -1520,7 +1522,7 @@ void drawMeasuringScreen()
 	memset(sensor1EdgeBuffer, 0, sizeof(sensor1EdgeBuffer));
 	uint32_t sensor1PulseWidthUs = 0;
 
-	bool edgeBufferOverflow = false;
+	// bool edgeBufferOverflow = false;
 
 	// static const uint16_t waveformRecordbufferLength = 5000;
 	// static uint16_t waveformRecordbuffer[waveformRecordbufferLength] = {0};
@@ -1579,14 +1581,11 @@ void drawMeasuringScreen()
 						sensor0SampleCount++;
 
 						// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
-						if (sensor0SampleCount >= EDGE_BUFFER_SIZE)
+						if (sensor0SampleCount < EDGE_BUFFER_SIZE)
 						{
-							edgeBufferOverflow = true;
-							sensor0State = SensorMesuringState::MeasurementFinished;
-							break;
+							sensor0EdgeBuffer[sensor0SampleCount] = val;
 						}
 						
-						sensor0EdgeBuffer[sensor0SampleCount] = val;
 						// // waveformRecordbuffer[waveformRecordbufferIndex++] = val;
 
 						// Постоянно обновляем значение вершины
@@ -1622,14 +1621,11 @@ void drawMeasuringScreen()
 						sensor1SampleCount++;
 
 						// Сохраняем начальные сэмплы для ретроспективного поиска середины фронта
-						if (sensor1SampleCount >= EDGE_BUFFER_SIZE)
+						if (sensor1SampleCount < EDGE_BUFFER_SIZE)
 						{
-							edgeBufferOverflow = true;
-							sensor1State = SensorMesuringState::MeasurementFinished;
-							break;
+							sensor1EdgeBuffer[sensor1SampleCount] = val;
 						}
 						
-						sensor1EdgeBuffer[sensor1SampleCount] = val;
 						// Постоянно обновляем значение вершины
 						if (val > sensor1Max)
 						{
@@ -1681,11 +1677,11 @@ void drawMeasuringScreen()
 		else if (sensor0State == SensorMesuringState::MeasurementFinished ||
 						 sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
 		{
-			if (edgeBufferOverflow)
-			{
-				ESP_ERROR_CHECK(adc_continuous_stop(handle));
-				printf("Edge buffer overflow\n");//TODO: add error message screen
-			}
+			// if (edgeBufferOverflow)
+			// {
+			// 	// printf("Edge buffer overflow\n");//TODO: add error message screen
+			// 	halt("Edge buffer overflow");
+			// }
 
 			if (waitForSensorTime == 0)
 			{
@@ -1731,6 +1727,8 @@ void drawMeasuringScreen()
 					sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
 				}
 
+				printf("s2 time: %" PRIu32 "\n", sensor1PulseWidthUs);
+
 				printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
 				printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
 
@@ -1743,10 +1741,10 @@ void drawMeasuringScreen()
 
 				// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-				// drawMeasuredScreen(sensor0PulseWidthUs,
-				// 									 sensor1PulseWidthUs,
-				// 									 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-				// 									 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+				drawMeasuredScreen(sensor0PulseWidthUs,
+													 sensor1PulseWidthUs,
+													 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
+													 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
 
 				return;
 			}
