@@ -564,6 +564,8 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 		{
 			return recordNumbers[curIndex];
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -755,6 +757,8 @@ int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const cha
     {
       return resultOptionIndex;
     }
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
@@ -960,6 +964,8 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
 				return MeasurementSaveScreenResult::OK;
 			}
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -1232,6 +1238,8 @@ void renderMeasuredResult(MeasuredResult &res)
 		{
 			return;
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -1829,6 +1837,8 @@ CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
       drawMeasuringScreen();
 			return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU;
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
@@ -1874,6 +1884,8 @@ void drawSensorSelectionScreen()
 		{
 			return;
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -2196,6 +2208,8 @@ void drawLightCheckScreen()
     {
       return;
     }
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -2361,6 +2375,8 @@ void drawAboutScreen()
 				}
 			}
 		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
 	}
 }
 
@@ -2458,6 +2474,8 @@ void drawViewRecordsScreen()
 
 		return;
   }
+
+	vTaskDelay(1 / portTICK_PERIOD_MS);
 }
 
 void drawMainMenu()
@@ -2573,6 +2591,8 @@ void drawMainMenu()
         startEncoderVal = AlexEncoder::counter;
         break;//break from while loop
       }
+
+			vTaskDelay(1 / portTICK_PERIOD_MS);
     }
   }
 }
