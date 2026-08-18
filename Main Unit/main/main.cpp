@@ -1728,17 +1728,17 @@ void drawMeasuringScreen()
 					sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
 				}
 
-				printf("s1 time: %" PRIu32 "\n", sensor0PulseWidthUs);
+				// printf("s1 time: %" PRIu32 "\n", sensor0PulseWidthUs);
 
 				if (sensor1State == SensorMesuringState::MeasurementFinished)
 				{
 					sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
 				}
 
-				printf("s2 time: %" PRIu32 "\n", sensor1PulseWidthUs);
+				// printf("s2 time: %" PRIu32 "\n", sensor1PulseWidthUs);
 
-				printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
-				printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
+				// printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
+				// printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
 
 				// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
 				// {
