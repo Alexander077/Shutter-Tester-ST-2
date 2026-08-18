@@ -114,9 +114,10 @@ void startFirmwareUpdate()
   uint32_t lastDataTime = millis();
   size_t totalReceived = 0;
   size_t bufferPos = 0;
+  bool transferFinished = false;
 
   // 5. Основной цикл приема данных
-  while (1)
+  while (!transferFinished)
   {
     // Читаем строку посимвольно до '\n' (fgets на UART возвращает частичные строки)
     size_t b64Len = 0;
@@ -127,6 +128,14 @@ void startFirmwareUpdate()
       int c = getchar();
       if (c == EOF)
       {
+        // Данных нет: проверяем таймаут окончания передачи здесь,
+        // иначе при молчании клиента этот цикл никогда не завершится
+        // и устройство "зависнет" в ожидании следующей строки
+        if (totalReceived > 0 && (millis() - lastDataTime > 5000))
+        {
+          transferFinished = true;
+          break;
+        }
         vTaskDelay(pdMS_TO_TICKS(1));
         continue;
       }
@@ -142,6 +151,11 @@ void startFirmwareUpdate()
       {
         b64Buf[b64Len++] = (char)c;
       }
+    }
+    
+    if (transferFinished)
+    {
+      break;
     }
     
     b64Buf[b64Len] = '\0';
@@ -167,7 +181,18 @@ void startFirmwareUpdate()
           size_t processLen = (bufferPos / 16) * 16;
 
           // Расшифровываем накопленный блок
-          mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, processLen, iv, rxBuf, decBuf);
+          int aesRet = mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, processLen, iv, rxBuf, decBuf);
+          if (aesRet != 0)
+          {
+            char errMsg[64];
+            snprintf(errMsg, sizeof(errMsg), "AES decrypt err: %d", aesRet);
+            sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
+            free(b64Buf);
+            heap_caps_free(rxBuf);
+            heap_caps_free(decBuf);
+            mbedtls_aes_free(&aesCtx);
+            return;
+          }
 
           // Записываем во флеш
           esp_err_t writeErr = esp_ota_write(updateHandle, decBuf, processLen);
@@ -219,8 +244,33 @@ void startFirmwareUpdate()
   // 5.1 Обработка оставшихся данных в буфере
   if (bufferPos > 0)
   {
-    // Расшифровываем и записываем остаток (должен быть кратен 16)
-    mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, bufferPos, iv, rxBuf, decBuf);
+    // AES-CBC требует длину, кратную 16 байтам: "хвост" другой длины
+    // расшифровать невозможно - значит, файл был подготовлен некорректно
+    if (bufferPos % 16 != 0)
+    {
+      char errMsg[80];
+      snprintf(errMsg, sizeof(errMsg), "Invalid final block size: %u (not multiple of 16)", (unsigned)bufferPos);
+      sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
+      mbedtls_aes_free(&aesCtx);
+      heap_caps_free(rxBuf);
+      heap_caps_free(decBuf);
+      free(b64Buf);
+      return;
+    }
+
+    // Расшифровываем и записываем остаток
+    int aesRet = mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, bufferPos, iv, rxBuf, decBuf);
+    if (aesRet != 0)
+    {
+      char errMsg[64];
+      snprintf(errMsg, sizeof(errMsg), "AES decrypt final block err: %d", aesRet);
+      sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
+      mbedtls_aes_free(&aesCtx);
+      heap_caps_free(rxBuf);
+      heap_caps_free(decBuf);
+      free(b64Buf);
+      return;
+    }
 
     esp_err_t writeErr = esp_ota_write(updateHandle, decBuf, bufferPos);
     if (writeErr != ESP_OK)
