@@ -4,6 +4,7 @@
 #include "mbedtls/aes.h"
 #include "mbedtls/base64.h"
 #include "esp_ota_ops.h"
+#include "esp_heap_caps.h"
 #include "cJSON.h"
 #include "SerialAPICommon.h"
 
@@ -84,11 +85,12 @@ void startFirmwareUpdate()
   memcpy(iv, AesIvInit, 16);
 
   // 4. Выделение памяти под буферы
-  const size_t RX_BUF_SIZE = 1024;
+  // На ESP32 с Flash Encryption (XTS-AES) буферы должны быть выровнены по 32 байта
+  const size_t RX_BUF_SIZE = 2048;
   const size_t B64_BUF_SIZE = 1536; // С запасом под Base64 строку (512 байт = ~684 символа + \n)
 
-  unsigned char *rxBuf = (unsigned char *)malloc(RX_BUF_SIZE);
-  unsigned char *decBuf = (unsigned char *)malloc(RX_BUF_SIZE);
+  unsigned char *rxBuf = (unsigned char *)heap_caps_aligned_alloc(32, RX_BUF_SIZE, MALLOC_CAP_DMA);
+  unsigned char *decBuf = (unsigned char *)heap_caps_aligned_alloc(32, RX_BUF_SIZE, MALLOC_CAP_DMA);
   char *b64Buf = (char *)malloc(B64_BUF_SIZE);
 
   if (!rxBuf || !decBuf || !b64Buf)
@@ -96,9 +98,9 @@ void startFirmwareUpdate()
     sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, "Memory allocation failed", -1);
     
     if (rxBuf)
-      free(rxBuf);
+      heap_caps_free(rxBuf);
     if (decBuf)
-      free(decBuf);
+      heap_caps_free(decBuf);
     if (b64Buf)
       free(b64Buf);
     mbedtls_aes_free(&aesCtx);
@@ -109,9 +111,6 @@ void startFirmwareUpdate()
   // Отправка статуса готовности
   sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_READY_FOR_FIRMWARE_UPDATE_DATA, NULL, -1);
   
-  // Отключаем буферизацию стандартного потока
-  setvbuf(stdin, NULL, _IONBF, 0);
-  
   uint32_t lastDataTime = millis();
   size_t totalReceived = 0;
   size_t bufferPos = 0;
@@ -119,84 +118,97 @@ void startFirmwareUpdate()
   // 5. Основной цикл приема данных
   while (1)
   {
-    // Очищаем буфер перед новым чтением
+    // Читаем строку посимвольно до '\n' (fgets на UART возвращает частичные строки)
+    size_t b64Len = 0;
     memset(b64Buf, 0, B64_BUF_SIZE);
-
-    // fgets ждет появления строки с '\n' в конце (или заполнения буфера)
-    char *line = fgets(b64Buf, B64_BUF_SIZE, stdin);
-
-    if (line != NULL)
+    
+    while (b64Len < B64_BUF_SIZE - 1)
     {
-      lastDataTime = millis(); // Сброс таймера таймаута
-
-      // Удаляем символы переноса строки (\n и \r) с конца прочитанной строки
-      size_t len = strlen(b64Buf);
-      while (len > 0 && (b64Buf[len - 1] == '\n' || b64Buf[len - 1] == '\r'))
+      int c = getchar();
+      if (c == EOF)
       {
-        b64Buf[len - 1] = '\0';
-        len--;
+        vTaskDelay(pdMS_TO_TICKS(1));
+        continue;
       }
-
-      if (len > 0)
+      
+      lastDataTime = millis();
+      
+      if (c == '\n')
       {
-        size_t decodedLen = 0;
-        unsigned char decodedTmp[1024];
+        break; // Конец строки
+      }
+      
+      if (c != '\r') // Игнорируем \r
+      {
+        b64Buf[b64Len++] = (char)c;
+      }
+    }
+    
+    b64Buf[b64Len] = '\0';
+    size_t len = b64Len;
 
-        // Декодируем Base64 строку в бинарные данные
-        int ret = mbedtls_base64_decode(decodedTmp, sizeof(decodedTmp), &decodedLen, (const unsigned char *)b64Buf, len);
+    if (len > 0)
+    {
+      size_t decodedLen = 0;
+      unsigned char decodedTmp[1024];
 
-        if (ret == 0 && decodedLen > 0)
+      // Декодируем Base64 строку в бинарные данные
+      int ret = mbedtls_base64_decode(decodedTmp, sizeof(decodedTmp), &decodedLen, (const unsigned char *)b64Buf, len);
+
+      if (ret == 0 && decodedLen > 0)
+      {
+        // Переносим декодированные байты в конец буфера AES
+        memcpy(rxBuf + bufferPos, decodedTmp, decodedLen);
+        bufferPos += decodedLen;
+
+        // AES CBC работает с блоками кратными 16 байт
+        while (bufferPos >= 16)
         {
-          // Переносим декодированные байты в конец буфера AES
-          memcpy(rxBuf + bufferPos, decodedTmp, decodedLen);
-          bufferPos += decodedLen;
+          size_t processLen = (bufferPos / 16) * 16;
 
-          // AES CBC работает с блоками кратными 16 байт
-          while (bufferPos >= 16)
+          // Расшифровываем накопленный блок
+          mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, processLen, iv, rxBuf, decBuf);
+
+          // Записываем во флеш
+          esp_err_t writeErr = esp_ota_write(updateHandle, decBuf, processLen);
+          if (writeErr != ESP_OK)
           {
-            size_t processLen = (bufferPos / 16) * 16;
-
-            // Расшифровываем накопленный блок
-            mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, processLen, iv, rxBuf, decBuf);
-
-            // Записываем во флеш
-            if (esp_ota_write(updateHandle, decBuf, processLen) != ESP_OK)
-            {
-              sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "esp_ota_write failed", -1);
-              free(b64Buf);
-              free(rxBuf);
-              free(decBuf);
-              mbedtls_aes_free(&aesCtx);
-              return;
-            }
-
-            // Переносим бинарный "хвост" в начало
-            size_t remainingBin = bufferPos - processLen;
-
-            if (remainingBin > 0)
-            {
-              memmove(rxBuf, rxBuf + processLen, remainingBin);
-            }
-            
-            bufferPos = remainingBin;
-
-            totalReceived += processLen;
-
-            // Отправка ACK
-            sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK, NULL, totalReceived);
+            char errMsg[64];
+            snprintf(errMsg, sizeof(errMsg), "esp_ota_write failed: %s", esp_err_to_name(writeErr));
+            sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
+            free(b64Buf);
+            heap_caps_free(rxBuf);
+            heap_caps_free(decBuf);
+            mbedtls_aes_free(&aesCtx);
+            return;
           }
+
+          // Переносим бинарный "хвост" в начало
+          size_t remainingBin = bufferPos - processLen;
+
+          if (remainingBin > 0)
+          {
+            memmove(rxBuf, rxBuf + processLen, remainingBin);
+          }
+          
+          bufferPos = remainingBin;
+
+          totalReceived += processLen;
+
+          // Отправка ACK
+          sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_CHUNK_ACK, NULL, totalReceived);
         }
-        else
-        {
-          char errMsg[64];
-          snprintf(errMsg, sizeof(errMsg), "Base64 decode err: %d", ret);
-          sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, errMsg, -1);
-        }
+      }
+      else
+      {
+        char errMsg[64];
+        snprintf(errMsg, sizeof(errMsg), "Base64 decode err: %d", ret);
+        sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, errMsg, -1);
       }
     }
 
-    // Завершаем процесс, если данные не приходили более 2 секунд
-    if (totalReceived > 0 && (millis() - lastDataTime > 2000))
+    // Завершаем процесс, если данные не приходили более 5 секунд
+    if (totalReceived > 0 && (millis() - lastDataTime > 5000))
     {
       break;
     }
@@ -204,29 +216,59 @@ void startFirmwareUpdate()
     vTaskDelay(pdMS_TO_TICKS(1));
   }
 
+  // 5.1 Обработка оставшихся данных в буфере
+  if (bufferPos > 0)
+  {
+    // Расшифровываем и записываем остаток (должен быть кратен 16)
+    mbedtls_aes_crypt_cbc(&aesCtx, MBEDTLS_AES_DECRYPT, bufferPos, iv, rxBuf, decBuf);
+
+    esp_err_t writeErr = esp_ota_write(updateHandle, decBuf, bufferPos);
+    if (writeErr != ESP_OK)
+    {
+      char errMsg[64];
+      snprintf(errMsg, sizeof(errMsg), "esp_ota_write final block failed: %s", esp_err_to_name(writeErr));
+      sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
+      mbedtls_aes_free(&aesCtx);
+      heap_caps_free(rxBuf);
+      heap_caps_free(decBuf);
+      free(b64Buf);
+      return;
+    }
+
+    totalReceived += bufferPos;
+    bufferPos = 0;
+  }
+
   // 6. Освобождение памяти
   mbedtls_aes_free(&aesCtx);
-  free(rxBuf);
-  free(decBuf);
+  heap_caps_free(rxBuf);
+  heap_caps_free(decBuf);
   free(b64Buf);
 
   // 7. Завершение OTA
-  if (esp_ota_end(updateHandle) != ESP_OK)
+  esp_err_t endErr = esp_ota_end(updateHandle);
+  if (endErr != ESP_OK)
   {
-    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "Firmware update failed", -1);
+    char errMsg[64];
+    snprintf(errMsg, sizeof(errMsg), "esp_ota_end failed: %s", esp_err_to_name(endErr));
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
     return;
   }
 
   // 8. Переключение загрузочного раздела и перезагрузка
-  if (esp_ota_set_boot_partition(updatePartition) == ESP_OK)
+  esp_err_t bootErr = esp_ota_set_boot_partition(updatePartition);
+  if (bootErr == ESP_OK)
   {
     sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_SUCCESS, 
-      "Firmware update successful.", -1);
-    vTaskDelay(pdMS_TO_TICKS(1000));
-    // esp_restart();
+      "Firmware update successful. Rebooting...", -1);
+    // Даём время клиенту прочитать ответ перед перезагрузкой
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    esp_restart();
   }
   else
   {
-    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, "Failed to set boot partition", -1);
+    char errMsg[64];
+    snprintf(errMsg, sizeof(errMsg), "esp_ota_set_boot_partition failed: %s", esp_err_to_name(bootErr));
+    sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_FIRMWARE_UPDATE_FAILED, errMsg, -1);
   }
 }
