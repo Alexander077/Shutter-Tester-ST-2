@@ -27,14 +27,14 @@
 
 #include "esp_partition.h"
 
-#define DISPLAY_CS SS
-#define DISPLAY_SCK SCK
-#define DISPLAY_MOSI MOSI
+#define DISPLAY_CS SS //5
+#define DISPLAY_SCK SCK //18
+#define DISPLAY_MOSI MOSI //23
 #define DISPLAY_RESET 17
 #define DISPLAY_DC 16
 
-#define ENCODER_B_PIN 13
-#define ENCODER_A_PIN 27 
+#define ENCODER_B_PIN 13 //s1
+#define ENCODER_A_PIN 27 //s2
 #define BUTTON_PIN 14
 
 #define USER_INPUT_POLLING_FREQ_HZ 300
@@ -1728,24 +1728,27 @@ void drawMeasuringScreen()
 					sensor0PulseWidthUs = calculatePulseWidth(sensor0SampleCount, sensor0Max, sensor0EdgeBuffer);
 				}
 
-				// printf("s1 time: %" PRIu32 "\n", sensor0PulseWidthUs);
-
 				if (sensor1State == SensorMesuringState::MeasurementFinished)
 				{
 					sensor1PulseWidthUs = calculatePulseWidth(sensor1SampleCount, sensor1Max, sensor1EdgeBuffer);
 				}
+				
+				
+				printf("s1 time: %" PRIu32 "\n", sensor0PulseWidthUs);
+				printf("s2 time: %" PRIu32 "\n", sensor1PulseWidthUs);
 
-				// printf("s2 time: %" PRIu32 "\n", sensor1PulseWidthUs);
+				printf("s1 max: %" PRIu32 "\n", (uint32_t)sensor0Max);
+				printf("s2 max: %" PRIu32 "\n", (uint32_t)sensor1Max);
 
-				// printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
-				// printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
+				printf("c1 time: %" PRIu32 "\n", (uint32_t)((curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
+				printf("c2 time: %" PRIu32 "\n", (uint32_t)((curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US));
 
 				// for (size_t i = 0; i < waveformRecordbufferIndex; i++)
 				// {
 				// 	printf("%u\n", waveformRecordbuffer[i]);
 				// }
 
-				// fflush(stdout);
+				fflush(stdout);
 
 				// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
