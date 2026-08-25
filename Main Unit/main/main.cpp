@@ -22,6 +22,7 @@
 #include "lib/StoredMeasuredResult.h"
 #include "lib/About.h"
 #include "lib/Images.h"
+#include "lib/SerialNumber.h"
 #include "lib/SerialAPI.h"
 #include "lib/RecordsStorageManager.h"
 
@@ -2220,7 +2221,7 @@ void drawAboutScreen()
 {
 	int16_t startEncoderVal = AlexEncoder::counter;
 	uint8_t xMargin = 20;
-	uint8_t yMargin = 75;
+	uint8_t yMargin = 105;
 	uint8_t ySpacing = 15;
 	uint8_t arrowXmargin = 15;
 	int8_t prevSelectedMenuItemIndex = -1;
@@ -2262,9 +2263,13 @@ void drawAboutScreen()
 			drawStringHCentered("About this device", 15);
 
 			display->setCursor(10, 35);
-			display->printf("Hardware version: %s", About::HW_VERSION);
+			display->printf("Device model: %s", About::DEVICE_MODEL);
 			display->setCursor(10, 50);
+			display->printf("Hardware version: %s", About::HW_VERSION);
+			display->setCursor(10, 65);
 			display->printf("Firmware version: %s", About::SW_VERSION);
+			display->setCursor(10, 80);
+			display->printf("S/N: %s", SerialNumber::get());
 
 			for (int16_t i = 0; i < optionsCount; i++)
 			{
@@ -2763,6 +2768,8 @@ void setup()
 	initStorage();
 
 	storage.begin();
+
+	SerialNumber::init();
 
 	// Инициализируем мьютекс для безопасного вывода в последовательный порт
 	serialPrintMutex = xSemaphoreCreateMutex();

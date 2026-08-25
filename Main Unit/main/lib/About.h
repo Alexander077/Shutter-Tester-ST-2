@@ -7,6 +7,7 @@ class About
 private:
 public:
   static const char* const DEVICE_NAME;
+  static const char* const DEVICE_MODEL;
   static const char* const HW_VERSION;
   static const char* const SW_VERSION;
 
@@ -28,6 +29,7 @@ Also bumped SW to v 1.7.0.
 The new algorithm for encoder is better than any before, no back-and-forth misclicks
 */
 const char *const About::DEVICE_NAME = "Shutter Tester ST-2";
+const char *const About::DEVICE_MODEL = "ST-2";
 const char *const About::HW_VERSION = "1.8.0";
 const char *const About::SW_VERSION = "1.7.0";
 // const char* const About::CREDITS_HEADER = "This application uses the following third-party libraries:";
