@@ -132,7 +132,7 @@ enum class SensorMesuringState
 };
 
 #define EDGE_BUFFER_SIZE 5000 
-#define NOISE_THRESHOLD 100	 // Порог начала импульса
+#define NOISE_THRESHOLD 1000	 // Порог начала импульса
 #define RESET_THRESHOLD 100	 // Порог сброса в ноль
 
 void startFirmwareUpdate();
@@ -1254,6 +1254,9 @@ void renderMeasuredResult(MeasuredResult &res)
 // Measurement series report
 // ============================================================================
 
+#define SERIES_CHART_TITLE_FONT u8g2_font_6x10_tf
+#define SERIES_CHART_LABEL_FONT u8g2_font_5x7_tf
+
 // Formats a positive value compactly so it fits into the narrow summary table columns
 void formatCompactDouble(double value, char *buf, size_t bufSize)
 {
@@ -1391,13 +1394,27 @@ void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)
 	display->setFont(u8g2_font_6x13_tf);
 }
 
+// Draws text at the cursor position (x, y) with a black plaque behind the actual glyph box.
+// The plaque is computed from the text bounding box, so it works with both the classic font
+// (y is the top of the glyphs) and u8g2 fonts (y is the baseline).
+void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
+{
+	Rect textBox = getStringRect(text, 0, 0);
+
+	display->fillRect(x + textBox.x - 1, y + textBox.y - 1, textBox.width + 2, textBox.height + 2, BLACK);
+	display->setCursor(x, y);
+	display->print(text);
+}
+
 // Draws one chart page: field values for each measurement in the series
 void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 {
 	const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
+
+	display->setFont(SERIES_CHART_TITLE_FONT);
 	drawStringHCentered(desc.chartTitle, 15);
 
-	display->setFont(); // small font for the chart
+	display->setFont(SERIES_CHART_LABEL_FONT);
 
 	double values[MEASUREMENT_SERIES_MAX_SIZE];
 	uint8_t validIndexes[MEASUREMENT_SERIES_MAX_SIZE];
@@ -1424,7 +1441,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 
 	if (validCount == 0)
 	{
-		display->setFont(u8g2_font_6x13_tf);
+		display->setFont(SERIES_CHART_TITLE_FONT);
 		drawStringHCentered("No valid data", 60);
 		return;
 	}
@@ -1479,7 +1496,8 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 		formatSeriesChartValue((SeriesField)fieldIndex, gridValue, label, sizeof(label));
 		Rect labelRect = getStringRect(label, 0, 0);
 
-		display->setCursor(chartX0 - 4 - labelRect.width, gridY + 3);
+		// center the label vertically on the gridline (labelRect.y is negative for u8g2 fonts)
+		display->setCursor(chartX0 - 4 - labelRect.width, gridY - labelRect.height / 2 - labelRect.y);
 		display->print(label);
 	}
 
@@ -1501,7 +1519,8 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 		snprintf(numberLabel, sizeof(numberLabel), "%u", (unsigned)(i + 1));
 		Rect numberRect = getStringRect(numberLabel, 0, 0);
 
-		display->setCursor(tickX - numberRect.width / 2, chartY1 + 14);
+		// place the label right below the tick (numberRect.y is negative for u8g2 fonts)
+		display->setCursor(tickX - numberRect.width / 2, chartY1 + 4 - numberRect.y);
 		display->print(numberLabel);
 	}
 
@@ -1563,17 +1582,18 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 
 		bool drawAbove = labelAllPoints ? (k % 2 == 0) : true;
 
-		if (drawAbove && pointY[k] - 14 < chartY0)
+		// flip the label side if its box does not fit (offsets are tuned for u8g2_font_5x7_tf)
+		if (drawAbove && pointY[k] - 10 < chartY0)
 		{
 			drawAbove = false;
 		}
 
-		if (!drawAbove && pointY[k] + 14 > chartY1 + 6)
+		if (!drawAbove && pointY[k] + 9 > chartY1 + 2)
 		{
 			drawAbove = true;
 		}
 
-		int16_t labelY = drawAbove ? pointY[k] - 6 : pointY[k] + 14;
+		int16_t labelY = drawAbove ? pointY[k] - 4 : pointY[k] + 10;
 
 		char label[14];
 		formatSeriesChartValue((SeriesField)fieldIndex, values[k], label, sizeof(label));
@@ -1591,9 +1611,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 			labelX = display->width() - 1 - labelRect.width;
 		}
 
-		display->fillRect(labelX - 1, labelY - 8, labelRect.width + 2, 9, BLACK);
-		display->setCursor(labelX, labelY);
-		display->print(label);
+		drawTextWithPlaque(label, labelX, labelY);
 	}
 
 	display->setFont(u8g2_font_6x13_tf);
