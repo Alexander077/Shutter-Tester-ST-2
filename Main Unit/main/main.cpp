@@ -20,6 +20,7 @@
 #include "lib/Common.h"
 #include "lib/MeasuredResult.h"
 #include "lib/StoredMeasuredResult.h"
+#include "lib/MeasurementSeries.h"
 #include "lib/About.h"
 #include "lib/Images.h"
 #include "lib/SerialNumber.h"
@@ -51,6 +52,8 @@
 #define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
 
 RecordsStorageManager storage(RECORDS_FILE_PATH);
+
+MeasurementSeries measurementSeries = {};
 
 /* More data bus class: https://github.com/moononournation/Arduino_GFX/wiki/Data-Bus-Class */
 // Arduino_DataBus *bus = new Arduino_HWSPI(TFT_DC, TFT_CS);
@@ -348,8 +351,11 @@ void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
   int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
   display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
 
-  for (int8_t i = 0, spacing = 0; i < itemsCount; i++, spacing += navBarWidth / (itemsCount - 1))
+  double spacingStep = (double)navBarWidth / (double)(itemsCount - 1);
+
+  for (int8_t i = 0; i < itemsCount; i++)
   {
+    int16_t spacing = (int16_t)(i * spacingStep);
     display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
   }
 }
@@ -1244,39 +1250,425 @@ void renderMeasuredResult(MeasuredResult &res)
 	}
 }
 
-void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
+// ============================================================================
+// Measurement series report
+// ============================================================================
+
+// Formats a positive value compactly so it fits into the narrow summary table columns
+void formatCompactDouble(double value, char *buf, size_t bufSize)
 {
-	// ---------------------------------------------------------------
-	// Shutter result screen
-	//   shutter time im us/ms (e.g. 1.55 ms)
-	//   shutter speed in fraction of a sec. (e.g. 1/750 sec)
-	//   Distance from closest shutter speeds graphically
+	if (value >= 1000)
+	{
+		snprintf(buf, bufSize, "%.0f", value);
+	}
+	else if (value >= 100)
+	{
+		snprintf(buf, bufSize, "%.1f", value);
+	}
+	else
+	{
+		snprintf(buf, bufSize, "%.2f", value);
+	}
+}
 
-	// Total result screen
-	//   1 to 2 sensor first curtain travel time in ms
-	//   1 to 2 sensor second curtain travel time in ms
+// Formats shutter speed value (1/s) as a fraction label (e.g. "1/503")
+void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
+{
+	char denominator[10];
 
-	//   1 to 2 sensor first curtain speed in m/s
-	//   1 to 2 sensor second curtain speed in m/s
+	if (speed >= 10)
+	{
+		snprintf(denominator, sizeof(denominator), "%.0f", speed);
+	}
+	else if (speed >= 1)
+	{
+		snprintf(denominator, sizeof(denominator), "%.1f", speed);
+	}
+	else
+	{
+		snprintf(denominator, sizeof(denominator), "%.2f", speed);
+	}
 
-	//   1-st curtain est. total travel time in ms
-	//   2-st curtain est. total travel time in ms
+	snprintf(buf, bufSize, "1/%s", denominator);
+}
 
-	//   Slit size for first and second sensor in mm (e.g. 1.5mm)
-	// ---------------------------------------------------------------
+// Returns the value used to build a chart for the given field.
+// Sensor time fields are displayed as shutter speed (1/X), other fields as is.
+double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
+{
+	double rawValue = getSeriesFieldValue(res, field);
 
-	// sensor0Max = 163;
-	// sensor1Max = 20;
-	// curtainMovement = CurtainMovement::HORISONTAL;
+	if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed && isSeriesFieldValueValid(rawValue))
+	{
+		return 1000.0 / rawValue;
+	}
 
-	bool sensor0DataOk = false;
-	bool sensor1DataOk = false;
-	// double rawSensor0TimeTakenUs = -1;
-	// double rawSensor1TimeTakenUs = -1;
-	// double correctedSensor0TimeTakenUs = -1;
-	// double correctedSensor1TimeTakenUs = -1;
+	return rawValue;
+}
 
+// Formats a chart value according to the field display type
+void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
+{
+	if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed)
+	{
+		formatSpeedFractionLabel(chartValue, buf, bufSize);
+	}
+	else
+	{
+		formatCompactDouble(chartValue, buf, bufSize);
+	}
+}
+
+// Draws one summary page: 5 fields with avg/min/max values
+void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)
+{
+	char title[16];
+	snprintf(title, sizeof(title), "Summary %u/%u", (unsigned)(pageIndex + 1), (unsigned)SERIES_SUMMARY_PAGES_COUNT);
+	drawStringHCentered(title, 15);
+
+	display->setFont(); // small font for the table
+
+	const int16_t labelX = 2;
+	const int16_t avgX = 62;
+	const int16_t minX = 94;
+	const int16_t maxX = 126;
+
+	display->setCursor(labelX, 28);
+	display->print("Parameter");
+	display->setCursor(avgX, 28);
+	display->print("Avg");
+	display->setCursor(minX, 28);
+	display->print("Min");
+	display->setCursor(maxX, 28);
+	display->print("Max");
+
+	char buf[14];
+
+	for (uint8_t row = 0; row < SERIES_SUMMARY_FIELDS_PER_PAGE; row++)
+	{
+		uint8_t fieldIndex = pageIndex * SERIES_SUMMARY_FIELDS_PER_PAGE + row;
+
+		if (fieldIndex >= SERIES_FIELDS_COUNT)
+		{
+			break;
+		}
+
+		const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
+		int16_t rowY = 40 + row * 15;
+
+		display->setCursor(labelX, rowY);
+		display->print(desc.tableLabel);
+
+		SeriesFieldStats stats;
+		computeSeriesFieldStats(series, (SeriesField)fieldIndex, stats);
+
+		if (stats.validCount == 0)
+		{
+			display->setCursor(avgX, rowY);
+			display->print("N/A");
+
+			display->setCursor(minX, rowY);
+			display->print("N/A");
+
+			display->setCursor(maxX, rowY);
+			display->print("N/A");
+			continue;
+		}
+
+		display->setCursor(avgX, rowY);
+		formatCompactDouble(stats.avg, buf, sizeof(buf));
+		display->print(buf);
+
+		display->setCursor(minX, rowY);
+		formatCompactDouble(stats.min, buf, sizeof(buf));
+		display->print(buf);
+
+		display->setCursor(maxX, rowY);
+		formatCompactDouble(stats.max, buf, sizeof(buf));
+		display->print(buf);
+	}
+
+	display->setFont(u8g2_font_6x13_tf);
+}
+
+// Draws one chart page: field values for each measurement in the series
+void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
+{
+	const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
+	drawStringHCentered(desc.chartTitle, 15);
+
+	display->setFont(); // small font for the chart
+
+	double values[MEASUREMENT_SERIES_MAX_SIZE];
+	uint8_t validIndexes[MEASUREMENT_SERIES_MAX_SIZE];
+	uint8_t validCount = 0;
+
+	for (uint8_t i = 0; i < series.storedCount; i++)
+	{
+		double rawValue = getSeriesFieldValue(series.results[i], (SeriesField)fieldIndex);
+
+		if (!isSeriesFieldValueValid(rawValue))
+		{
+			continue;
+		}
+
+		values[validCount] = getSeriesChartValue(series.results[i], (SeriesField)fieldIndex);
+		validIndexes[validCount] = i;
+		validCount++;
+	}
+
+	const int16_t chartX0 = 42;
+	const int16_t chartX1 = 156;
+	const int16_t chartY0 = 30;
+	const int16_t chartY1 = 100;
+
+	if (validCount == 0)
+	{
+		display->setFont(u8g2_font_6x13_tf);
+		drawStringHCentered("No valid data", 60);
+		return;
+	}
+
+	double vmin = values[0];
+	double vmax = values[0];
+
+	for (uint8_t k = 1; k < validCount; k++)
+	{
+		if (values[k] < vmin)
+		{
+			vmin = values[k];
+		}
+
+		if (values[k] > vmax)
+		{
+			vmax = values[k];
+		}
+	}
+
+	if (vmax - vmin < 1e-9)
+	{
+		double pad = fabs(vmax) * 0.25;
+
+		if (pad < 1e-9)
+		{
+			pad = 1.0;
+		}
+
+		vmin -= pad;
+		vmax += pad;
+	}
+	else
+	{
+		double pad = (vmax - vmin) * 0.1;
+		vmin -= pad;
+		vmax += pad;
+	}
+
+	// horizontal gridlines with y axis labels
+	const uint8_t gridLineCount = 4;
+
+	for (uint8_t g = 0; g < gridLineCount; g++)
+	{
+		double fraction = (double)g / (double)(gridLineCount - 1);
+		int16_t gridY = chartY0 + (int16_t)((chartY1 - chartY0) * fraction);
+		double gridValue = vmax - (vmax - vmin) * fraction;
+
+		display->drawLine(chartX0, gridY, chartX1, gridY, WHITE);
+
+		char label[14];
+		formatSeriesChartValue((SeriesField)fieldIndex, gridValue, label, sizeof(label));
+		Rect labelRect = getStringRect(label, 0, 0);
+
+		display->setCursor(chartX0 - 4 - labelRect.width, gridY + 3);
+		display->print(label);
+	}
+
+	// axes
+	display->drawLine(chartX0, chartY0, chartX0, chartY1, WHITE);
+	display->drawLine(chartX0, chartY1, chartX1, chartY1, WHITE);
+
+	// x axis ticks and measurement number labels
+	uint8_t totalMeasurements = series.storedCount > 0 ? series.storedCount : 1;
+
+	for (uint8_t i = 0; i < totalMeasurements; i++)
+	{
+		double fraction = totalMeasurements == 1 ? 0.5 : (double)i / (double)(totalMeasurements - 1);
+		int16_t tickX = chartX0 + (int16_t)((chartX1 - chartX0) * fraction);
+
+		display->drawLine(tickX, chartY1, tickX, chartY1 + 3, WHITE);
+
+		char numberLabel[4];
+		snprintf(numberLabel, sizeof(numberLabel), "%u", (unsigned)(i + 1));
+		Rect numberRect = getStringRect(numberLabel, 0, 0);
+
+		display->setCursor(tickX - numberRect.width / 2, chartY1 + 14);
+		display->print(numberLabel);
+	}
+
+	// data points
+	int16_t pointX[MEASUREMENT_SERIES_MAX_SIZE];
+	int16_t pointY[MEASUREMENT_SERIES_MAX_SIZE];
+
+	for (uint8_t k = 0; k < validCount; k++)
+	{
+		double xFraction = validCount == 1 ? 0.5 : (double)validIndexes[k] / (double)(totalMeasurements - 1);
+		pointX[k] = chartX0 + (int16_t)((chartX1 - chartX0) * xFraction);
+
+		double yFraction = (values[k] - vmin) / (vmax - vmin);
+		pointY[k] = chartY1 - (int16_t)((chartY1 - chartY0) * yFraction);
+	}
+
+	// polyline between adjacent (by measurement number) valid points
+	for (uint8_t k = 0; k + 1 < validCount; k++)
+	{
+		if (validIndexes[k + 1] != validIndexes[k] + 1)
+		{
+			continue;
+		}
+
+		display->drawLine(pointX[k], pointY[k], pointX[k + 1], pointY[k + 1], GREEN);
+	}
+
+	for (uint8_t k = 0; k < validCount; k++)
+	{
+		display->fillCircle(pointX[k], pointY[k], 2, GREEN);
+	}
+
+	// find min and max points to label them
+	uint8_t minPointIndex = 0;
+	uint8_t maxPointIndex = 0;
+
+	for (uint8_t k = 1; k < validCount; k++)
+	{
+		if (values[k] < values[minPointIndex])
+		{
+			minPointIndex = k;
+		}
+
+		if (values[k] > values[maxPointIndex])
+		{
+			maxPointIndex = k;
+		}
+	}
+
+	// label all points for small series, otherwise only min and max
+	bool labelAllPoints = validCount <= 5;
+
+	for (uint8_t k = 0; k < validCount; k++)
+	{
+		if (!labelAllPoints && k != minPointIndex && k != maxPointIndex)
+		{
+			continue;
+		}
+
+		bool drawAbove = labelAllPoints ? (k % 2 == 0) : true;
+
+		if (drawAbove && pointY[k] - 14 < chartY0)
+		{
+			drawAbove = false;
+		}
+
+		if (!drawAbove && pointY[k] + 14 > chartY1 + 6)
+		{
+			drawAbove = true;
+		}
+
+		int16_t labelY = drawAbove ? pointY[k] - 6 : pointY[k] + 14;
+
+		char label[14];
+		formatSeriesChartValue((SeriesField)fieldIndex, values[k], label, sizeof(label));
+		Rect labelRect = getStringRect(label, 0, 0);
+
+		int16_t labelX = pointX[k] - labelRect.width / 2;
+
+		if (labelX < 1)
+		{
+			labelX = 1;
+		}
+
+		if (labelX + labelRect.width > display->width() - 1)
+		{
+			labelX = display->width() - 1 - labelRect.width;
+		}
+
+		display->fillRect(labelX - 1, labelY - 8, labelRect.width + 2, 9, BLACK);
+		display->setCursor(labelX, labelY);
+		display->print(label);
+	}
+
+	display->setFont(u8g2_font_6x13_tf);
+}
+
+// Multi-page series report: 2 summary pages + 1 chart page per field
+void renderSeriesReport(MeasurementSeries &series)
+{
+	const int16_t totalPagesCount = SERIES_REPORT_PAGES_COUNT;
+	int16_t startEncoderVal = AlexEncoder::counter;
+	int8_t prevPageIndex = -1;
+	display->fillScreen(BLACK);
+	display->setFont(u8g2_font_6x13_tf);
+	display->setTextColor(WHITE);
+
+	while (true)
+	{
+		if (isApiRequestReceived)
+			return;
+
+		int16_t resultPageIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (resultPageIndex > totalPagesCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (totalPagesCount - 1);
+			resultPageIndex = totalPagesCount - 1;
+		}
+
+		if (resultPageIndex < 0)
+		{
+			resultPageIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		if (resultPageIndex != prevPageIndex)
+		{
+			display->fillScreen(BLACK);
+
+			if (resultPageIndex < SERIES_SUMMARY_PAGES_COUNT)
+			{
+				drawSeriesSummaryPage(series, (uint8_t)resultPageIndex);
+			}
+			else
+			{
+				drawSeriesChartPage(series, (uint8_t)(resultPageIndex - SERIES_SUMMARY_PAGES_COUNT));
+			}
+
+			drawNavBar(resultPageIndex, totalPagesCount);
+			prevPageIndex = resultPageIndex;
+		}
+
+		if (button.isClicked())
+		{
+			return;
+		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
+	}
+}
+
+struct ComputedMeasurement
+{
 	MeasuredResult res;
+	bool sensor0DataOk;
+	bool sensor1DataOk;
+};
+
+// Computes MeasuredResult from raw capture data. Kept separate from the screen
+// rendering so the measurement series flow can reuse it.
+void computeMeasuredResult(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs, ComputedMeasurement &out)
+{
+	out.sensor0DataOk = false;
+	out.sensor1DataOk = false;
+
+	MeasuredResult &res = out.res;
 	res.selectedCurtainMovement = curtainMovement;
 
 	if (sensor0Max <= MIN_ALLOWED_SIGNAL_LEVEL)
@@ -1299,7 +1691,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		}
 		else
 		{
-			sensor0DataOk = true;
+			out.sensor0DataOk = true;
 		}
 	}
 
@@ -1323,7 +1715,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 		}
 		else
 		{
-			sensor1DataOk = true;
+			out.sensor1DataOk = true;
 		}
 	}
 
@@ -1364,7 +1756,7 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	}
 	else // for focal plane shutters
 	{
-		if (sensor0DataOk && sensor1DataOk) // if both sensors data is valid
+		if (out.sensor0DataOk && out.sensor1DataOk) // if both sensors data is valid
 		{
 			curtainTimings.curtain1spanAtime = curtain1TimeUs;
 			curtainTimings.curtain2spanAtime = curtain2TimeUs;
@@ -1405,8 +1797,8 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 				res.slitWidthSensor0 = MEASUREMENTS_IS_INVALID_VAL;
 				res.slitWidthSensor1 = MEASUREMENTS_IS_INVALID_VAL;
 				res.slitWidthAverage = MEASUREMENTS_IS_INVALID_VAL;
-				sensor0DataOk = false;
-				sensor1DataOk = false;
+				out.sensor0DataOk = false;
+				out.sensor1DataOk = false;
 			}
 		}
 		else
@@ -1422,18 +1814,35 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 			res.slitWidthAverage = BOTH_SENSORS_MEASUREMENTS_REQUIRED;
 		}
 	}
+}
 
-	// Serial.println(res.curtain1spanAspeed);
-	// Serial.println(res.curtain1spanAtime);
-	// Serial.println(res.curtain1TotalTime);
-	// Serial.println(res.curtain2spanAspeed);
-	// Serial.println(res.curtain2spanAtime);
-	// Serial.println(res.curtain2TotalTime);
-	// Serial.println(res.sensor0Time);
-	// Serial.println(res.sensor1Time);
-	// Serial.println(res.slitWidthSensor0);
-	// Serial.println(res.slitWidthSensor1);
-	// Serial.println(res.slitWidthAverage);
+void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
+{
+	// ---------------------------------------------------------------
+	// Shutter result screen
+	//   shutter time im us/ms (e.g. 1.55 ms)
+	//   shutter speed in fraction of a sec. (e.g. 1/750 sec)
+	//   Distance from closest shutter speeds graphically
+
+	// Total result screen
+	//   1 to 2 sensor first curtain travel time in ms
+	//   1 to 2 sensor second curtain travel time in ms
+
+	//   1 to 2 sensor first curtain speed in m/s
+	//   1 to 2 sensor second curtain speed in m/s
+
+	//   1-st curtain est. total travel time in ms
+	//   2-st curtain est. total travel time in ms
+
+	//   Slit size for first and second sensor in mm (e.g. 1.5mm)
+	// ---------------------------------------------------------------
+
+	ComputedMeasurement computed;
+	computeMeasuredResult(rawSensor0TimeTakenUs, rawSensor1TimeTakenUs, curtain1TimeUs, curtain2TimeUs, computed);
+
+	MeasuredResult &res = computed.res;
+	bool sensor0DataOk = computed.sensor0DataOk;
+	bool sensor1DataOk = computed.sensor1DataOk;
 
 	// === ГЕНЕРАЦИЯ JSON ДЛЯ API ===
 	if (apiRequestAction == ApiRequestAction::GO_TO_MEASURE)
@@ -1489,8 +1898,21 @@ void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeT
 	} while (saveScreenRes == MeasurementSaveScreenResult::CANCEL && !isApiRequestReceived);
 }
 
-void drawMeasuringScreen()
+struct RawMeasurementCapture
 {
+	bool isCancelled;
+	uint32_t sensor0PulseWidthUs;
+	uint32_t sensor1PulseWidthUs;
+	uint32_t curtain1TimeUs;
+	uint32_t curtain2TimeUs;
+};
+
+// Performs a single ADC capture showing the measuring screen. Used by both the
+// single measurement flow and the measurement series flow.
+RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")
+{
+	RawMeasurementCapture captureRes = {false, 0, 0, 0, 0};
+
 	printf("Starting ADC continuous reading...\n");
 
 	vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
@@ -1502,10 +1924,16 @@ void drawMeasuringScreen()
 	uint32_t curtain2ADCSamplesCounter = 0;
 
 	display->fillScreen(BLACK);
+	display->setFont(u8g2_font_6x13_tf);
 	display->setTextSize(2);
-	drawStringHCentered("MEASURING", 40);
+	drawStringHCentered(title, 40);
 	display->setTextSize(1);
-	drawStringHCentered("Release camera shutter", 60);
+	drawStringHCentered(subtitle, 60);
+
+	if (subtitle2[0] != '\0')
+	{
+		drawStringHCentered(subtitle2, 75);
+	}
 
 	esp_err_t adcReadRes;
 	uint32_t retNum = 0;
@@ -1546,7 +1974,8 @@ void drawMeasuringScreen()
 		if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
 		{
 			ESP_ERROR_CHECK(adc_continuous_stop(handle));
-			return;
+			captureRes.isCancelled = true;
+			return captureRes;
 		}
 
 		adcReadRes = adc_continuous_read(handle, result, READ_LEN, &retNum, UINT32_MAX);
@@ -1681,7 +2110,8 @@ void drawMeasuringScreen()
 		if (button.isClicked())
 		{
 			ESP_ERROR_CHECK(adc_continuous_stop(handle));
-			return;
+			captureRes.isCancelled = true;
+			return captureRes;
 		}
 		else if (sensor0State == SensorMesuringState::MeasurementFinished ||
 						 sensor1State == SensorMesuringState::MeasurementFinished) // Check if at least one sensor has data
@@ -1753,20 +2183,185 @@ void drawMeasuringScreen()
 
 				// SERIAL_API_DEBUG_PRINT("ADC conversions taken for sensor 2: %" PRIu32, sensor2ADCSamplesCounter);
 
-				drawMeasuredScreen(sensor0PulseWidthUs,
-													 sensor1PulseWidthUs,
-													 (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US,
-													 (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US);
+				captureRes.sensor0PulseWidthUs = sensor0PulseWidthUs;
+				captureRes.sensor1PulseWidthUs = sensor1PulseWidthUs;
+				captureRes.curtain1TimeUs = (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US;
+				captureRes.curtain2TimeUs = (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US;
 
-				return;
+				return captureRes;
 			}
 		}
 	}
-	// ESP_ERROR_CHECK(adc_continuous_deinit(handle));
+
+	return captureRes;
+}
+
+void drawMeasuringScreen()
+{
+	RawMeasurementCapture capture = captureMeasurement("MEASURING", "Release camera shutter");
+
+	if (capture.isCancelled || isApiRequestReceived)
+	{
+		return;
+	}
+
+	drawMeasuredScreen(capture.sensor0PulseWidthUs,
+		capture.sensor1PulseWidthUs,
+		capture.curtain1TimeUs,
+		capture.curtain2TimeUs);
+}
+
+// Asks the user how many measurements to take in the series.
+// Returns 0 if 'Go Back' was selected (or on API request), otherwise the selected count.
+uint8_t drawMeasurementsCountSelectionScreen()
+{
+	const uint8_t optionsCount = measurementSeriesOptionsCount + 1; // +1 for 'Go Back'
+	const char *options[measurementSeriesOptionsCount + 1];
+	char countLabels[measurementSeriesOptionsCount][5];
+
+	for (uint8_t i = 0; i < measurementSeriesOptionsCount; i++)
+	{
+		snprintf(countLabels[i], sizeof(countLabels[i]), "%u", (unsigned)measurementSeriesOptions[i]);
+		options[i] = countLabels[i];
+	}
+
+	options[measurementSeriesOptionsCount] = "Go Back";
+
+	int16_t startEncoderVal = AlexEncoder::counter;
+	int8_t prevSelectedMenuItemIndex = 0;
+
+	uint8_t xMargin = 35;
+	uint8_t yMargin = 35;
+	uint8_t ySpacing = 12;
+	uint8_t arrowXmargin = 15;
+
+	display->fillScreen(BLACK);
+	display->setFont(u8g2_font_6x13_tf);
+	drawStringHCentered("Measurements count", 20);
+	display->setFont();
+
+	for (uint8_t i = 0; i < optionsCount; i++)
+	{
+		display->setCursor(xMargin, yMargin + (ySpacing * i));
+		display->print(options[i]);
+	}
+
+	display->setCursor(xMargin - arrowXmargin, yMargin);
+	display->print("->");
+
+	while (true)
+	{
+		if (isApiRequestReceived)
+			return 0;
+
+		int16_t resultOptionIndex = AlexEncoder::counter - startEncoderVal;
+
+		if (resultOptionIndex > optionsCount - 1)
+		{
+			startEncoderVal = AlexEncoder::counter - (optionsCount - 1);
+			resultOptionIndex = optionsCount - 1;
+		}
+
+		if (resultOptionIndex < 0)
+		{
+			resultOptionIndex = 0;
+			startEncoderVal = AlexEncoder::counter;
+		}
+
+		if (prevSelectedMenuItemIndex != resultOptionIndex)
+		{
+			display->setTextColor(BLACK);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * prevSelectedMenuItemIndex));
+			display->print("->");
+
+			display->setTextColor(WHITE);
+			display->setCursor(xMargin - arrowXmargin, yMargin + (ySpacing * resultOptionIndex));
+			display->print("->");
+
+			prevSelectedMenuItemIndex = resultOptionIndex;
+		}
+
+		if (button.isClicked())
+		{
+			if (resultOptionIndex == measurementSeriesOptionsCount) // 'Go Back' selected
+			{
+				return 0;
+			}
+
+			return measurementSeriesOptions[resultOptionIndex];
+		}
+
+		vTaskDelay(1 / portTICK_PERIOD_MS);
+	}
+}
+
+// Runs a series of measurements one by one and shows the multi-page report at the end
+void drawMeasuringSeriesScreen(uint8_t seriesCount)
+{
+	measurementSeries.totalCount = seriesCount;
+	measurementSeries.storedCount = 0;
+
+	for (uint8_t measurementIndex = 0; measurementIndex < seriesCount; measurementIndex++)
+	{
+		char measuringTitle[24];
+		snprintf(measuringTitle, sizeof(measuringTitle), "Measurement %u of %u", (unsigned)(measurementIndex + 1), (unsigned)seriesCount);
+
+		bool repeatCurrentMeasurement = true;
+
+		while (repeatCurrentMeasurement)
+		{
+			repeatCurrentMeasurement = false;
+
+			RawMeasurementCapture capture = captureMeasurement("MEASURING", measuringTitle, "Release camera shutter");
+
+			if (capture.isCancelled || isApiRequestReceived)
+			{
+				return;
+			}
+
+			ComputedMeasurement computed;
+			computeMeasuredResult(capture.sensor0PulseWidthUs,
+				capture.sensor1PulseWidthUs,
+				capture.curtain1TimeUs,
+				capture.curtain2TimeUs,
+				computed);
+
+			// Captures with dim/bright light, too short or otherwise invalid data
+			// get negative sentinel values in sensor times
+			bool isCaptureValid = computed.res.sensor0Time > 0 && computed.res.sensor1Time > 0;
+
+			if (!isCaptureValid)
+			{
+				const char *failOptions[] = {"Retry", "Abort series"};
+				int16_t failOptionIndex = drawMessageScreen("Measurement failed", 2, failOptions);
+
+				if (isApiRequestReceived)
+				{
+					return;
+				}
+
+				if (failOptionIndex == 0) // Retry
+				{
+					repeatCurrentMeasurement = true;
+					continue;
+				}
+
+				return; // Abort series
+			}
+
+			measurementSeries.results[measurementIndex] = computed.res;
+			measurementSeries.storedCount++;
+		}
+	}
+
+	renderSeriesReport(measurementSeries);
 }
 
 CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
+  // Outer loop: redraw the screen when returning from the measurements count screen ('Go back')
+  while (true)
+  {
   display->fillScreen(BLACK);
   drawStringHCentered("Select curtain movement", 20);
   
@@ -1838,11 +2433,31 @@ CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 			}
 			
       curtainMovement = (CurtainMovement)resultMenuItemIndex;
-      drawMeasuringScreen();
+
+			uint8_t selectedMeasurementsCount = drawMeasurementsCountSelectionScreen();
+
+			if (isApiRequestReceived)
+				return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU;
+
+			if (selectedMeasurementsCount == 0) //'Go back' selected on measurements count screen
+			{
+				break; // break inner loop to redraw the curtain movement selection screen
+			}
+
+			if (selectedMeasurementsCount == 1)
+			{
+				drawMeasuringScreen();
+			}
+			else
+			{
+				drawMeasuringSeriesScreen(selectedMeasurementsCount);
+			}
+
 			return CurtainMovementSelectionScreenResult::GO_TO_MAIN_MENU;
 		}
 
 		vTaskDelay(1 / portTICK_PERIOD_MS);
+  }
   }
 }
 
