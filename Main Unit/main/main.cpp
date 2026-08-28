@@ -1434,8 +1434,8 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 		validCount++;
 	}
 
-	const int16_t chartX0 = 42;
-	const int16_t chartX1 = 156;
+	const int16_t chartX0 = 5;
+	const int16_t chartX1 = 154;
 	const int16_t chartY0 = 30;
 	const int16_t chartY1 = 100;
 
@@ -1481,24 +1481,19 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 		vmax += pad;
 	}
 
-	// horizontal gridlines with y axis labels
+	// first/last data points (and their ticks) are inset 5 px from the chart edges
+	const int16_t pointAreaX0 = chartX0 + 5;
+	const int16_t pointAreaX1 = chartX1 - 5;
+
+	// horizontal gridlines
 	const uint8_t gridLineCount = 4;
 
 	for (uint8_t g = 0; g < gridLineCount; g++)
 	{
 		double fraction = (double)g / (double)(gridLineCount - 1);
 		int16_t gridY = chartY0 + (int16_t)((chartY1 - chartY0) * fraction);
-		double gridValue = vmax - (vmax - vmin) * fraction;
 
 		display->drawLine(chartX0, gridY, chartX1, gridY, WHITE);
-
-		char label[14];
-		formatSeriesChartValue((SeriesField)fieldIndex, gridValue, label, sizeof(label));
-		Rect labelRect = getStringRect(label, 0, 0);
-
-		// center the label vertically on the gridline (labelRect.y is negative for u8g2 fonts)
-		display->setCursor(chartX0 - 4 - labelRect.width, gridY - labelRect.height / 2 - labelRect.y);
-		display->print(label);
 	}
 
 	// axes
@@ -1511,7 +1506,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 	for (uint8_t i = 0; i < totalMeasurements; i++)
 	{
 		double fraction = totalMeasurements == 1 ? 0.5 : (double)i / (double)(totalMeasurements - 1);
-		int16_t tickX = chartX0 + (int16_t)((chartX1 - chartX0) * fraction);
+		int16_t tickX = pointAreaX0 + (int16_t)((pointAreaX1 - pointAreaX0) * fraction);
 
 		display->drawLine(tickX, chartY1, tickX, chartY1 + 3, WHITE);
 
@@ -1531,7 +1526,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 	for (uint8_t k = 0; k < validCount; k++)
 	{
 		double xFraction = validCount == 1 ? 0.5 : (double)validIndexes[k] / (double)(totalMeasurements - 1);
-		pointX[k] = chartX0 + (int16_t)((chartX1 - chartX0) * xFraction);
+		pointX[k] = pointAreaX0 + (int16_t)((pointAreaX1 - pointAreaX0) * xFraction);
 
 		double yFraction = (values[k] - vmin) / (vmax - vmin);
 		pointY[k] = chartY1 - (int16_t)((chartY1 - chartY0) * yFraction);
