@@ -79,6 +79,21 @@ enum class ZeroRecordsMeasurementSaveMenuItems
   BACK_TO_MEASUREMENT_RESULT
 };
 
+#define ENCODER_B_PIN 13 // s1
+#define ENCODER_A_PIN 27 // s2
+#define BUTTON_PIN 14
+
+AlexButton button(BUTTON_PIN);
+
+void IRAM_ATTR onTimer()
+{
+  button.tick();
+  // AlexEncoder::tick();
+}
+
+#define USER_INPUT_POLLING_FREQ_HZ 300
+// #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
+#define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
 
 CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
 int8_t curSensorIndex = -1;
