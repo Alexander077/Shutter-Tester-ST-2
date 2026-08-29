@@ -1,5 +1,10 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/ADC.h"
+#include "lib/serialAPI.h"
+#include <inttypes.h>
 
 #define EDGE_BUFFER_SIZE 5000
 #define NOISE_THRESHOLD 1000 // Порог начала импульса
@@ -16,7 +21,7 @@ enum class SensorMesuringState
 
 // Performs a single ADC capture showing the measuring screen. Used by both the
 // single measurement flow and the measurement series flow.
-RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")
+inline RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")
 {
   RawMeasurementCapture captureRes = {false, 0, 0, 0, 0};
 

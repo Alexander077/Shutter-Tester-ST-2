@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <vector>
 #include <string.h>
-#include "StoredMeasuredResult.h"
+#include "recordsManagement/StoredMeasuredResult.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
 
@@ -37,13 +37,13 @@ public:
   int16_t getFreeSlotsCount();
 };
 
-RecordsStorageManager::RecordsStorageManager(const char *path)
+inline RecordsStorageManager::RecordsStorageManager(const char *path)
 {
   filePath = path;
   fileMutex = NULL;
 }
 
-void RecordsStorageManager::begin()
+inline void RecordsStorageManager::begin()
 {
   fileMutex = xSemaphoreCreateMutex();
   
@@ -53,7 +53,7 @@ void RecordsStorageManager::begin()
   }
 }
 
-std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
+inline std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
 {
   std::vector<int32_t> records;
 
@@ -86,7 +86,7 @@ std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
   return records;
 }
 
-StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumber)
+inline StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumber)
 {
   StoredMeasuredResult measRes;
   memset(&measRes, 0, sizeof(StoredMeasuredResult));
@@ -114,7 +114,7 @@ StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumb
   return measRes;
 }
 
-bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
+inline bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
 {
   bool success = false;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
@@ -147,7 +147,7 @@ bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
   return success;
 }
 
-int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
+inline int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
 {
   int32_t finalRecordNumber = -1;
 
@@ -231,7 +231,7 @@ int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
   return finalRecordNumber;
 }
 
-int16_t RecordsStorageManager::getFreeSlotsCount()
+inline int16_t RecordsStorageManager::getFreeSlotsCount()
 {
   int16_t freeCount = 0;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))

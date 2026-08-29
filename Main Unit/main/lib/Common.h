@@ -1,5 +1,11 @@
 #pragma once
 
+#include <stdio.h>
+#include <stdint.h>
+#include "esp_log.h"
+#include "esp_attr.h"
+#include "AlexButton.h"
+
 #define TEST_PIN_1 4
 #define TEST_PIN_2 5
 
@@ -31,7 +37,7 @@
 
 const uint8_t sensorsDataArraySize = 4;
 
-const char *SensorTypeStr[sensorsDataArraySize] =
+inline const char *SensorTypeStr[sensorsDataArraySize] =
 {
   "35mm",
   "6x4.5",
@@ -83,9 +89,11 @@ enum class ZeroRecordsMeasurementSaveMenuItems
 #define ENCODER_A_PIN 27 // s2
 #define BUTTON_PIN 14
 
-AlexButton button(BUTTON_PIN);
+inline AlexButton button(BUTTON_PIN);
 
-void IRAM_ATTR onTimer()
+// NOTE: ISR callbacks must NOT be 'inline' on ESP32 (COMDAT section placement
+// breaks IRAM literal relocation), so this one is 'static' instead.
+static void IRAM_ATTR onTimer()
 {
   button.tick();
   // AlexEncoder::tick();
@@ -95,10 +103,10 @@ void IRAM_ATTR onTimer()
 // #define SPLASH_SCREEN_VISIBLE_TIME_MS 1000000000
 #define SPLASH_SCREEN_VISIBLE_TIME_MS 1250
 
-CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
-int8_t curSensorIndex = -1;
+inline CurtainMovement curtainMovement = CurtainMovement::HORISONTAL;
+inline int8_t curSensorIndex = -1;
 
-void formatRecordName(int32_t recordNumber, char resultRecordName[30])
+inline void formatRecordName(int32_t recordNumber, char resultRecordName[30])
 {
   int16_t bufSize = 30;
 
@@ -114,7 +122,7 @@ void formatRecordName(int32_t recordNumber, char resultRecordName[30])
   #pragma GCC diagnostic pop
 }
 
-void halt(const char *message)
+inline void halt(const char *message)
 {
   if (message[0] != '\0')
   {
@@ -125,7 +133,7 @@ void halt(const char *message)
   while (true);
 }
 
-void halt()
+inline void halt()
 {
   halt("\0");
 }

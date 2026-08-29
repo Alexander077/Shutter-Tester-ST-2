@@ -1,7 +1,13 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawSensorSelectionScreen()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/MessageScreen.h"
+#include "screens/CurtainMovementSelectionScreen.h"
+#include "lib/serialAPI.h"
+#include <inttypes.h>
+
+inline void drawSensorSelectionScreen()
 {
   const char *options[sensorsDataArraySize + 1] = {};
 

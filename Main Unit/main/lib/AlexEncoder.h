@@ -30,13 +30,13 @@ public:
 
 // ---- Static member definitions ----
 
-uint8_t  AlexEncoder::_pinA            = 0;
-uint8_t  AlexEncoder::_pinB            = 0;
-uint8_t  AlexEncoder::_prevState       = 0;
-int8_t   AlexEncoder::_quadAccumulator = 0;
-esp_timer_handle_t AlexEncoder::_pollTimer = nullptr;
-volatile bool    AlexEncoder::currentDir = true;
-volatile int16_t AlexEncoder::counter    = 0;
+inline uint8_t  AlexEncoder::_pinA            = 0;
+inline uint8_t  AlexEncoder::_pinB            = 0;
+inline uint8_t  AlexEncoder::_prevState       = 0;
+inline int8_t   AlexEncoder::_quadAccumulator = 0;
+inline esp_timer_handle_t AlexEncoder::_pollTimer = nullptr;
+inline volatile bool    AlexEncoder::currentDir = true;
+inline volatile int16_t AlexEncoder::counter    = 0;
 
 // Gray-code quadrature transition table.
 // Rows: previous state {CLK,DT} (0–3), Cols: new state {CLK,DT} (0–3)
@@ -46,7 +46,7 @@ volatile int16_t AlexEncoder::counter    = 0;
 //   CCW (counter-clockwise): 00 → 01 → 11 → 10 → 00 ...
 //
 // Any other transition is contact bounce or noise → returns 0.
-const int8_t AlexEncoder::TRANSITIONS[16] =
+inline const int8_t AlexEncoder::TRANSITIONS[16] =
 {
   // prev=00 (0):          new=00   new=01   new=10   new=11
   /*                     */    0,       1,      -1,       0,
@@ -59,7 +59,7 @@ const int8_t AlexEncoder::TRANSITIONS[16] =
 };
 
 // Polling-based quadrature decoding
-void AlexEncoder::onPollTimer(void *arg)
+inline void AlexEncoder::onPollTimer(void *arg)
 {
   // Sample both pins: bit1 = CLK (pinA), bit0 = DT (pinB)
   uint8_t newState = (gpio_get_level((gpio_num_t)_pinA) ? 2 : 0) |
@@ -96,7 +96,7 @@ void AlexEncoder::onPollTimer(void *arg)
   pinState = !pinState;
 }
 
-void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
+inline void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
 {
   _pinA = pinA;
   _pinB = pinB;

@@ -1,7 +1,16 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawMainMenu()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/SensorSelectionScreen.h"
+#include "screens/LightCheckScreen.h"
+#include "screens/AboutScreen.h"
+#include "screens/ViewRecordsScreen.h"
+#include "screens/MeasuringScreen.h"
+#include "lib/AlexEncoder.h"
+#include "lib/serialAPI.h"
+
+inline void drawMainMenu()
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];

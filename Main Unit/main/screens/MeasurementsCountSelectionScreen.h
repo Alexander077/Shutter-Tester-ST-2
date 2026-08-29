@@ -1,9 +1,14 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/MeasurementSeries.h"
+#include "lib/AlexEncoder.h"
+#include "lib/serialAPI.h"
 
 // Asks the user how many measurements to take in the series.
 // Returns 0 if 'Go Back' was selected (or on API request), otherwise the selected count.
-uint8_t drawMeasurementsCountSelectionScreen()
+inline uint8_t drawMeasurementsCountSelectionScreen()
 {
   const uint8_t optionsCount = measurementSeriesOptionsCount + 1; // +1 for 'Go Back'
   const char *options[measurementSeriesOptionsCount + 1];

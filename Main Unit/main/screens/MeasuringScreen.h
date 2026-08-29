@@ -1,7 +1,12 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawMeasuringScreen()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/CaptureMeasurement.h"
+#include "screens/MeasuredScreen.h"
+#include "lib/serialAPI.h"
+
+inline void drawMeasuringScreen()
 {
   RawMeasurementCapture capture = captureMeasurement("MEASURING", "Release camera shutter");
 

@@ -1,5 +1,8 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/MeasurementSeries.h"
 
 #define SERIES_CHART_TITLE_FONT u8g2_font_6x10_tf
 #define SERIES_CHART_LABEL_FONT u8g2_font_5x7_tf
@@ -7,7 +10,7 @@
 // Draws text at the cursor position (x, y) with a black plaque behind the actual glyph box.
 // The plaque is computed from the text bounding box, so it works with both the classic font
 // (y is the top of the glyphs) and u8g2 fonts (y is the baseline).
-void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
+inline void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
 {
   Rect textBox = getStringRect(text, 0, 0);
 
@@ -17,7 +20,7 @@ void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
 }
 
 // Formats shutter speed value (1/s) as a fraction label (e.g. "1/503")
-void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
+inline void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
 {
   char denominator[10];
 
@@ -38,7 +41,7 @@ void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
 }
 
 // Formats a chart value according to the field display type
-void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
+inline void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
 {
   if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed)
   {
@@ -52,7 +55,7 @@ void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, siz
 
 // Returns the value used to build a chart for the given field.
 // Sensor time fields are displayed as shutter speed (1/X), other fields as is.
-double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
+inline double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
 {
   double rawValue = getSeriesFieldValue(res, field);
 
@@ -67,7 +70,7 @@ double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
 
 
 // Draws one chart page: field values for each measurement in the series
-void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
+inline void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 {
   const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 enum class ApiRequestAction
 {
   NO_ACTION,
@@ -7,7 +10,7 @@ enum class ApiRequestAction
   GO_TO_MEASURE
 };
 
-volatile ApiRequestAction apiRequestAction = ApiRequestAction::NO_ACTION;
+inline volatile ApiRequestAction apiRequestAction = ApiRequestAction::NO_ACTION;
 
 class SerialAPILightStatus
 {
@@ -48,7 +51,11 @@ public:
       "API_RESPONSE_MEASUREMENT_RESULT_DATA";
 };
 
-char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};
+inline char *serialApiLightQualityStatusesStr[3] = {"LIGHT_QUALITY_UNKNOWN", "LIGHT_QUALITY_OK", "LIGHT_QUALITY_BAD"};
+
+// Forward declaration: the debug macro below may use doubleFlush()
+// which is defined in serialAPI.h
+void doubleFlush();
 
 // --- Мьютекс для синхронизации вывода в последовательный порт ---
 extern SemaphoreHandle_t serialPrintMutex;

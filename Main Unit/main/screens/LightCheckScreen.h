@@ -1,5 +1,11 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/ADC.h"
+#include "lib/serialAPI.h"
+#include "cJSON.h"
+#include <inttypes.h>
 
 enum class LightQualityStatus
 {
@@ -8,7 +14,7 @@ enum class LightQualityStatus
   BAD,
 };
 
-void drawLightCheckScreen()
+inline void drawLightCheckScreen()
 {
   uint32_t sensor1TotalADCSamplesCounter = 0;
   uint32_t sensor1OpenADCSamplesCounter = 0;

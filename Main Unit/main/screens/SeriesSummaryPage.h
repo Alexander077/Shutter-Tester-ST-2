@@ -1,8 +1,11 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/MeasurementSeries.h"
 
 // Draws one summary page: 5 fields with avg/min/max values
-void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)
+inline void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)
 {
   char title[16];
   snprintf(title, sizeof(title), "Summary %u/%u", (unsigned)(pageIndex + 1), (unsigned)SERIES_SUMMARY_PAGES_COUNT);

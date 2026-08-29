@@ -1,4 +1,6 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
 
 struct CurtainTimings
@@ -48,7 +50,7 @@ const SensorUnitData sensorsData[sensorsDataArraySize] =
 	}
 };
 
-double getCurtainSpeed(long time, double distance)
+inline double getCurtainSpeed(long time, double distance)
 {
   double curtainSpeedMmPerUs = distance / time;
   double curtainSpeedInMmPerS = curtainSpeedMmPerUs * (double)US_IN_SECOND;
@@ -56,7 +58,7 @@ double getCurtainSpeed(long time, double distance)
   return curtainSpanASpeedInMPerS;
 }
 
-void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
+inline void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
 {
   double frameSizeInMeters = frameSize / (double)MM_IN_M;
   // First curtain
@@ -78,7 +80,7 @@ void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, 
 
 // Computes MeasuredResult from raw capture data. Kept separate from the screen
 // rendering so the measurement series flow can reuse it.
-void computeMeasuredResult(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs, ComputedMeasurement &out)
+inline void computeMeasuredResult(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs, ComputedMeasurement &out)
 {
   out.sensor0DataOk = false;
   out.sensor1DataOk = false;

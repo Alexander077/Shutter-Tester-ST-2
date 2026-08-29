@@ -1,6 +1,7 @@
-#include <Arduino.h>
-
 #pragma once
+
+#include <string.h>
+#include "lib/Common.h"
 
 struct StoredMeasuredResult
 {

@@ -1,7 +1,14 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/MeasurementsCountSelectionScreen.h"
+#include "screens/MeasuringScreen.h"
+#include "screens/MeasuringSeriesScreen.h"
+#include "lib/AlexEncoder.h"
+#include "lib/serialAPI.h"
+
+inline CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
   // Outer loop: redraw the screen when returning from the measurements count screen ('Go back')
   while (true)

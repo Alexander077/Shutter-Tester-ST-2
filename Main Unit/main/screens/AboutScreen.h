@@ -1,7 +1,15 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawAboutScreen()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "lib/About.h"
+#include "lib/SerialNumber.h"
+#include "lib/AlexEncoder.h"
+#include "lib/serialAPI.h"
+#include "esp_partition.h"
+#include "esp_ota_ops.h"
+
+inline void drawAboutScreen()
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   uint8_t xMargin = 20;

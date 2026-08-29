@@ -1,7 +1,14 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawViewRecordsScreen()
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "recordsManagement/RecordsManagementCommon.h"
+#include "screens/MeasurementResultRecordSelectionScreen.h"
+#include "screens/MeasuredResult.h"
+#include "screens/MessageScreen.h"
+#include "lib/serialAPI.h"
+
+inline void drawViewRecordsScreen()
 {
   while (true)
   {

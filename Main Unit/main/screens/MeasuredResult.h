@@ -1,12 +1,18 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "lib/Images.h"
+#include "lib/AlexEncoder.h"
+#include "lib/serialAPI.h"
+#include <mString.h>
 
 #define SHUTTR_SPEEDS_COUNT 14
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
-void renderMeasuredResult(MeasuredResult &res)
+inline void renderMeasuredResult(MeasuredResult &res)
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   int8_t prevPageIndex = -1;

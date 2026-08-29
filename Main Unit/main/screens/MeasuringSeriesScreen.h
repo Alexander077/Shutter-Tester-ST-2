@@ -1,10 +1,18 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-MeasurementSeries measurementSeries = {};
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/CaptureMeasurement.h"
+#include "screens/computeMeasuredResult.h"
+#include "screens/MessageScreen.h"
+#include "screens/SeriesReport.h"
+#include "lib/MeasurementSeries.h"
+#include "lib/serialAPI.h"
+
+inline MeasurementSeries measurementSeries = {};
 
 // Runs a series of measurements one by one and shows the multi-page report at the end
-void drawMeasuringSeriesScreen(uint8_t seriesCount)
+inline void drawMeasuringSeriesScreen(uint8_t seriesCount)
 {
   measurementSeries.totalCount = seriesCount;
   measurementSeries.storedCount = 0;

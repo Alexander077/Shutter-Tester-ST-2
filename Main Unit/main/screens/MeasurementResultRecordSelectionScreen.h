@@ -1,9 +1,15 @@
-#include "../lib/MeasuredResult.h"
+#pragma once
+
+#include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "recordsManagement/RecordsManagementCommon.h"
+#include "lib/AceSorting/src/AceSorting.h"
+#include "lib/serialAPI.h"
+#include <mString.h>
 #include <string.h>
 #include <stdio.h>
 
-int32_t drawMeasurementResultRecordSelectionScreen()
+inline int32_t drawMeasurementResultRecordSelectionScreen()
 {
   // 1. Получаем все существующие (не удаленные) номера записей через менеджер
   std::vector<int32_t> validIds = storage.getAllValidRecordNumbers();

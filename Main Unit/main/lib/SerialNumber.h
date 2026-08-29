@@ -93,8 +93,8 @@ public:
   }
 };
 
-const char *const SerialNumber::TAG = "SerialNumber";
-const char *const SerialNumber::NVS_NAMESPACE = "device";
-const char *const SerialNumber::NVS_KEY = "serial";
-const uint8_t SerialNumber::SERIAL_NUMBER_LENGTH = 10;
-char SerialNumber::serialNumber[11] = {0};
+inline const char *const SerialNumber::TAG = "SerialNumber";
+inline const char *const SerialNumber::NVS_NAMESPACE = "device";
+inline const char *const SerialNumber::NVS_KEY = "serial";
+inline const uint8_t SerialNumber::SERIAL_NUMBER_LENGTH = 10;
+inline char SerialNumber::serialNumber[11] = {0};

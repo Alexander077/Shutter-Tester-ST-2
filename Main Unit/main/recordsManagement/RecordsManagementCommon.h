@@ -1,6 +1,16 @@
 #pragma once
 
 #include <Arduino.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <inttypes.h>
+#include "esp_log.h"
+#include "esp_littlefs.h"
+#include "lib/Common.h"
+#include "lib/MeasuredResult.h"
+#include "recordsManagement/StoredMeasuredResult.h"
+#include "recordsManagement/RecordsStorageManager.h"
 
 #define TOTAL_RECORDS_COUNT 100
 #define LITTLEFS_PARTITION_LABEL "storage"
@@ -9,7 +19,7 @@
 #define RECORDS_FILE_NAME "records.bin"
 #define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
 
-RecordsStorageManager storage(RECORDS_FILE_PATH);
+inline RecordsStorageManager storage(RECORDS_FILE_PATH);
 
 struct MeasurementRecordSaveResult
 {
@@ -17,7 +27,9 @@ struct MeasurementRecordSaveResult
   int32_t newRecordNumber;
 };
 
-void initStorage()
+int16_t getMeasurementSaveRecordSize();
+
+inline void initStorage()
 {
   ESP_LOGI("", "Initializing LittleFS");
 
@@ -108,33 +120,33 @@ void initStorage()
   }
 }
 
-int16_t getMeasurementSaveRecordSize()
+inline int16_t getMeasurementSaveRecordSize()
 {
   return sizeof(StoredMeasuredResult);
 }
 
-int16_t getTotalMeasurementSaveSlotsCount()
+inline int16_t getTotalMeasurementSaveSlotsCount()
 {
   // return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
   return TOTAL_RECORDS_COUNT;
 }
 
-int16_t getFreeMeasurementSaveSlotsCount()
+inline int16_t getFreeMeasurementSaveSlotsCount()
 {
   return storage.getFreeSlotsCount();
 }
 
-StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
+inline StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   return storage.getRecordByNumber(recordNumber);
 }
 
-bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
+inline bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   return storage.deleteRecordByNumber(recordNumber);
 }
 
-MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+inline MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
   MeasurementRecordSaveResult saveRes = {false, -1};
 

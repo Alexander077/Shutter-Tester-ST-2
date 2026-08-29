@@ -1,9 +1,14 @@
 #pragma once
 
 #include <Arduino.h>
+#include "esp_adc/adc_continuous.h"
+#include "soc/soc_caps.h"
+#include "esp_log.h"
+#include <inttypes.h>
+#include "freertos/FreeRTOS.h"
 
 static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
-adc_continuous_handle_t handle = NULL;
+inline adc_continuous_handle_t handle = NULL;
 #define ADC_CONVERSION_FREQ_HZ 1000 * 1000
 #define ADC_UNIT ADC_UNIT_1
 #define ADC_CONV_MODE ADC_CONV_SINGLE_UNIT_1
@@ -12,8 +17,8 @@ adc_continuous_handle_t handle = NULL;
 
 #define READ_LEN 4096
 
-volatile bool testFlag1 = false;
-volatile bool testFlag2 = false;
+inline volatile bool testFlag1 = false;
+inline volatile bool testFlag2 = false;
 
 static bool IRAM_ATTR s_conv_done_cb(adc_continuous_handle_t handle, const adc_continuous_evt_data_t *edata, void *user_data)
 {
@@ -60,7 +65,7 @@ static void continuous_adc_init(adc_channel_t *channel, uint8_t channel_num, adc
 	*out_handle = handle;
 }
 
-void initADC()
+inline void initADC()
 {
 	continuous_adc_init(channel, sizeof(channel) / sizeof(adc_channel_t), &handle);
 

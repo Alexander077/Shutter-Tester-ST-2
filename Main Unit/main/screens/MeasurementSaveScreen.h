@@ -1,7 +1,13 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "recordsManagement/RecordsManagementCommon.h"
+#include "screens/MessageScreen.h"
+#include "screens/MeasurementResultRecordSelectionScreen.h"
+#include "lib/serialAPI.h"
+
+inline MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
   int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
   int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();

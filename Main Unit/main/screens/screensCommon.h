@@ -2,9 +2,15 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <Arduino.h>
+#include <Arduino_GFX_Library.h>
+#include "lib/Common.h"
+#include "lib/MeasuredResult.h"
+#include "lib/Display.h"
+#include "lib/SerialAPICommon.h"
 
-uint16_t sensor0Max = 0;
-uint16_t sensor1Max = 0;
+inline uint16_t sensor0Max = 0;
+inline uint16_t sensor1Max = 0;
 
 struct ComputedMeasurement
 {
@@ -25,20 +31,20 @@ enum class CurtainMovementSelectionScreenResult
   GO_TO_MAIN_MENU
 };
 
-const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
+inline const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
     {
         "Measure",
         "Light Setup",
         "Saved Measures",
         "About"};
 
-const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
+inline const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
     {
         "Horisontal",
         "Vertical",
         "Leaf"};
 
-const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
+inline const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
     {
         "No",
         "Yes",
@@ -48,7 +54,7 @@ const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
         "Return to result",
 };
 
-const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
+inline const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
     {
         "No",
         "Yes",
@@ -72,17 +78,17 @@ struct RawMeasurementCapture
   uint32_t curtain2TimeUs;
 };
 
-const char *GetMenuItemTitle(MainMenuItems menuItem)
+inline const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
   return MainMenuItemsStr[(uint8_t)menuItem];
 }
 
-const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
+inline const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
 {
   return CurtainMovementItemsStr[(uint8_t)menuItem];
 }
 
-const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
+inline const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
 {
   if (useForZeroRecords)
   {
@@ -94,7 +100,7 @@ const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bo
   }
 }
 
-Rect getStringRect(const char *str, int16_t x, int16_t y)
+inline Rect getStringRect(const char *str, int16_t x, int16_t y)
 {
   // Variables to hold the bounding box dimensions
   int16_t x1, y1;
@@ -111,7 +117,7 @@ Rect getStringRect(const char *str, int16_t x, int16_t y)
   return r;
 }
 
-Rect drawStringHCentered(const char *str, uint16_t y)
+inline Rect drawStringHCentered(const char *str, uint16_t y)
 {
   // // Variables to hold the bounding box dimensions
   // int16_t x1, y1;
@@ -142,7 +148,7 @@ Rect drawStringHCentered(const char *str, uint16_t y)
   return r;
 }
 
-Rect drawStringHCentered(const String &str, uint16_t y)
+inline Rect drawStringHCentered(const String &str, uint16_t y)
 {
 #define CHAR_BUF_SIZE 50
   char buf[CHAR_BUF_SIZE];
@@ -150,7 +156,7 @@ Rect drawStringHCentered(const String &str, uint16_t y)
   return drawStringHCentered(buf, y);
 }
 
-void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
+inline void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
   int16_t navBarWidth = 120;
   int16_t navBarY = 120;
@@ -167,7 +173,7 @@ void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
   }
 }
 
-void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
+inline void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
 {
   static int8_t prevSensor1SignalStatus = -1;
   static int8_t prevSensor2SignalStatus = -1;
@@ -258,7 +264,7 @@ void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint
 }
 
 // Formats a positive value compactly so it fits into the narrow summary table columns
-void formatCompactDouble(double value, char *buf, size_t bufSize)
+inline void formatCompactDouble(double value, char *buf, size_t bufSize)
 {
   if (value >= 1000)
   {

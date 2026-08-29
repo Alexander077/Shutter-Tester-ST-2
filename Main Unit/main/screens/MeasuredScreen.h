@@ -1,7 +1,14 @@
-#include "../lib/MeasuredResult.h"
-#include "screensCommon.h"
+#pragma once
 
-void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
+#include "lib/MeasuredResult.h"
+#include "screensCommon.h"
+#include "screens/computeMeasuredResult.h"
+#include "screens/MeasuredResult.h"
+#include "screens/MeasurementSaveScreen.h"
+#include "lib/serialAPI.h"
+#include "cJSON.h"
+
+inline void drawMeasuredScreen(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs)
 {
   // ---------------------------------------------------------------
   // Shutter result screen

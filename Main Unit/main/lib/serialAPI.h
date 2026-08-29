@@ -4,20 +4,20 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include "cJSON.h"
-#include "Common.h"
-#include "StoredMeasuredResult.h"
-#include "RecordsStorageManager.h"
+#include "lib/Common.h"
+#include "recordsManagement/StoredMeasuredResult.h"
+#include "recordsManagement/RecordsStorageManager.h"
 #include "lib/FirmwareUpdate.h"
-#include "SerialAPICommon.h"
-#include "About.h"
+#include "lib/SerialAPICommon.h"
+#include "lib/About.h"
 
 
 // Глобальный флаг для запроса API
-volatile bool isApiRequestReceived = false;
+inline volatile bool isApiRequestReceived = false;
 // Объявляем глобальный экземпляр хранилища
 extern RecordsStorageManager storage;
 
-void doubleFlush()
+inline void doubleFlush()
 {
   fflush(stdout);
   printf("\n");
@@ -25,14 +25,14 @@ void doubleFlush()
 }
 
 // Определение мьютекса для синхронизации вывода в последовательный порт
-SemaphoreHandle_t serialPrintMutex = NULL;
+inline SemaphoreHandle_t serialPrintMutex = NULL;
 
 /**
  * @brief Безопасно выводит отформатированную строку в stdout, 
  *        захватывая мьютекс serialPrintMutex.
  *        После вывода вызывает fflush(stdout).
  */
-void safePrint(const char *fmt, ...)
+inline void safePrint(const char *fmt, ...)
 {
   if (serialPrintMutex != NULL)
     xSemaphoreTake(serialPrintMutex, portMAX_DELAY);
@@ -52,7 +52,7 @@ void safePrint(const char *fmt, ...)
  *        Аналог старого паттерна printf + doubleFlush.
  *        Принимает уже готовую строку (например, из cJSON_PrintUnformatted).
  */
-void safePrintJson(const char *json_str)
+inline void safePrintJson(const char *json_str)
 {
   if (json_str == NULL)
     return;
@@ -67,7 +67,7 @@ void safePrintJson(const char *json_str)
     xSemaphoreGive(serialPrintMutex);
 }
 
-void serialApiTask(void *pvParameters)
+inline void serialApiTask(void *pvParameters)
 {
   SERIAL_API_DEBUG_PRINT("[API_FLOW] --- Task serialApiTask started ---\n");
 

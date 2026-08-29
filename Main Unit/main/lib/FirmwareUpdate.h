@@ -54,7 +54,7 @@ static inline void sendOtaJsonResponse(const char *status, const char *message, 
   cJSON_Delete(json);
 }
 
-void startFirmwareUpdate()
+inline void startFirmwareUpdate()
 {
   // 1. Поиск раздела для обновления
   const esp_partition_t *updatePartition = esp_ota_get_next_update_partition(NULL);
