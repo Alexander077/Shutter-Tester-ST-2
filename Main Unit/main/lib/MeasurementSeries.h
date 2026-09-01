@@ -38,7 +38,7 @@ enum class SeriesField : uint8_t
 #define SERIES_FIELDS_COUNT ((uint8_t)SeriesField::COUNT)
 #define SERIES_REPORT_PAGES_COUNT (SERIES_SUMMARY_PAGES_COUNT + SERIES_FIELDS_COUNT)
 
-inline double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
+double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
 {
 	switch (field)
 	{
@@ -68,7 +68,7 @@ inline double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
 }
 
 // Special (sentinel) values of MeasuredResult are negative, real measurements are always positive
-inline bool isSeriesFieldValueValid(double value)
+bool isSeriesFieldValueValid(double value)
 {
 	return value > 0;
 }
@@ -81,7 +81,7 @@ struct SeriesFieldStats
 	uint8_t validCount;
 };
 
-inline void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field, SeriesFieldStats &stats)
+void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field, SeriesFieldStats &stats)
 {
 	double sum = 0;
 	stats.avg = 0;

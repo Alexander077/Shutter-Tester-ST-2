@@ -8,7 +8,7 @@
 
 // Asks the user how many measurements to take in the series.
 // Returns 0 if 'Go Back' was selected (or on API request), otherwise the selected count.
-inline uint8_t drawMeasurementsCountSelectionScreen()
+uint8_t drawMeasurementsCountSelectionScreen()
 {
   const uint8_t optionsCount = measurementSeriesOptionsCount + 1; // +1 for 'Go Back'
   const char *options[measurementSeriesOptionsCount + 1];

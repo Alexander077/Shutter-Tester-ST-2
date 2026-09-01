@@ -21,7 +21,7 @@ const unsigned char AesIvInit[16] = {
     0x04, 0x8c, 0x39, 0xf2, 0x1d, 0x6e, 0xa5, 0x77};
 
 // Вспомогательная функция для унифицированной отправки JSON
-static inline void sendOtaJsonResponse(const char *status, const char *message, int bytesReceived)
+static void sendOtaJsonResponse(const char *status, const char *message, int bytesReceived)
 {
   cJSON *json = cJSON_CreateObject();
   if (json == NULL)
@@ -54,7 +54,7 @@ static inline void sendOtaJsonResponse(const char *status, const char *message, 
   cJSON_Delete(json);
 }
 
-inline void startFirmwareUpdate()
+void startFirmwareUpdate()
 {
   // 1. Поиск раздела для обновления
   const esp_partition_t *updatePartition = esp_ota_get_next_update_partition(NULL);

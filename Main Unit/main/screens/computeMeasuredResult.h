@@ -50,7 +50,7 @@ const SensorUnitData sensorsData[sensorsDataArraySize] =
 	}
 };
 
-inline double getCurtainSpeed(long time, double distance)
+double getCurtainSpeed(long time, double distance)
 {
   double curtainSpeedMmPerUs = distance / time;
   double curtainSpeedInMmPerS = curtainSpeedMmPerUs * (double)US_IN_SECOND;
@@ -58,7 +58,7 @@ inline double getCurtainSpeed(long time, double distance)
   return curtainSpanASpeedInMPerS;
 }
 
-inline void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
+void calculateResults(MeasuredResult &res, const CurtainTimings curtainTimings, double sensorDistance, double frameSize, double sensor0time, double sensor1time)
 {
   double frameSizeInMeters = frameSize / (double)MM_IN_M;
   // First curtain
@@ -80,7 +80,7 @@ inline void calculateResults(MeasuredResult &res, const CurtainTimings curtainTi
 
 // Computes MeasuredResult from raw capture data. Kept separate from the screen
 // rendering so the measurement series flow can reuse it.
-inline void computeMeasuredResult(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs, ComputedMeasurement &out)
+void computeMeasuredResult(uint32_t rawSensor0TimeTakenUs, uint32_t rawSensor1TimeTakenUs, uint32_t curtain1TimeUs, uint32_t curtain2TimeUs, ComputedMeasurement &out)
 {
   out.sensor0DataOk = false;
   out.sensor1DataOk = false;

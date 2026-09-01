@@ -8,7 +8,7 @@
 #include "screens/MessageScreen.h"
 #include "lib/serialAPI.h"
 
-inline void drawViewRecordsScreen()
+void drawViewRecordsScreen()
 {
   while (true)
   {

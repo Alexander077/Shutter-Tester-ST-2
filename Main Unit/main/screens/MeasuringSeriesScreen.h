@@ -9,10 +9,10 @@
 #include "lib/MeasurementSeries.h"
 #include "lib/serialAPI.h"
 
-inline MeasurementSeries measurementSeries = {};
+MeasurementSeries measurementSeries = {};
 
 // Runs a series of measurements one by one and shows the multi-page report at the end
-inline void drawMeasuringSeriesScreen(uint8_t seriesCount)
+void drawMeasuringSeriesScreen(uint8_t seriesCount)
 {
   measurementSeries.totalCount = seriesCount;
   measurementSeries.storedCount = 0;

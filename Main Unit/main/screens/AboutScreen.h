@@ -9,7 +9,7 @@
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
 
-inline void drawAboutScreen()
+void drawAboutScreen()
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   uint8_t xMargin = 20;

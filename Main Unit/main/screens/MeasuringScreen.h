@@ -6,7 +6,7 @@
 #include "screens/MeasuredScreen.h"
 #include "lib/serialAPI.h"
 
-inline void drawMeasuringScreen()
+void drawMeasuringScreen()
 {
   RawMeasurementCapture capture = captureMeasurement("MEASURING", "Release camera shutter");
 

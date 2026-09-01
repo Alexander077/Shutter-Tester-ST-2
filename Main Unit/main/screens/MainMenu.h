@@ -10,7 +10,7 @@
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 
-inline void drawMainMenu()
+void drawMainMenu()
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT];

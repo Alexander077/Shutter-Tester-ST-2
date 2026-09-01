@@ -8,7 +8,6 @@
 
 #define EDGE_BUFFER_SIZE 5000
 #define NOISE_THRESHOLD 1000 // Порог начала импульса
-#define RESET_THRESHOLD 100  // Порог сброса в ноль
 #define ONE_ADC_CONVERSION_TIME_US 2.5
 
 // --- Добавленные состояния и константы для конечного автомата ---
@@ -21,7 +20,7 @@ enum class SensorMesuringState
 
 // Performs a single ADC capture showing the measuring screen. Used by both the
 // single measurement flow and the measurement series flow.
-inline RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")
+RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")
 {
   RawMeasurementCapture captureRes = {false, 0, 0, 0, 0};
 

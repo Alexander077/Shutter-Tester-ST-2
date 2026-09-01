@@ -9,8 +9,8 @@
 #include "lib/Display.h"
 #include "lib/SerialAPICommon.h"
 
-inline uint16_t sensor0Max = 0;
-inline uint16_t sensor1Max = 0;
+uint16_t sensor0Max = 0;
+uint16_t sensor1Max = 0;
 
 struct ComputedMeasurement
 {
@@ -31,20 +31,20 @@ enum class CurtainMovementSelectionScreenResult
   GO_TO_MAIN_MENU
 };
 
-inline const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
+const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
     {
         "Measure",
         "Light Setup",
         "Saved Measures",
         "About"};
 
-inline const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
+const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
     {
         "Horisontal",
         "Vertical",
         "Leaf"};
 
-inline const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
+const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
     {
         "No",
         "Yes",
@@ -54,7 +54,7 @@ inline const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
         "Return to result",
 };
 
-inline const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
+const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
     {
         "No",
         "Yes",
@@ -78,17 +78,17 @@ struct RawMeasurementCapture
   uint32_t curtain2TimeUs;
 };
 
-inline const char *GetMenuItemTitle(MainMenuItems menuItem)
+const char *GetMenuItemTitle(MainMenuItems menuItem)
 {
   return MainMenuItemsStr[(uint8_t)menuItem];
 }
 
-inline const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
+const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
 {
   return CurtainMovementItemsStr[(uint8_t)menuItem];
 }
 
-inline const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
+const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
 {
   if (useForZeroRecords)
   {
@@ -100,7 +100,7 @@ inline const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuI
   }
 }
 
-inline Rect getStringRect(const char *str, int16_t x, int16_t y)
+Rect getStringRect(const char *str, int16_t x, int16_t y)
 {
   // Variables to hold the bounding box dimensions
   int16_t x1, y1;
@@ -117,7 +117,7 @@ inline Rect getStringRect(const char *str, int16_t x, int16_t y)
   return r;
 }
 
-inline Rect drawStringHCentered(const char *str, uint16_t y)
+Rect drawStringHCentered(const char *str, uint16_t y)
 {
   // // Variables to hold the bounding box dimensions
   // int16_t x1, y1;
@@ -148,7 +148,7 @@ inline Rect drawStringHCentered(const char *str, uint16_t y)
   return r;
 }
 
-inline Rect drawStringHCentered(const String &str, uint16_t y)
+Rect drawStringHCentered(const String &str, uint16_t y)
 {
 #define CHAR_BUF_SIZE 50
   char buf[CHAR_BUF_SIZE];
@@ -156,7 +156,7 @@ inline Rect drawStringHCentered(const String &str, uint16_t y)
   return drawStringHCentered(buf, y);
 }
 
-inline void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
+void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
   int16_t navBarWidth = 120;
   int16_t navBarY = 120;
@@ -173,7 +173,7 @@ inline void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
   }
 }
 
-inline void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
+void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
 {
   static int8_t prevSensor1SignalStatus = -1;
   static int8_t prevSensor2SignalStatus = -1;
@@ -264,7 +264,7 @@ inline void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumbe
 }
 
 // Formats a positive value compactly so it fits into the narrow summary table columns
-inline void formatCompactDouble(double value, char *buf, size_t bufSize)
+void formatCompactDouble(double value, char *buf, size_t bufSize)
 {
   if (value >= 1000)
   {

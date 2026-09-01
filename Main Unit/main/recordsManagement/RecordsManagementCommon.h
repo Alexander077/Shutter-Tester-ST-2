@@ -19,7 +19,7 @@
 #define RECORDS_FILE_NAME "records.bin"
 #define RECORDS_FILE_PATH LITTLEFS_BASE_PATH "/" RECORDS_FILE_NAME
 
-inline RecordsStorageManager storage(RECORDS_FILE_PATH);
+RecordsStorageManager storage(RECORDS_FILE_PATH);
 
 struct MeasurementRecordSaveResult
 {
@@ -29,7 +29,7 @@ struct MeasurementRecordSaveResult
 
 int16_t getMeasurementSaveRecordSize();
 
-inline void initStorage()
+void initStorage()
 {
   ESP_LOGI("", "Initializing LittleFS");
 
@@ -120,33 +120,33 @@ inline void initStorage()
   }
 }
 
-inline int16_t getMeasurementSaveRecordSize()
+int16_t getMeasurementSaveRecordSize()
 {
   return sizeof(StoredMeasuredResult);
 }
 
-inline int16_t getTotalMeasurementSaveSlotsCount()
+int16_t getTotalMeasurementSaveSlotsCount()
 {
   // return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
   return TOTAL_RECORDS_COUNT;
 }
 
-inline int16_t getFreeMeasurementSaveSlotsCount()
+int16_t getFreeMeasurementSaveSlotsCount()
 {
   return storage.getFreeSlotsCount();
 }
 
-inline StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
+StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   return storage.getRecordByNumber(recordNumber);
 }
 
-inline bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
+bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   return storage.deleteRecordByNumber(recordNumber);
 }
 
-inline MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
   MeasurementRecordSaveResult saveRes = {false, -1};
 

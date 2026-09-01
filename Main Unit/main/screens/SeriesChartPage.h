@@ -10,7 +10,7 @@
 // Draws text at the cursor position (x, y) with a black plaque behind the actual glyph box.
 // The plaque is computed from the text bounding box, so it works with both the classic font
 // (y is the top of the glyphs) and u8g2 fonts (y is the baseline).
-inline void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
+void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
 {
   Rect textBox = getStringRect(text, 0, 0);
 
@@ -20,7 +20,7 @@ inline void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
 }
 
 // Formats shutter speed value (1/s) as a fraction label (e.g. "1/503")
-inline void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
+void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
 {
   char denominator[10];
 
@@ -41,7 +41,7 @@ inline void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
 }
 
 // Formats a chart value according to the field display type
-inline void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
+void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
 {
   if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed)
   {
@@ -55,7 +55,7 @@ inline void formatSeriesChartValue(SeriesField field, double chartValue, char *b
 
 // Returns the value used to build a chart for the given field.
 // Sensor time fields are displayed as shutter speed (1/X), other fields as is.
-inline double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
+double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
 {
   double rawValue = getSeriesFieldValue(res, field);
 
@@ -67,10 +67,8 @@ inline double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
   return rawValue;
 }
 
-
-
 // Draws one chart page: field values for each measurement in the series
-inline void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
+void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 {
   const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
 

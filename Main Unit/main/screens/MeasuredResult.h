@@ -12,7 +12,7 @@
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
-inline void renderMeasuredResult(MeasuredResult &res)
+void renderMeasuredResult(MeasuredResult &res)
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   int8_t prevPageIndex = -1;

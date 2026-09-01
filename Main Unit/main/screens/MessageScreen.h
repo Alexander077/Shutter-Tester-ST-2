@@ -4,7 +4,7 @@
 #include "screensCommon.h"
 #include "lib/AlexEncoder.h"
 
-inline int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
+int16_t drawMessageScreen(const char *title, int16_t optionsCount = 0, const char *options[] = {})
 {
   int16_t startEncoderVal = AlexEncoder::counter;
   int8_t prevSelectedMenuItemIndex = 0;

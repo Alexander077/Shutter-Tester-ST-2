@@ -8,7 +8,7 @@
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 
-inline CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
+CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
   // Outer loop: redraw the screen when returning from the measurements count screen ('Go back')
   while (true)

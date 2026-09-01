@@ -37,13 +37,13 @@ public:
   int16_t getFreeSlotsCount();
 };
 
-inline RecordsStorageManager::RecordsStorageManager(const char *path)
+RecordsStorageManager::RecordsStorageManager(const char *path)
 {
   filePath = path;
   fileMutex = NULL;
 }
 
-inline void RecordsStorageManager::begin()
+void RecordsStorageManager::begin()
 {
   fileMutex = xSemaphoreCreateMutex();
   
@@ -53,7 +53,7 @@ inline void RecordsStorageManager::begin()
   }
 }
 
-inline std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
+std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
 {
   std::vector<int32_t> records;
 
@@ -86,7 +86,7 @@ inline std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
   return records;
 }
 
-inline StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumber)
+StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumber)
 {
   StoredMeasuredResult measRes;
   memset(&measRes, 0, sizeof(StoredMeasuredResult));
@@ -114,7 +114,7 @@ inline StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t rec
   return measRes;
 }
 
-inline bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
+bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
 {
   bool success = false;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
@@ -147,7 +147,7 @@ inline bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
   return success;
 }
 
-inline int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
+int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
 {
   int32_t finalRecordNumber = -1;
 
@@ -231,7 +231,7 @@ inline int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &r
   return finalRecordNumber;
 }
 
-inline int16_t RecordsStorageManager::getFreeSlotsCount()
+int16_t RecordsStorageManager::getFreeSlotsCount()
 {
   int16_t freeCount = 0;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))

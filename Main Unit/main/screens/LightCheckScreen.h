@@ -14,7 +14,7 @@ enum class LightQualityStatus
   BAD,
 };
 
-inline void drawLightCheckScreen()
+void drawLightCheckScreen()
 {
   uint32_t sensor1TotalADCSamplesCounter = 0;
   uint32_t sensor1OpenADCSamplesCounter = 0;

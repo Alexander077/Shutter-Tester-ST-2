@@ -8,7 +8,7 @@
 #include "lib/serialAPI.h"
 
 // Multi-page series report: 2 summary pages + 1 chart page per field
-inline void renderSeriesReport(MeasurementSeries &series)
+void renderSeriesReport(MeasurementSeries &series)
 {
   const int16_t totalPagesCount = SERIES_REPORT_PAGES_COUNT;
   int16_t startEncoderVal = AlexEncoder::counter;

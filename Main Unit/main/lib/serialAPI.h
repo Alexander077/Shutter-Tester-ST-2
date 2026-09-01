@@ -13,11 +13,11 @@
 
 
 // Глобальный флаг для запроса API
-inline volatile bool isApiRequestReceived = false;
+volatile bool isApiRequestReceived = false;
 // Объявляем глобальный экземпляр хранилища
 extern RecordsStorageManager storage;
 
-inline void doubleFlush()
+void doubleFlush()
 {
   fflush(stdout);
   printf("\n");
@@ -25,14 +25,14 @@ inline void doubleFlush()
 }
 
 // Определение мьютекса для синхронизации вывода в последовательный порт
-inline SemaphoreHandle_t serialPrintMutex = NULL;
+SemaphoreHandle_t serialPrintMutex = NULL;
 
 /**
  * @brief Безопасно выводит отформатированную строку в stdout, 
  *        захватывая мьютекс serialPrintMutex.
  *        После вывода вызывает fflush(stdout).
  */
-inline void safePrint(const char *fmt, ...)
+void safePrint(const char *fmt, ...)
 {
   if (serialPrintMutex != NULL)
     xSemaphoreTake(serialPrintMutex, portMAX_DELAY);
@@ -52,7 +52,7 @@ inline void safePrint(const char *fmt, ...)
  *        Аналог старого паттерна printf + doubleFlush.
  *        Принимает уже готовую строку (например, из cJSON_PrintUnformatted).
  */
-inline void safePrintJson(const char *json_str)
+void safePrintJson(const char *json_str)
 {
   if (json_str == NULL)
     return;
@@ -67,7 +67,7 @@ inline void safePrintJson(const char *json_str)
     xSemaphoreGive(serialPrintMutex);
 }
 
-inline void serialApiTask(void *pvParameters)
+void serialApiTask(void *pvParameters)
 {
   SERIAL_API_DEBUG_PRINT("[API_FLOW] --- Task serialApiTask started ---\n");
 

@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 
-inline int32_t drawMeasurementResultRecordSelectionScreen()
+int32_t drawMeasurementResultRecordSelectionScreen()
 {
   // 1. Получаем все существующие (не удаленные) номера записей через менеджер
   std::vector<int32_t> validIds = storage.getAllValidRecordNumbers();

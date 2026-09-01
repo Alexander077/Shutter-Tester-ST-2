@@ -7,7 +7,7 @@
 #include "lib/serialAPI.h"
 #include <inttypes.h>
 
-inline void drawSensorSelectionScreen()
+void drawSensorSelectionScreen()
 {
   const char *options[sensorsDataArraySize + 1] = {};
 

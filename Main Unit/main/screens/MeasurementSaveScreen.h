@@ -7,7 +7,7 @@
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "lib/serialAPI.h"
 
-inline MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
+MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measurementRes)
 {
   int16_t freeSlotsCount = getFreeMeasurementSaveSlotsCount();
   int16_t totalRecordsCount = getTotalMeasurementSaveSlotsCount();
