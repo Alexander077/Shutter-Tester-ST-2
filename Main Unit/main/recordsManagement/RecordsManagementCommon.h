@@ -21,13 +21,10 @@
 
 RecordsStorageManager storage(RECORDS_FILE_PATH);
 
-struct MeasurementRecordSaveResult
+int16_t getMeasurementSaveRecordSize()
 {
-  bool isSuccess;
-  int32_t newRecordNumber;
-};
-
-int16_t getMeasurementSaveRecordSize();
+  return sizeof(StoredMeasuredResult);
+}
 
 void initStorage()
 {
@@ -120,117 +117,3 @@ void initStorage()
   }
 }
 
-int16_t getMeasurementSaveRecordSize()
-{
-  return sizeof(StoredMeasuredResult);
-}
-
-int16_t getTotalMeasurementSaveSlotsCount()
-{
-  // return EEPROM_MEASURED_RES_TOTAL_BYTES / getMeasurementSaveRecordSize();
-  return TOTAL_RECORDS_COUNT;
-}
-
-int16_t getFreeMeasurementSaveSlotsCount()
-{
-  return storage.getFreeSlotsCount();
-}
-
-StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
-{
-  return storage.getRecordByNumber(recordNumber);
-}
-
-bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
-{
-  return storage.deleteRecordByNumber(recordNumber);
-}
-
-MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
-{
-  MeasurementRecordSaveResult saveRes = {false, -1};
-
-  // Создаем структуру для сохранения и зануляем её память
-  StoredMeasuredResult newRes;
-  memset(&newRes, 0, sizeof(StoredMeasuredResult));
-
-  // Если передали recordNumberToOverwrite, значит это режим перезаписи (update)
-  // Иначе ставим 0, что для менеджера означает "создать новую запись или найти свободный слот"
-  if (recordNumberToOverwrite != -1)
-  {
-    newRes.recordNumber = recordNumberToOverwrite;
-  }
-  else
-  {
-    newRes.recordNumber = 0;
-  }
-
-  newRes.isDeleted = false;
-
-  // Аккуратно перекладываем все данные из текущего измерения
-  newRes.sensor0Time = res.sensor0Time;
-  newRes.sensor1Time = res.sensor1Time;
-  newRes.curtain1spanAspeed = res.curtain1spanAspeed;
-  newRes.curtain1spanAtime = res.curtain1spanAtime;
-  newRes.curtain1TotalTime = res.curtain1TotalTime;
-  newRes.curtain2spanAspeed = res.curtain2spanAspeed;
-  newRes.curtain2spanAtime = res.curtain2spanAtime;
-  newRes.curtain2TotalTime = res.curtain2TotalTime;
-  newRes.slitWidthSensor0 = res.slitWidthSensor0;
-  newRes.slitWidthSensor1 = res.slitWidthSensor1;
-  newRes.slitWidthAverage = res.slitWidthAverage;
-  newRes.usedSensorType = res.usedSensorType;
-  newRes.selectedCurtainMovement = res.selectedCurtainMovement;
-
-  // --- Обработка команд перезаписи самых новых или самых старых результатов ---
-  if (overwriteOldest || overwriteNewest)
-  {
-    std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
-
-    if (!ids.empty())
-    {
-      // Находим минимальный (самый старый) и максимальный (самый новый) ID
-      int32_t minId = ids[0];
-      int32_t maxId = ids[0];
-
-      for (int32_t id : ids)
-      {
-        if (id < minId)
-          minId = id;
-        if (id > maxId)
-          maxId = id;
-      }
-
-      if (overwriteOldest)
-      {
-        newRes.recordNumber = minId;
-      }
-      else if (overwriteNewest)
-      {
-        newRes.recordNumber = maxId;
-      }
-    }
-    else
-    {
-      // Если записей нет, но запрошена перезапись — просто сохраняем как новую
-      newRes.recordNumber = 0;
-    }
-  }
-
-  // Делегируем всю работу с файлом LittleFS и мьютексами классу-менеджеру
-  int32_t savedId = storage.saveOrUpdateRecord(newRes);
-
-  // Обработка результата
-  if (savedId != -1)
-  {
-    saveRes.isSuccess = true;
-    saveRes.newRecordNumber = savedId;
-    ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: 1", savedId);
-  }
-  else
-  {
-    ESP_LOGE("", "Failed to save measurement result");
-  }
-
-  return saveRes;
-}

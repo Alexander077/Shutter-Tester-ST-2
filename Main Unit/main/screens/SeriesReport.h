@@ -2,7 +2,6 @@
 
 #include "lib/MeasuredResult.h"
 #include "screensCommon.h"
-#include "lib/MeasurementSeries.h"
 #include "screens/SeriesSummaryPage.h"
 #include "screens/SeriesChartPage.h"
 #include "lib/serialAPI.h"

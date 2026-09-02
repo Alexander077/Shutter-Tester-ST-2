@@ -8,6 +8,16 @@
 #include "screens/MessageScreen.h"
 #include "lib/serialAPI.h"
 
+StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
+{
+  return storage.getRecordByNumber(recordNumber);
+}
+
+bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
+{
+  return storage.deleteRecordByNumber(recordNumber);
+}
+
 void drawViewRecordsScreen()
 {
   while (true)

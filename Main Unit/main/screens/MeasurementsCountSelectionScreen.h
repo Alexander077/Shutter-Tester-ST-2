@@ -2,7 +2,6 @@
 
 #include "lib/MeasuredResult.h"
 #include "screensCommon.h"
-#include "lib/MeasurementSeries.h"
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 

@@ -3,6 +3,13 @@
 #include "lib/MeasuredResult.h"
 #include "screensCommon.h"
 
+struct ComputedMeasurement
+{
+  MeasuredResult res;
+  bool sensor0DataOk;
+  bool sensor1DataOk;
+};
+
 struct CurtainTimings
 {
   double curtain1spanAtime; // In microseconds

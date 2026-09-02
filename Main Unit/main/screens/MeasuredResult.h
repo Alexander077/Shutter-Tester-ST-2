@@ -10,7 +10,27 @@
 #define SHUTTR_SPEEDS_COUNT 14
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
+
+extern const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT];
+
 const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
+
+void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
+{
+  int16_t navBarWidth = 120;
+  int16_t navBarY = 120;
+  // int16_t navBarItemsCount = RESULT_PAGES_COUNT;
+  int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
+  display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
+
+  double spacingStep = (double)navBarWidth / (double)(itemsCount - 1);
+
+  for (int8_t i = 0; i < itemsCount; i++)
+  {
+    int16_t spacing = (int16_t)(i * spacingStep);
+    display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
+  }
+}
 
 void renderMeasuredResult(MeasuredResult &res)
 {

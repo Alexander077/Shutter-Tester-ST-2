@@ -1,42 +1,17 @@
 
-#include <string.h>
-#include <stdio.h>
-#include "sdkconfig.h"
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "esp_adc/adc_continuous.h"
 #include <Arduino.h>
-#include <Arduino_GFX_Library.h>
-#include <U8g2lib.h>
-#include <mString.h>
-#include <InterpolationLib.h>
-#include "lib/AceSorting/src/AceSorting.h"
-#include "esp_littlefs.h"
+#include "esp_log.h"
+#include "esp_ota_ops.h"
 
-#include "lib/AlexButton.h"
-#include "lib/AlexEncoder.h"
 #include "lib/Common.h"
+#include "lib/AlexEncoder.h"
 #include "lib/Display.h"
 #include "lib/ADC.h"
-#include "lib/MeasuredResult.h"
-#include "lib/MeasurementSeries.h"
-#include "lib/About.h"
-#include "lib/Images.h"
 #include "lib/SerialNumber.h"
-#include "recordsManagement/StoredMeasuredResult.h"
-#include "recordsManagement/RecordsStorageManager.h"
 #include "recordsManagement/RecordsManagementCommon.h"
-#include "lib/SerialAPICommon.h"
-#include "lib/FirmwareUpdate.h"
 #include "lib/serialAPI.h"
 
-
 #include "screens/MainMenu.h"
-
-#include "esp_partition.h"
-#include "esp_ota_ops.h"
 
 
 

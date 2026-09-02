@@ -12,54 +12,6 @@
 uint16_t sensor0Max = 0;
 uint16_t sensor1Max = 0;
 
-struct ComputedMeasurement
-{
-  MeasuredResult res;
-  bool sensor0DataOk;
-  bool sensor1DataOk;
-};
-
-enum class MeasurementSaveScreenResult
-{
-  OK,
-  CANCEL
-};
-
-enum class CurtainMovementSelectionScreenResult
-{
-  GO_BACK,
-  GO_TO_MAIN_MENU
-};
-
-const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
-    {
-        "Measure",
-        "Light Setup",
-        "Saved Measures",
-        "About"};
-
-const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
-    {
-        "Horisontal",
-        "Vertical",
-        "Leaf"};
-
-const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
-    {
-        "No",
-        "Yes",
-        "Overwrite oldest",
-        "Overwrite newest",
-        "Sel. rec. to overwrite",
-        "Return to result",
-};
-
-const char *ZeroRecordsMeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT] =
-    {
-        "No",
-        "Yes",
-        "Return to result",
-};
 
 struct Rect
 {
@@ -69,36 +21,6 @@ struct Rect
   int16_t height;
 };
 
-struct RawMeasurementCapture
-{
-  bool isCancelled;
-  uint32_t sensor0PulseWidthUs;
-  uint32_t sensor1PulseWidthUs;
-  uint32_t curtain1TimeUs;
-  uint32_t curtain2TimeUs;
-};
-
-const char *GetMenuItemTitle(MainMenuItems menuItem)
-{
-  return MainMenuItemsStr[(uint8_t)menuItem];
-}
-
-const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
-{
-  return CurtainMovementItemsStr[(uint8_t)menuItem];
-}
-
-const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
-{
-  if (useForZeroRecords)
-  {
-    return ZeroRecordsMeasurementSaveItemsStr[(uint8_t)menuItem];
-  }
-  else
-  {
-    return MeasurementSaveItemsStr[(uint8_t)menuItem];
-  }
-}
 
 Rect getStringRect(const char *str, int16_t x, int16_t y)
 {
@@ -156,126 +78,62 @@ Rect drawStringHCentered(const String &str, uint16_t y)
   return drawStringHCentered(buf, y);
 }
 
-void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
+enum class SeriesField : uint8_t
 {
-  int16_t navBarWidth = 120;
-  int16_t navBarY = 120;
-  // int16_t navBarItemsCount = RESULT_PAGES_COUNT;
-  int16_t navBarLeftMargin = (display->width() - navBarWidth) / 2;
-  display->drawLine(navBarLeftMargin, navBarY, navBarLeftMargin + navBarWidth, navBarY, WHITE);
+  SENSOR0_TIME = 0,
+  SENSOR1_TIME,
+  CURTAIN1_SPAN_A_TIME,
+  CURTAIN1_SPAN_A_SPEED,
+  CURTAIN1_TOTAL_TIME,
+  CURTAIN2_SPAN_A_TIME,
+  CURTAIN2_SPAN_A_SPEED,
+  CURTAIN2_TOTAL_TIME,
+  SLIT_WIDTH_SENSOR0,
+  SLIT_WIDTH_SENSOR1,
+  COUNT
+};
 
-  double spacingStep = (double)navBarWidth / (double)(itemsCount - 1);
-
-  for (int8_t i = 0; i < itemsCount; i++)
-  {
-    int16_t spacing = (int16_t)(i * spacingStep);
-    display->fillCircle(navBarLeftMargin + spacing, navBarY, i == activePageIndex ? 4 : 2, i == activePageIndex ? RGB565(0, 102, 153) : WHITE);
-  }
-}
-
-void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
+struct SeriesFieldDescriptor
 {
-  static int8_t prevSensor1SignalStatus = -1;
-  static int8_t prevSensor2SignalStatus = -1;
-  static int8_t prevSensor1ActualBarWidth = 0;
-  static int8_t prevSensor2ActualBarWidth = 0;
-  static const char *sensorStatuses[3] = {"Too dim", "Too bright", "OK"};
-  const uint8_t barWidthPx = 80;
-  const uint8_t barX = 10;
-  double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
-  sensorValueRate = sensorValueRate > 1.0 ? 1.0 : sensorValueRate;
-  x = 15;
-  y += 20;
-  display->setCursor(x, y);
-  display->printf("Sensor %i signal level", sensorNumber);
-  y += 5;
-  display->drawRect(barX, y, barWidthPx, 10, WHITE);
-  int16_t newBarWidth = (barWidthPx - 2) * sensorValueRate;
+  const char *tableLabel; // short label for the summary table row
+  const char *chartTitle; // title of the chart page
+  bool displayAsSpeed;    // sensor time fields are displayed as shutter speed 1/X on charts
+};
 
-  if (sensorNumber == 1 && newBarWidth != prevSensor1ActualBarWidth)
-  {
-    if (newBarWidth > prevSensor1ActualBarWidth) // add to what we have
+#define SERIES_FIELDS_COUNT ((uint8_t)SeriesField::COUNT)
+
+const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
     {
-      display->fillRect(barX + 1 + prevSensor1ActualBarWidth, y + 1, newBarWidth - prevSensor1ActualBarWidth, 8, WHITE);
-    }
-    else // draw black upon what we have
-    {
-      display->fillRect(barX + 1 + prevSensor1ActualBarWidth - (prevSensor1ActualBarWidth - newBarWidth),
-                        y + 1, prevSensor1ActualBarWidth - newBarWidth, 8, BLACK);
-    }
+        {"S1 time ms", "Sensor 1 speed", true},
+        {"S2 time ms", "Sensor 2 speed", true},
+        {"C1 span ms", "Curtain 1 span time", false},
+        {"C1 spd m/s", "Curtain 1 speed", false},
+        {"C1 tot ms", "Curtain 1 total time", false},
+        {"C2 span ms", "Curtain 2 span time", false},
+        {"C2 spd m/s", "Curtain 2 speed", false},
+        {"C2 tot ms", "Curtain 2 total time", false},
+        {"Slit S1 mm", "Slit width sensor 1", false},
+        {"Slit S2 mm", "Slit width sensor 2", false},
+};
 
-    prevSensor1ActualBarWidth = newBarWidth;
-  }
+#define MEASUREMENT_SERIES_MAX_SIZE 10
+#define SERIES_SUMMARY_PAGES_COUNT 2
 
-  if (sensorNumber == 2 && newBarWidth != prevSensor2ActualBarWidth)
-  {
-    if (newBarWidth > prevSensor2ActualBarWidth) // add to what we have
-    {
-      display->fillRect(barX + 1 + prevSensor2ActualBarWidth, y + 1, newBarWidth - prevSensor2ActualBarWidth, 8, WHITE);
-    }
-    else // draw black upon what we have
-    {
-      display->fillRect(barX + 1 + prevSensor2ActualBarWidth - (prevSensor2ActualBarWidth - newBarWidth),
-                        y + 1, prevSensor2ActualBarWidth - newBarWidth, 8, BLACK);
-    }
+// Available series sizes (1 = single measurement, current behavior)
+const uint8_t measurementSeriesOptions[] = {1, 2, 3, 5, 7, 10};
+const uint8_t measurementSeriesOptionsCount = sizeof(measurementSeriesOptions) / sizeof(measurementSeriesOptions[0]);
 
-    prevSensor2ActualBarWidth = newBarWidth;
-  }
-
-  x += barWidthPx;
-  y += 9;
-
-  int8_t sensorStatus = 0;
-
-  if (curSensorValue <= MIN_ALLOWED_SIGNAL_LEVEL)
-  {
-    sensorStatus = 0;
-  }
-  else if (curSensorValue > MAX_ALLOWED_SIGNAL_LEVEL)
-  {
-    sensorStatus = 1;
-  }
-  else
-  {
-    sensorStatus = 2;
-  }
-
-  if (sensorNumber == 1 && sensorStatus != prevSensor1SignalStatus)
-  {
-    display->setTextColor(BLACK); // erase old text
-    display->setCursor(x, y);
-    display->print(sensorStatuses[prevSensor1SignalStatus == -1 ? 0 : prevSensor1SignalStatus]);
-
-    prevSensor1SignalStatus = sensorStatus;
-  }
-
-  if (sensorNumber == 2 && sensorStatus != prevSensor2SignalStatus)
-  {
-    display->setTextColor(BLACK); // erase old text
-    display->setCursor(x, y);
-    display->print(sensorStatuses[prevSensor2SignalStatus == -1 ? 0 : prevSensor2SignalStatus]);
-
-    prevSensor2SignalStatus = sensorStatus;
-  }
-
-  display->setCursor(x, y);
-  display->setTextColor(WHITE);
-  display->print(sensorStatuses[sensorStatus]);
-}
-
-// Formats a positive value compactly so it fits into the narrow summary table columns
-void formatCompactDouble(double value, char *buf, size_t bufSize)
+struct MeasurementSeries
 {
-  if (value >= 1000)
-  {
-    snprintf(buf, bufSize, "%.0f", value);
-  }
-  else if (value >= 100)
-  {
-    snprintf(buf, bufSize, "%.1f", value);
-  }
-  else
-  {
-    snprintf(buf, bufSize, "%.2f", value);
-  }
+  uint8_t totalCount;  // how many measurements the series consists of
+  uint8_t storedCount; // how many results are actually stored in results[]
+  MeasuredResult results[MEASUREMENT_SERIES_MAX_SIZE];
+};
+
+// Fields of MeasuredResult that take part in the series statistics and charts
+
+// Special (sentinel) values of MeasuredResult are negative, real measurements are always positive
+bool isSeriesFieldValueValid(double value)
+{
+  return value > 0;
 }

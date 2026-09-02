@@ -18,6 +18,15 @@ enum class SensorMesuringState
   MeasurementFinished
 };
 
+struct RawMeasurementCapture
+{
+  bool isCancelled;
+  uint32_t sensor0PulseWidthUs;
+  uint32_t sensor1PulseWidthUs;
+  uint32_t curtain1TimeUs;
+  uint32_t curtain2TimeUs;
+};
+
 // Performs a single ADC capture showing the measuring screen. Used by both the
 // single measurement flow and the measurement series flow.
 RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle, const char *subtitle2 = "")

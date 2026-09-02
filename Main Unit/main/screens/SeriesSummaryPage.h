@@ -2,7 +2,80 @@
 
 #include "lib/MeasuredResult.h"
 #include "screensCommon.h"
-#include "lib/MeasurementSeries.h"
+
+#define SERIES_SUMMARY_FIELDS_PER_PAGE 5
+
+double getSeriesFieldValue(const MeasuredResult &res, SeriesField field);
+
+// Formats a positive value compactly so it fits into the narrow summary table columns
+void formatCompactDouble(double value, char *buf, size_t bufSize)
+{
+  if (value >= 1000)
+  {
+    snprintf(buf, bufSize, "%.0f", value);
+  }
+  else if (value >= 100)
+  {
+    snprintf(buf, bufSize, "%.1f", value);
+  }
+  else
+  {
+    snprintf(buf, bufSize, "%.2f", value);
+  }
+}
+
+struct SeriesFieldStats
+{
+  double avg;
+  double min;
+  double max;
+  uint8_t validCount;
+};
+
+void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field, SeriesFieldStats &stats)
+{
+  double sum = 0;
+  stats.avg = 0;
+  stats.min = 0;
+  stats.max = 0;
+  stats.validCount = 0;
+
+  for (uint8_t i = 0; i < series.storedCount; i++)
+  {
+    double value = getSeriesFieldValue(series.results[i], field);
+
+    if (!isSeriesFieldValueValid(value))
+    {
+      continue;
+    }
+
+    if (stats.validCount == 0)
+    {
+      stats.min = value;
+      stats.max = value;
+    }
+    else
+    {
+      if (value < stats.min)
+      {
+        stats.min = value;
+      }
+
+      if (value > stats.max)
+      {
+        stats.max = value;
+      }
+    }
+
+    sum += value;
+    stats.validCount++;
+  }
+
+  if (stats.validCount > 0)
+  {
+    stats.avg = sum / stats.validCount;
+  }
+}
 
 // Draws one summary page: 5 fields with avg/min/max values
 void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)

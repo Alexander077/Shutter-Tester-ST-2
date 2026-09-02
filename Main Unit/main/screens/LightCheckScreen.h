@@ -14,6 +14,96 @@ enum class LightQualityStatus
   BAD,
 };
 
+void drawSensorSignalLevelBar(uint8_t &x, uint8_t &y, uint8_t sensorNumber, uint16_t curSensorValue)
+{
+  static int8_t prevSensor1SignalStatus = -1;
+  static int8_t prevSensor2SignalStatus = -1;
+  static int8_t prevSensor1ActualBarWidth = 0;
+  static int8_t prevSensor2ActualBarWidth = 0;
+  static const char *sensorStatuses[3] = {"Too dim", "Too bright", "OK"};
+  const uint8_t barWidthPx = 80;
+  const uint8_t barX = 10;
+  double sensorValueRate = curSensorValue / (double)MAX_SIGNAL_LEVEL;
+  sensorValueRate = sensorValueRate > 1.0 ? 1.0 : sensorValueRate;
+  x = 15;
+  y += 20;
+  display->setCursor(x, y);
+  display->printf("Sensor %i signal level", sensorNumber);
+  y += 5;
+  display->drawRect(barX, y, barWidthPx, 10, WHITE);
+  int16_t newBarWidth = (barWidthPx - 2) * sensorValueRate;
+
+  if (sensorNumber == 1 && newBarWidth != prevSensor1ActualBarWidth)
+  {
+    if (newBarWidth > prevSensor1ActualBarWidth) // add to what we have
+    {
+      display->fillRect(barX + 1 + prevSensor1ActualBarWidth, y + 1, newBarWidth - prevSensor1ActualBarWidth, 8, WHITE);
+    }
+    else // draw black upon what we have
+    {
+      display->fillRect(barX + 1 + prevSensor1ActualBarWidth - (prevSensor1ActualBarWidth - newBarWidth),
+                        y + 1, prevSensor1ActualBarWidth - newBarWidth, 8, BLACK);
+    }
+
+    prevSensor1ActualBarWidth = newBarWidth;
+  }
+
+  if (sensorNumber == 2 && newBarWidth != prevSensor2ActualBarWidth)
+  {
+    if (newBarWidth > prevSensor2ActualBarWidth) // add to what we have
+    {
+      display->fillRect(barX + 1 + prevSensor2ActualBarWidth, y + 1, newBarWidth - prevSensor2ActualBarWidth, 8, WHITE);
+    }
+    else // draw black upon what we have
+    {
+      display->fillRect(barX + 1 + prevSensor2ActualBarWidth - (prevSensor2ActualBarWidth - newBarWidth),
+                        y + 1, prevSensor2ActualBarWidth - newBarWidth, 8, BLACK);
+    }
+
+    prevSensor2ActualBarWidth = newBarWidth;
+  }
+
+  x += barWidthPx;
+  y += 9;
+
+  int8_t sensorStatus = 0;
+
+  if (curSensorValue <= MIN_ALLOWED_SIGNAL_LEVEL)
+  {
+    sensorStatus = 0;
+  }
+  else if (curSensorValue > MAX_ALLOWED_SIGNAL_LEVEL)
+  {
+    sensorStatus = 1;
+  }
+  else
+  {
+    sensorStatus = 2;
+  }
+
+  if (sensorNumber == 1 && sensorStatus != prevSensor1SignalStatus)
+  {
+    display->setTextColor(BLACK); // erase old text
+    display->setCursor(x, y);
+    display->print(sensorStatuses[prevSensor1SignalStatus == -1 ? 0 : prevSensor1SignalStatus]);
+
+    prevSensor1SignalStatus = sensorStatus;
+  }
+
+  if (sensorNumber == 2 && sensorStatus != prevSensor2SignalStatus)
+  {
+    display->setTextColor(BLACK); // erase old text
+    display->setCursor(x, y);
+    display->print(sensorStatuses[prevSensor2SignalStatus == -1 ? 0 : prevSensor2SignalStatus]);
+
+    prevSensor2SignalStatus = sensorStatus;
+  }
+
+  display->setCursor(x, y);
+  display->setTextColor(WHITE);
+  display->print(sensorStatuses[sensorStatus]);
+}
+
 void drawLightCheckScreen()
 {
   uint32_t sensor1TotalADCSamplesCounter = 0;

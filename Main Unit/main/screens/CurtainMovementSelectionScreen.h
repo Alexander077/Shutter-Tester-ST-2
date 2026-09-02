@@ -8,6 +8,24 @@
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 
+enum class CurtainMovementSelectionScreenResult
+{
+  GO_BACK,
+  GO_TO_MAIN_MENU
+};
+
+const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT] =
+{
+  "Horisontal",
+  "Vertical",
+  "Leaf"
+};
+
+const char *GetCurtainMovementItemTitle(CurtainMovement menuItem)
+{
+  return CurtainMovementItemsStr[(uint8_t)menuItem];
+}
+
 CurtainMovementSelectionScreenResult drawCurtainMovementSelectionScreen()
 {
   // Outer loop: redraw the screen when returning from the measurements count screen ('Go back')

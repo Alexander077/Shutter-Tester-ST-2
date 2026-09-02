@@ -10,6 +10,19 @@
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 
+const char *MainMenuItemsStr[MAIN_MENU_ITEMS_COUNT] =
+{
+  "Measure",
+  "Light Setup",
+  "Saved Measures",
+  "About"
+};
+
+const char *GetMenuItemTitle(MainMenuItems menuItem)
+{
+  return MainMenuItemsStr[(uint8_t)menuItem];
+}
+
 void drawMainMenu()
 {
   int16_t startEncoderVal = AlexEncoder::counter;

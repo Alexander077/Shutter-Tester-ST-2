@@ -6,7 +6,6 @@
 #include "screens/computeMeasuredResult.h"
 #include "screens/MessageScreen.h"
 #include "screens/SeriesReport.h"
-#include "lib/MeasurementSeries.h"
 #include "lib/serialAPI.h"
 
 MeasurementSeries measurementSeries = {};
