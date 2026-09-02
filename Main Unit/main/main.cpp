@@ -96,6 +96,60 @@ void setup()
 	}
 }
 
+// ---- Mock data for testing the series report without real measurements ----
+// Simulates 5 shots of a 35mm camera with horizontal focal-plane shutter.
+// Values are computed the same way computeMeasuredResult() does:
+// sensor distance 16 mm, frame width 36 mm (see sensorsData[Frame35mm]).
+
+#define MOCK_SENSOR_DISTANCE_MM 16.0
+#define MOCK_FRAME_WIDTH_MM 36.0
+
+MeasuredResult createMockMeasuredResult(double sensor0TimeMs, double sensor1TimeMs, double curtain1SpanTimeMs, double curtain2SpanTimeMs)
+{
+	MeasuredResult r = {};
+
+	r.sensor0Time = sensor0TimeMs;
+	r.sensor1Time = sensor1TimeMs;
+
+	r.curtain1spanAtime = curtain1SpanTimeMs;
+	r.curtain1spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs;       // m/s
+	r.curtain1TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain1spanAspeed;          // ms
+
+	r.curtain2spanAtime = curtain2SpanTimeMs;
+	r.curtain2spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs;       // m/s
+	r.curtain2TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain2spanAspeed;          // ms
+
+	double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm per ms
+	r.slitWidthSensor0 = estSlitSpeed * sensor0TimeMs;                         // mm
+	r.slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;                         // mm
+	r.slitWidthAverage = (r.slitWidthSensor0 + r.slitWidthSensor1) / 2.0;      // mm
+
+	r.usedSensorType = SensorType::Frame35mm;
+	r.selectedCurtainMovement = CurtainMovement::HORISONTAL;
+
+	return r;
+}
+
+MeasurementSeries createMockMeasurementSeries()
+{
+	MeasurementSeries series = {};
+	series.totalCount = 5;
+	series.storedCount = 5;
+
+	// Slightly different values from shot to shot, like in a real series
+	const double sensor0Times[] = {0.256, 0.240, 0.276, 0.264, 0.250};       // ms
+	const double sensor1Times[] = {0.288, 0.248, 0.292, 0.244, 0.254};       // ms
+	const double curtain1SpanTimes[] = {2.77, 2.98, 3.01, 2.68, 3.03};  // ms
+	const double curtain2SpanTimes[] = {2.87, 2.98, 2.7, 2.78, 2.99};  // ms
+
+	for (uint8_t i = 0; i < series.storedCount; i++)
+	{
+		series.results[i] = createMockMeasuredResult(sensor0Times[i], sensor1Times[i], curtain1SpanTimes[i], curtain2SpanTimes[i]);
+	}
+
+	return series;
+}
+
 void loop() 
 {
 	/* MeasuredResult r = {
@@ -139,6 +193,10 @@ void loop()
 
 	// 	vTaskDelay(1 / portTICK_PERIOD_MS);
 	// }
+
+	MeasurementSeries measurementSeries = createMockMeasurementSeries();
+
+	renderSeriesReport(measurementSeries);
 
 	drawMainMenu();
 }
