@@ -17,6 +17,11 @@ const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30,
 
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
+  if (itemsCount < 2)
+  {
+    return; // nothing to navigate; also avoids division by zero below
+  }
+
   int16_t navBarWidth = 120;
   int16_t navBarY = 120;
   // int16_t navBarItemsCount = RESULT_PAGES_COUNT;

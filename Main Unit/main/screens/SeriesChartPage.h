@@ -5,37 +5,6 @@
 
 #define SERIES_CHART_TITLE_FONT u8g2_font_6x10_tf
 #define SERIES_CHART_LABEL_FONT u8g2_font_5x7_tf
-#define SERIES_REPORT_PAGES_COUNT (SERIES_SUMMARY_PAGES_COUNT + SERIES_FIELDS_COUNT)
-
-
-double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
-{
-	switch (field)
-	{
-	case SeriesField::SENSOR0_TIME:
-		return res.sensor0Time;
-	case SeriesField::SENSOR1_TIME:
-		return res.sensor1Time;
-	case SeriesField::CURTAIN1_SPAN_A_TIME:
-		return res.curtain1spanAtime;
-	case SeriesField::CURTAIN1_SPAN_A_SPEED:
-		return res.curtain1spanAspeed;
-	case SeriesField::CURTAIN1_TOTAL_TIME:
-		return res.curtain1TotalTime;
-	case SeriesField::CURTAIN2_SPAN_A_TIME:
-		return res.curtain2spanAtime;
-	case SeriesField::CURTAIN2_SPAN_A_SPEED:
-		return res.curtain2spanAspeed;
-	case SeriesField::CURTAIN2_TOTAL_TIME:
-		return res.curtain2TotalTime;
-	case SeriesField::SLIT_WIDTH_SENSOR0:
-		return res.slitWidthSensor0;
-	case SeriesField::SLIT_WIDTH_SENSOR1:
-		return res.slitWidthSensor1;
-	default:
-		return 0;
-	}
-}
 
 // Draws text at the cursor position (x, y) with a black plaque behind the actual glyph box.
 // The plaque is computed from the text bounding box, so it works with both the classic font
@@ -134,6 +103,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
   {
     display->setFont(SERIES_CHART_TITLE_FONT);
     drawStringHCentered("No valid data", 60);
+    display->setFont(u8g2_font_6x13_tf);
     return;
   }
 
@@ -216,7 +186,8 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 
   for (uint8_t k = 0; k < validCount; k++)
   {
-    double xFraction = validCount == 1 ? 0.5 : (double)validIndexes[k] / (double)(totalMeasurements - 1);
+    // position the point by its measurement number, even if it is the only valid one
+    double xFraction = totalMeasurements == 1 ? 0.5 : (double)validIndexes[k] / (double)(totalMeasurements - 1);
     pointX[k] = pointAreaX0 + (int16_t)((pointAreaX1 - pointAreaX0) * xFraction);
 
     double yFraction = (values[k] - vmin) / (vmax - vmin);

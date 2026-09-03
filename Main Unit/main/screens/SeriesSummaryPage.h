@@ -5,24 +5,7 @@
 
 #define SERIES_SUMMARY_FIELDS_PER_PAGE 5
 
-double getSeriesFieldValue(const MeasuredResult &res, SeriesField field);
-
-// Formats a positive value compactly so it fits into the narrow summary table columns
-void formatCompactDouble(double value, char *buf, size_t bufSize)
-{
-  if (value >= 1000)
-  {
-    snprintf(buf, bufSize, "%.0f", value);
-  }
-  else if (value >= 100)
-  {
-    snprintf(buf, bufSize, "%.1f", value);
-  }
-  else
-  {
-    snprintf(buf, bufSize, "%.2f", value);
-  }
-}
+// getSeriesFieldValue() and formatCompactDouble() are shared in screensCommon.h
 
 struct SeriesFieldStats
 {
@@ -77,73 +60,67 @@ void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field,
   }
 }
 
-// Draws one summary page: 5 fields with avg/min/max values
-void drawSeriesSummaryPage(const MeasurementSeries &series, uint8_t pageIndex)
+// Draws one summary page: up to SERIES_SUMMARY_FIELDS_PER_PAGE fields with
+// avg/min/max values. Only fields that have valid data in the series are shown
+// (activeFields), so there are no pages full of N/A for e.g. leaf shutters.
+void drawSeriesSummaryPage(const MeasurementSeries &series, const SeriesField *activeFields, uint8_t activeFieldsCount, uint8_t pageIndex, uint8_t summaryPagesCount)
 {
   char title[16];
-  snprintf(title, sizeof(title), "Summary %u/%u", (unsigned)(pageIndex + 1), (unsigned)SERIES_SUMMARY_PAGES_COUNT);
+  snprintf(title, sizeof(title), "Summary %u/%u", (unsigned)(pageIndex + 1), (unsigned)summaryPagesCount);
   drawStringHCentered(title, 15);
 
   display->setFont(); // small font for the table
 
+  // Value columns are right-aligned: long values grow to the left and never
+  // cross the right screen edge
   const int16_t labelX = 2;
-  const int16_t avgX = 62;
-  const int16_t minX = 94;
-  const int16_t maxX = 126;
+  const int16_t avgRightX = 94;
+  const int16_t minRightX = 126;
+  const int16_t maxRightX = 158;
 
   display->setCursor(labelX, 28);
   display->print("Parameter");
-  display->setCursor(avgX, 28);
-  display->print("Avg");
-  display->setCursor(minX, 28);
-  display->print("Min");
-  display->setCursor(maxX, 28);
-  display->print("Max");
+  drawStringRightAligned("Avg", avgRightX, 28);
+  drawStringRightAligned("Min", minRightX, 28);
+  drawStringRightAligned("Max", maxRightX, 28);
 
   char buf[14];
 
   for (uint8_t row = 0; row < SERIES_SUMMARY_FIELDS_PER_PAGE; row++)
   {
-    uint8_t fieldIndex = pageIndex * SERIES_SUMMARY_FIELDS_PER_PAGE + row;
+    uint8_t fieldSlot = pageIndex * SERIES_SUMMARY_FIELDS_PER_PAGE + row;
 
-    if (fieldIndex >= SERIES_FIELDS_COUNT)
+    if (fieldSlot >= activeFieldsCount)
     {
       break;
     }
 
-    const SeriesFieldDescriptor &desc = seriesFieldDescriptors[fieldIndex];
+    SeriesField field = activeFields[fieldSlot];
+    const SeriesFieldDescriptor &desc = seriesFieldDescriptors[(uint8_t)field];
     int16_t rowY = 40 + row * 15;
 
     display->setCursor(labelX, rowY);
     display->print(desc.tableLabel);
 
     SeriesFieldStats stats;
-    computeSeriesFieldStats(series, (SeriesField)fieldIndex, stats);
+    computeSeriesFieldStats(series, field, stats);
 
     if (stats.validCount == 0)
     {
-      display->setCursor(avgX, rowY);
-      display->print("N/A");
-
-      display->setCursor(minX, rowY);
-      display->print("N/A");
-
-      display->setCursor(maxX, rowY);
-      display->print("N/A");
+      drawStringRightAligned("N/A", avgRightX, rowY);
+      drawStringRightAligned("N/A", minRightX, rowY);
+      drawStringRightAligned("N/A", maxRightX, rowY);
       continue;
     }
 
-    display->setCursor(avgX, rowY);
     formatCompactDouble(stats.avg, buf, sizeof(buf));
-    display->print(buf);
+    drawStringRightAligned(buf, avgRightX, rowY);
 
-    display->setCursor(minX, rowY);
     formatCompactDouble(stats.min, buf, sizeof(buf));
-    display->print(buf);
+    drawStringRightAligned(buf, minRightX, rowY);
 
-    display->setCursor(maxX, rowY);
     formatCompactDouble(stats.max, buf, sizeof(buf));
-    display->print(buf);
+    drawStringRightAligned(buf, maxRightX, rowY);
   }
 
   display->setFont(u8g2_font_6x13_tf);

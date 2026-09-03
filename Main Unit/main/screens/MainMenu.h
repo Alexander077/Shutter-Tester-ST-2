@@ -81,8 +81,9 @@ void drawMainMenu()
       if (isApiRequestReceived)
       {
         isApiRequestReceived = false;
+        ApiRequestAction dispatchedAction = apiRequestAction;
 
-        switch (apiRequestAction)
+        switch (dispatchedAction)
         {
         case ApiRequestAction::GO_TO_LIGHT_SETUP:
           drawLightCheckScreen();
@@ -96,6 +97,14 @@ void drawMainMenu()
 
         default:
           break;
+        }
+
+        // Reset the handled action so it does not leak into later manual flows
+        // (the measured screen checks GO_TO_MEASURE to emit the API JSON).
+        // If a newer request arrived while the screen was active, keep it.
+        if (!isApiRequestReceived && apiRequestAction == dispatchedAction)
+        {
+          apiRequestAction = ApiRequestAction::NO_ACTION;
         }
 
         break; // break inner while to redraw menu with correct item selected after API action

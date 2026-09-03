@@ -35,6 +35,9 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
 
   printf("Starting ADC continuous reading...\n");
 
+  // Raise the task priority for the duration of the capture so that UI and
+  // other work does not disturb ADC sampling; restored on every exit below
+  UBaseType_t previousTaskPriority = uxTaskPriorityGet(NULL);
   vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1);
   ESP_ERROR_CHECK(adc_continuous_start(handle));
 
@@ -95,6 +98,7 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
     {
       ESP_ERROR_CHECK(adc_continuous_stop(handle));
       captureRes.isCancelled = true;
+      vTaskPrioritySet(NULL, previousTaskPriority);
       return captureRes;
     }
 
@@ -231,6 +235,7 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
     {
       ESP_ERROR_CHECK(adc_continuous_stop(handle));
       captureRes.isCancelled = true;
+      vTaskPrioritySet(NULL, previousTaskPriority);
       return captureRes;
     }
     else if (sensor0State == SensorMesuringState::MeasurementFinished ||
@@ -307,10 +312,12 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
         captureRes.curtain1TimeUs = (curtain1ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US;
         captureRes.curtain2TimeUs = (curtain2ADCSamplesCounter / 2) * ONE_ADC_CONVERSION_TIME_US;
 
+        vTaskPrioritySet(NULL, previousTaskPriority);
         return captureRes;
       }
     }
   }
 
+  vTaskPrioritySet(NULL, previousTaskPriority);
   return captureRes;
 }

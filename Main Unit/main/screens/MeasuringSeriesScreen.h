@@ -10,9 +10,39 @@
 
 MeasurementSeries measurementSeries = {};
 
+// Called when a series ends prematurely (cancelled by the button or aborted
+// after a failed measurement) while some results are already stored.
+// Lets the user view the partial report instead of losing all measurements.
+void offerPartialSeriesReport(const char *abortTitle)
+{
+  if (measurementSeries.storedCount == 0)
+  {
+    return;
+  }
+
+  const char *abortOptions[] = {"Show partial report", "Discard series"};
+  int16_t abortOptionIndex = drawMessageScreen(abortTitle, 2, abortOptions);
+
+  if (isApiRequestReceived)
+  {
+    return;
+  }
+
+  if (abortOptionIndex == 0) // Show partial report
+  {
+    renderSeriesReport(measurementSeries);
+  }
+}
+
 // Runs a series of measurements one by one and shows the multi-page report at the end
 void drawMeasuringSeriesScreen(uint8_t seriesCount)
 {
+  // Defensive clamp: results[] holds at most MEASUREMENT_SERIES_MAX_SIZE entries
+  if (seriesCount > MEASUREMENT_SERIES_MAX_SIZE)
+  {
+    seriesCount = MEASUREMENT_SERIES_MAX_SIZE;
+  }
+
   measurementSeries.totalCount = seriesCount;
   measurementSeries.storedCount = 0;
 
@@ -29,8 +59,14 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
 
       RawMeasurementCapture capture = captureMeasurement("MEASURING", measuringTitle, "Release camera shutter");
 
-      if (capture.isCancelled || isApiRequestReceived)
+      if (isApiRequestReceived)
       {
+        return;
+      }
+
+      if (capture.isCancelled)
+      {
+        offerPartialSeriesReport("Series cancelled");
         return;
       }
 
@@ -42,7 +78,8 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
                             computed);
 
       // Captures with dim/bright light, too short or otherwise invalid data
-      // get negative sentinel values in sensor times
+      // get negative sentinel values in sensor times. A series always requires
+      // both sensors to be valid so the statistics never mix partial data.
       bool isCaptureValid = computed.res.sensor0Time > 0 && computed.res.sensor1Time > 0;
 
       if (!isCaptureValid)
@@ -61,7 +98,8 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
           continue;
         }
 
-        return; // Abort series
+        offerPartialSeriesReport("Series aborted"); // Abort series
+        return;
       }
 
       measurementSeries.results[measurementIndex] = computed.res;

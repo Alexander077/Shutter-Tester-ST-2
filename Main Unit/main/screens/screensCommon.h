@@ -2,6 +2,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
 #include "lib/Common.h"
@@ -117,7 +118,6 @@ const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
 };
 
 #define MEASUREMENT_SERIES_MAX_SIZE 10
-#define SERIES_SUMMARY_PAGES_COUNT 2
 
 // Available series sizes (1 = single measurement, current behavior)
 const uint8_t measurementSeriesOptions[] = {1, 2, 3, 5, 7, 10};
@@ -132,8 +132,92 @@ struct MeasurementSeries
 
 // Fields of MeasuredResult that take part in the series statistics and charts
 
-// Special (sentinel) values of MeasuredResult are negative, real measurements are always positive
+// Special (sentinel) values of MeasuredResult are negative, real measurements
+// are always positive. inf/NaN (e.g. from a zero curtain time glitch) are also
+// treated as invalid.
 bool isSeriesFieldValueValid(double value)
 {
-  return value > 0;
+  return value > 0 && isfinite(value);
 }
+
+// Returns the value of the given MeasuredResult field. Shared by the series
+// summary table, statistics and chart pages.
+double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
+{
+  switch (field)
+  {
+  case SeriesField::SENSOR0_TIME:
+    return res.sensor0Time;
+  case SeriesField::SENSOR1_TIME:
+    return res.sensor1Time;
+  case SeriesField::CURTAIN1_SPAN_A_TIME:
+    return res.curtain1spanAtime;
+  case SeriesField::CURTAIN1_SPAN_A_SPEED:
+    return res.curtain1spanAspeed;
+  case SeriesField::CURTAIN1_TOTAL_TIME:
+    return res.curtain1TotalTime;
+  case SeriesField::CURTAIN2_SPAN_A_TIME:
+    return res.curtain2spanAtime;
+  case SeriesField::CURTAIN2_SPAN_A_SPEED:
+    return res.curtain2spanAspeed;
+  case SeriesField::CURTAIN2_TOTAL_TIME:
+    return res.curtain2TotalTime;
+  case SeriesField::SLIT_WIDTH_SENSOR0:
+    return res.slitWidthSensor0;
+  case SeriesField::SLIT_WIDTH_SENSOR1:
+    return res.slitWidthSensor1;
+  default:
+    return 0;
+  }
+}
+
+// Formats a positive value compactly so it fits into the narrow summary table columns
+void formatCompactDouble(double value, char *buf, size_t bufSize)
+{
+  if (value >= 1000)
+  {
+    snprintf(buf, bufSize, "%.0f", value);
+  }
+  else if (value >= 100)
+  {
+    snprintf(buf, bufSize, "%.1f", value);
+  }
+  else
+  {
+    snprintf(buf, bufSize, "%.2f", value);
+  }
+}
+
+// Builds the list of series fields that have at least one valid value in the
+// series. Fields unavailable for the whole series (e.g. curtain and slit data
+// for leaf shutters) are excluded so the report has no empty pages.
+uint8_t buildActiveSeriesFields(const MeasurementSeries &series, SeriesField *activeFields)
+{
+  uint8_t activeCount = 0;
+
+  for (uint8_t f = 0; f < SERIES_FIELDS_COUNT; f++)
+  {
+    for (uint8_t i = 0; i < series.storedCount; i++)
+    {
+      if (isSeriesFieldValueValid(getSeriesFieldValue(series.results[i], (SeriesField)f)))
+      {
+        activeFields[activeCount++] = (SeriesField)f;
+        break;
+      }
+    }
+  }
+
+  return activeCount;
+}
+
+// Draws text with its right edge at rightX (uses the text bounding box width)
+void drawStringRightAligned(const char *str, int16_t rightX, int16_t y)
+{
+  Rect r = getStringRect(str, 0, 0);
+  display->setCursor(rightX - r.width, y);
+  display->print(str);
+}
+
+// Defined in screens/MeasuredResult.h; declared here so that SeriesReport.h
+// does not depend on the header include order.
+void drawNavBar(int16_t activePageIndex, int16_t itemsCount);
