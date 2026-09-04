@@ -81,8 +81,10 @@ Rect drawStringHCentered(const String &str, uint16_t y)
 
 enum class SeriesField : uint8_t
 {
-  SENSOR0_TIME = 0,
-  SENSOR1_TIME,
+  SENSOR0_SPEED = 0, // shutter speed as 1/X (1000 / sensor0Time)
+  SENSOR0_TIME,      // sensor 1 time in milliseconds
+  SENSOR1_SPEED,     // shutter speed as 1/X (1000 / sensor1Time)
+  SENSOR1_TIME,      // sensor 2 time in milliseconds
   CURTAIN1_SPAN_A_TIME,
   CURTAIN1_SPAN_A_SPEED,
   CURTAIN1_TOTAL_TIME,
@@ -94,30 +96,46 @@ enum class SeriesField : uint8_t
   COUNT
 };
 
+enum class SeriesValueFormat : uint8_t
+{
+  COMPACT,        // compact double via formatCompactDouble
+  SPEED_FRACTION, // shutter speed fraction 1/X
+  PRECISE_TIME    // adaptive time: 3 decimals for small values
+};
+
 struct SeriesFieldDescriptor
 {
   const char *tableLabel; // short label for the summary table row
   const char *chartTitle; // title of the chart page
-  bool displayAsSpeed;    // sensor time fields are displayed as shutter speed 1/X on charts
+  SeriesValueFormat valueFormat;
 };
 
 #define SERIES_FIELDS_COUNT ((uint8_t)SeriesField::COUNT)
 
 const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
     {
-        {"S1 time ms", "Sensor 1 speed", true},
-        {"S2 time ms", "Sensor 2 speed", true},
-        {"C1 span ms", "Curtain 1 span time", false},
-        {"C1 spd m/s", "Curtain 1 speed", false},
-        {"C1 tot ms", "Curtain 1 total time", false},
-        {"C2 span ms", "Curtain 2 span time", false},
-        {"C2 spd m/s", "Curtain 2 speed", false},
-        {"C2 tot ms", "Curtain 2 total time", false},
-        {"Slit S1 mm", "Slit width sensor 1", false},
-        {"Slit S2 mm", "Slit width sensor 2", false},
+        {"S1 spd", "Sensor 1 speed", SeriesValueFormat::SPEED_FRACTION},
+        {"S1 ms", "Sensor 1 time", SeriesValueFormat::PRECISE_TIME},
+        {"S2 spd", "Sensor 2 speed", SeriesValueFormat::SPEED_FRACTION},
+        {"S2 ms", "Sensor 2 time", SeriesValueFormat::PRECISE_TIME},
+        {"C1 spn", "Curtain 1 span time", SeriesValueFormat::COMPACT},
+        {"C1 m/s", "Curtain 1 speed", SeriesValueFormat::COMPACT},
+        {"C1 tot", "Curtain 1 total time", SeriesValueFormat::COMPACT},
+        {"C2 spn", "Curtain 2 span time", SeriesValueFormat::COMPACT},
+        {"C2 m/s", "Curtain 2 speed", SeriesValueFormat::COMPACT},
+        {"C2 tot", "Curtain 2 total time", SeriesValueFormat::COMPACT},
+        {"Sl1 mm", "Slit width sensor 1", SeriesValueFormat::COMPACT},
+        {"Sl2 mm", "Slit width sensor 2", SeriesValueFormat::COMPACT},
 };
 
 #define MEASUREMENT_SERIES_MAX_SIZE 10
+
+// Gray color used for the series report table grid and chart gridlines.
+// Kept as a single define so it can be tuned later in one place.
+#define SERIES_GRID_LINE_COLOR DARKGREY
+
+// Color of the chart axes and their ticks. Also kept configurable here.
+#define SERIES_AXIS_COLOR WHITE
 
 // Available series sizes (1 = single measurement, current behavior)
 const uint8_t measurementSeriesOptions[] = {1, 2, 3, 5, 7, 10};
@@ -146,8 +164,12 @@ double getSeriesFieldValue(const MeasuredResult &res, SeriesField field)
 {
   switch (field)
   {
+  case SeriesField::SENSOR0_SPEED:
+    return res.sensor0Time > 0 ? 1000.0 / res.sensor0Time : 0;
   case SeriesField::SENSOR0_TIME:
     return res.sensor0Time;
+  case SeriesField::SENSOR1_SPEED:
+    return res.sensor1Time > 0 ? 1000.0 / res.sensor1Time : 0;
   case SeriesField::SENSOR1_TIME:
     return res.sensor1Time;
   case SeriesField::CURTAIN1_SPAN_A_TIME:
@@ -185,6 +207,68 @@ void formatCompactDouble(double value, char *buf, size_t bufSize)
   else
   {
     snprintf(buf, bufSize, "%.2f", value);
+  }
+}
+
+// Formats a shutter speed value (1/s) as a fraction label (e.g. "1/503").
+// Whole values are printed without a trailing ".0" (e.g. "1/8" instead of "1/8.0").
+void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
+{
+  char denominator[12];
+  double rounded = round(speed);
+
+  if (speed >= 10 || fabs(speed - rounded) < 1e-6)
+  {
+    snprintf(denominator, sizeof(denominator), "%.0f", speed);
+  }
+  else if (speed >= 1)
+  {
+    snprintf(denominator, sizeof(denominator), "%.1f", speed);
+  }
+  else
+  {
+    snprintf(denominator, sizeof(denominator), "%.2f", speed);
+  }
+
+  snprintf(buf, bufSize, "1/%s", denominator);
+}
+
+// Formats a millisecond value adaptively so it fits into the narrow table
+// cells and chart labels: 3 decimals for small values, fewer for larger ones.
+void formatPreciseTimeValue(double value, char *buf, size_t bufSize)
+{
+  if (value < 100)
+  {
+    snprintf(buf, bufSize, "%.3f", value);
+  }
+  else if (value < 1000)
+  {
+    snprintf(buf, bufSize, "%.2f", value);
+  }
+  else if (value < 10000)
+  {
+    snprintf(buf, bufSize, "%.1f", value);
+  }
+  else
+  {
+    snprintf(buf, bufSize, "%.0f", value);
+  }
+}
+
+// Formats a series field value according to its display type.
+void formatSeriesFieldValue(SeriesField field, double value, char *buf, size_t bufSize)
+{
+  switch (seriesFieldDescriptors[(uint8_t)field].valueFormat)
+  {
+  case SeriesValueFormat::SPEED_FRACTION:
+    formatSpeedFractionLabel(value, buf, bufSize);
+    break;
+  case SeriesValueFormat::PRECISE_TIME:
+    formatPreciseTimeValue(value, buf, bufSize);
+    break;
+  default:
+    formatCompactDouble(value, buf, bufSize);
+    break;
   }
 }
 

@@ -54,7 +54,7 @@
 * `StoredMeasuredResult.h` — структура сохраняемой записи (`recordNumber`, `isDeleted` + поля `MeasuredResult`), оператор сравнения.
 
 ### main/screens/
-* `screensCommon.h` — общие функции отрисовки текста (`getStringRect`, `drawStringHCentered`, `drawStringRightAligned`), `Rect`, `SeriesField` и дескрипторы полей, `MeasurementSeries` (до 10 измерений), функции валидации/получения значений полей серии, `formatCompactDouble`, `buildActiveSeriesFields`, forward-декларация `drawNavBar`.
+* `screensCommon.h` — общие функции отрисовки текста (`getStringRect`, `drawStringHCentered`, `drawStringRightAligned`), `Rect`, `SeriesField` (включая скорость датчиков 1/X) и дескрипторы полей, `MeasurementSeries` (до 10 измерений), функции валидации/получения значений полей серии, `formatCompactDouble`, `formatSpeedFractionLabel`, `formatPreciseTimeValue`, `formatSeriesFieldValue`, `buildActiveSeriesFields`, `SERIES_GRID_LINE_COLOR`, `SERIES_AXIS_COLOR`, forward-декларация `drawNavBar`.
 * `MainMenu.h` — главное меню (Measure, Light Setup, Saved Measures, About); `drawMainMenu()`.
 * `SensorSelectionScreen.h` — выбор типа датчика (35mm, 6×4.5, 6×6, 6×7), затем переход к выбору движения шторки.
 * `CurtainMovementSelectionScreen.h` — выбор типа движения шторки (горизонтальный, вертикальный, лепестковый), переход к выбору количества измерений/измерению.
@@ -71,8 +71,8 @@
 * `ViewRecordsScreen.h` — просмотр и удаление сохранённых записей.
 * `MessageScreen.h` — универсальный экран с заголовком и списком опций, возвращает выбранный индекс.
 * `SeriesReport.h` — многостраничный отчёт серии: страницы сводки + график по каждому полю.
-* `SeriesSummaryPage.h` — сводная таблица статистики (avg / min / max / count) по полям серии.
-* `SeriesChartPage.h` — график одного поля серии, форматирование скорости как `1/X`, `drawTextWithPlaque()`.
+* `SeriesSummaryPage.h` — сводная таблица статистики (avg / min / max / count) по полям серии; для датчиков — отдельные строки выдержки (1/X) и времени (мс), серая сетка таблицы.
+* `SeriesChartPage.h` — график одного поля серии, `drawTextWithPlaque()`.
 * `AboutScreen.h` — экран «About»: версии, серийный номер, возможность отката прошивки (Rollback Firm. Update).
 
 ### my_components/

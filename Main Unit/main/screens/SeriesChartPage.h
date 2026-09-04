@@ -18,54 +18,6 @@ void drawTextWithPlaque(const char *text, int16_t x, int16_t y)
   display->print(text);
 }
 
-// Formats shutter speed value (1/s) as a fraction label (e.g. "1/503")
-void formatSpeedFractionLabel(double speed, char *buf, size_t bufSize)
-{
-  char denominator[10];
-
-  if (speed >= 10)
-  {
-    snprintf(denominator, sizeof(denominator), "%.0f", speed);
-  }
-  else if (speed >= 1)
-  {
-    snprintf(denominator, sizeof(denominator), "%.1f", speed);
-  }
-  else
-  {
-    snprintf(denominator, sizeof(denominator), "%.2f", speed);
-  }
-
-  snprintf(buf, bufSize, "1/%s", denominator);
-}
-
-// Formats a chart value according to the field display type
-void formatSeriesChartValue(SeriesField field, double chartValue, char *buf, size_t bufSize)
-{
-  if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed)
-  {
-    formatSpeedFractionLabel(chartValue, buf, bufSize);
-  }
-  else
-  {
-    formatCompactDouble(chartValue, buf, bufSize);
-  }
-}
-
-// Returns the value used to build a chart for the given field.
-// Sensor time fields are displayed as shutter speed (1/X), other fields as is.
-double getSeriesChartValue(const MeasuredResult &res, SeriesField field)
-{
-  double rawValue = getSeriesFieldValue(res, field);
-
-  if (seriesFieldDescriptors[(uint8_t)field].displayAsSpeed && isSeriesFieldValueValid(rawValue))
-  {
-    return 1000.0 / rawValue;
-  }
-
-  return rawValue;
-}
-
 // Draws one chart page: field values for each measurement in the series
 void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
 {
@@ -89,7 +41,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
       continue;
     }
 
-    values[validCount] = getSeriesChartValue(series.results[i], (SeriesField)fieldIndex);
+    values[validCount] = rawValue;
     validIndexes[validCount] = i;
     validCount++;
   }
@@ -154,12 +106,12 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
     double fraction = (double)g / (double)(gridLineCount - 1);
     int16_t gridY = chartY0 + (int16_t)((chartY1 - chartY0) * fraction);
 
-    display->drawLine(chartX0, gridY, chartX1, gridY, WHITE);
+    display->drawLine(chartX0, gridY, chartX1, gridY, SERIES_GRID_LINE_COLOR);
   }
 
   // axes
-  display->drawLine(chartX0, chartY0, chartX0, chartY1, WHITE);
-  display->drawLine(chartX0, chartY1, chartX1, chartY1, WHITE);
+  display->drawLine(chartX0, chartY0, chartX0, chartY1, SERIES_AXIS_COLOR);
+  display->drawLine(chartX0, chartY1, chartX1, chartY1, SERIES_AXIS_COLOR);
 
   // x axis ticks and measurement number labels
   uint8_t totalMeasurements = series.storedCount > 0 ? series.storedCount : 1;
@@ -169,7 +121,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
     double fraction = totalMeasurements == 1 ? 0.5 : (double)i / (double)(totalMeasurements - 1);
     int16_t tickX = pointAreaX0 + (int16_t)((pointAreaX1 - pointAreaX0) * fraction);
 
-    display->drawLine(tickX, chartY1, tickX, chartY1 + 3, WHITE);
+    display->drawLine(tickX, chartY1, tickX, chartY1 + 3, SERIES_AXIS_COLOR);
 
     char numberLabel[4];
     snprintf(numberLabel, sizeof(numberLabel), "%u", (unsigned)(i + 1));
@@ -253,7 +205,7 @@ void drawSeriesChartPage(const MeasurementSeries &series, uint8_t fieldIndex)
     int16_t labelY = drawAbove ? pointY[k] - 4 : pointY[k] + 10;
 
     char label[14];
-    formatSeriesChartValue((SeriesField)fieldIndex, values[k], label, sizeof(label));
+    formatSeriesFieldValue((SeriesField)fieldIndex, values[k], label, sizeof(label));
     Rect labelRect = getStringRect(label, 0, 0);
 
     int16_t labelX = pointX[k] - labelRect.width / 2;
