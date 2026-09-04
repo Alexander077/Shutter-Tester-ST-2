@@ -96,59 +96,121 @@ void setup()
 	}
 }
 
-// ---- Mock data for testing the series report without real measurements ----
-// Simulates 5 shots of a 35mm camera with horizontal focal-plane shutter.
-// Values are computed the same way computeMeasuredResult() does:
-// sensor distance 16 mm, frame width 36 mm (see sensorsData[Frame35mm]).
+// // ---- Mock data for testing the series report without real measurements ----
+// // Simulates 5 shots of a 35mm camera with horizontal focal-plane shutter.
+// // Values are computed the same way computeMeasuredResult() does:
+// // sensor distance 16 mm, frame width 36 mm (see sensorsData[Frame35mm]).
+// // The mock covers the whole value spectrum: every standard shutter speed from
+// // 1/4000 s (250 us) to 30 s combined with every curtain speed from the
+// // 0.5 .. 10 m/s grid (18 x 6 = 108 sets). Each shot deviates from its nominal
+// // values by up to +/- MOCK_VARIATION_PERCENT percent, like shots of a real
+// // series differ from each other. NOTE: extreme combinations (e.g. 30 s at
+// // 0.5 m/s) are physically impossible (huge slit width) - they are kept on
+// // purpose to exercise the extreme-value formatting.
 
-#define MOCK_SENSOR_DISTANCE_MM 16.0
-#define MOCK_FRAME_WIDTH_MM 36.0
+// #define MOCK_SENSOR_DISTANCE_MM 16.0
+// #define MOCK_FRAME_WIDTH_MM 36.0
 
-MeasuredResult createMockMeasuredResult(double sensor0TimeMs, double sensor1TimeMs, double curtain1SpanTimeMs, double curtain2SpanTimeMs)
-{
-	MeasuredResult r = {};
+// // Spread applied to the raw mock inputs: 20 => each input is multiplied by a
+// // factor uniformly distributed in [0.8 .. 1.2]
+// #define MOCK_VARIATION_PERCENT 70
 
-	r.sensor0Time = sensor0TimeMs;
-	r.sensor1Time = sensor1TimeMs;
+// // Deterministic PRNG (LCG, Numerical Recipes constants) so the mock spread
+// // is identical after every boot. Replace with random() if per-boot randomness
+// // is preferred.
+// static uint32_t mockRandomState = 0x1234ABCD;
 
-	r.curtain1spanAtime = curtain1SpanTimeMs;
-	r.curtain1spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs;       // m/s
-	r.curtain1TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain1spanAspeed;          // ms
+// double nextMockVariationFactor()
+// {
+// 	mockRandomState = mockRandomState * 1664525u + 1013904223u;
 
-	r.curtain2spanAtime = curtain2SpanTimeMs;
-	r.curtain2spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs;       // m/s
-	r.curtain2TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain2spanAspeed;          // ms
+// 	const double unit = (double)(mockRandomState >> 8) / 16777216.0; // 0..1 from 24 bits
+// 	const double spread = MOCK_VARIATION_PERCENT * 2.0 / 100.0;      // 0.4 for +/-20%
+// 	return 1.0 - spread / 2.0 + unit * spread;                       // 0.8 .. 1.2
+// }
 
-	double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm per ms
-	r.slitWidthSensor0 = estSlitSpeed * sensor0TimeMs;                         // mm
-	r.slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;                         // mm
-	r.slitWidthAverage = (r.slitWidthSensor0 + r.slitWidthSensor1) / 2.0;      // mm
+// // Standard shutter speeds from 1/4000 s to 30 s (full-stop row), in milliseconds
+// const double mockShutterSpeedsMs[] =
+// 	{
+// 		0.25,          // 1/4000
+// 		0.5,           // 1/2000
+// 		1.0,           // 1/1000
+// 		2.0,           // 1/500
+// 		4.0,           // 1/250
+// 		8.0,           // 1/125
+// 		1000.0 / 60.0, // 1/60
+// 		1000.0 / 30.0, // 1/30
+// 		1000.0 / 15.0, // 1/15
+// 		125.0,         // 1/8
+// 		250.0,         // 1/4
+// 		500.0,         // 1/2
+// 		1000.0,        // 1"
+// 		2000.0,        // 2"
+// 		4000.0,        // 4"
+// 		8000.0,        // 8"
+// 		15000.0,       // 15"
+// 		30000.0,       // 30"
+// };
 
-	r.usedSensorType = SensorType::Frame35mm;
-	r.selectedCurtainMovement = CurtainMovement::HORISONTAL;
+// // Curtain speeds grid, in meters per second (0.5 + step 2, 10 added as the bound)
+// const double mockCurtainSpeedsMS[] = {0.5, 2.5, 4.5, 6.5, 8.5, 10.0};
 
-	return r;
-}
+// const uint8_t mockShutterSpeedsCount = sizeof(mockShutterSpeedsMs) / sizeof(mockShutterSpeedsMs[0]);
+// const uint8_t mockCurtainSpeedsCount = sizeof(mockCurtainSpeedsMS) / sizeof(mockCurtainSpeedsMS[0]);
 
-MeasurementSeries createMockMeasurementSeries()
-{
-	MeasurementSeries series = {};
-	series.totalCount = 5;
-	series.storedCount = 5;
+// MeasuredResult createMockMeasuredResult(double sensor0TimeMs, double sensor1TimeMs, double curtain1SpanTimeMs, double curtain2SpanTimeMs)
+// {
+// 	MeasuredResult r = {};
 
-	// Slightly different values from shot to shot, like in a real series
-	const double sensor0Times[] = {0.256, 0.240, 0.276, 0.264, 0.250};       // ms
-	const double sensor1Times[] = {0.288, 0.248, 0.292, 0.244, 0.254};       // ms
-	const double curtain1SpanTimes[] = {2.77, 2.98, 3.01, 2.68, 3.03};  // ms
-	const double curtain2SpanTimes[] = {2.87, 2.98, 2.7, 2.78, 2.99};  // ms
+// 	r.sensor0Time = sensor0TimeMs;
+// 	r.sensor1Time = sensor1TimeMs;
 
-	for (uint8_t i = 0; i < series.storedCount; i++)
-	{
-		series.results[i] = createMockMeasuredResult(sensor0Times[i], sensor1Times[i], curtain1SpanTimes[i], curtain2SpanTimes[i]);
-	}
+// 	r.curtain1spanAtime = curtain1SpanTimeMs;
+// 	r.curtain1spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs;       // m/s
+// 	r.curtain1TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain1spanAspeed;          // ms
 
-	return series;
-}
+// 	r.curtain2spanAtime = curtain2SpanTimeMs;
+// 	r.curtain2spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs;       // m/s
+// 	r.curtain2TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain2spanAspeed;          // ms
+
+// 	double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm per ms
+// 	r.slitWidthSensor0 = estSlitSpeed * sensor0TimeMs;                         // mm
+// 	r.slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;                         // mm
+// 	r.slitWidthAverage = (r.slitWidthSensor0 + r.slitWidthSensor1) / 2.0;      // mm
+
+// 	r.usedSensorType = SensorType::Frame35mm;
+// 	r.selectedCurtainMovement = CurtainMovement::HORISONTAL;
+
+// 	return r;
+// }
+
+// // Builds a series of 5 shots around the given nominal shutter speed and
+// // curtain speed. Curtain speed is not stored directly - the curtain span time
+// // is derived from it (spanTime = MOCK_SENSOR_DISTANCE_MM / speed), so the
+// // computeMeasuredResult-style math reproduces the requested speed. Every raw
+// // input of every shot gets an independent +/-20% deviation from its nominal
+// // value; speeds, total times and slit widths are derived from those inputs
+// // inside createMockMeasuredResult() and inherit the spread naturally.
+// MeasurementSeries createMockMeasurementSeries(double nominalShutterSpeedMs, double nominalCurtainSpeedMS)
+// {
+// 	MeasurementSeries series = {};
+// 	series.totalCount = 5;
+// 	series.storedCount = 5;
+
+// 	const double nominalCurtainSpanTimeMs = MOCK_SENSOR_DISTANCE_MM / nominalCurtainSpeedMS; // mm/(mm/ms) = ms
+
+// 	for (uint8_t i = 0; i < series.storedCount; i++)
+// 	{
+// 		const double sensor0TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+// 		const double sensor1TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+// 		const double curtain1SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+// 		const double curtain2SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+
+// 		series.results[i] = createMockMeasuredResult(sensor0TimeMs, sensor1TimeMs, curtain1SpanTimeMs, curtain2SpanTimeMs);
+// 	}
+
+// 	return series;
+// }
 
 void loop() 
 {
@@ -194,9 +256,23 @@ void loop()
 	// 	vTaskDelay(1 / portTICK_PERIOD_MS);
 	// }
 
-	MeasurementSeries measurementSeries = createMockMeasurementSeries();
+	// // Cycle through the whole mock grid (standard shutter speeds x curtain
+	// // speeds): every exit from the series report shows the next combination,
+	// // wrapping around after the last one. drawMainMenu() is disabled here on
+	// // purpose - it never returns, so it would stop the sweep after one set.
+	// static uint8_t mockComboIndex = 0;
 
-	renderSeriesReport(measurementSeries);
+	// while (true)
+	// {
+	// 	const uint8_t shutterSpeedIndex = mockComboIndex / mockCurtainSpeedsCount;
+	// 	const uint8_t curtainSpeedIndex = mockComboIndex % mockCurtainSpeedsCount;
+
+	// 	MeasurementSeries measurementSeries = createMockMeasurementSeries(mockShutterSpeedsMs[shutterSpeedIndex], mockCurtainSpeedsMS[curtainSpeedIndex]);
+
+	// 	renderSeriesReport(measurementSeries);
+
+	// 	mockComboIndex = (mockComboIndex + 1) % (mockShutterSpeedsCount * mockCurtainSpeedsCount);
+	// }
 
 	drawMainMenu();
 }
