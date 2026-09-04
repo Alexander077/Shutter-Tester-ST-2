@@ -128,7 +128,7 @@ const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
         {"Sl2 mm", "Slit width sensor 2", SeriesValueFormat::COMPACT},
 };
 
-#define MEASUREMENT_SERIES_MAX_SIZE 5
+// MEASUREMENT_SERIES_MAX_SIZE is defined in lib/MeasuredResult.h
 
 // Gray color used for the series report table grid and chart gridlines.
 // Kept as a single define so it can be tuned later in one place.

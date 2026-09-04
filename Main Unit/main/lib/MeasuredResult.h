@@ -2,6 +2,11 @@
 
 #include "Common.h"
 
+// Maximum number of measurements a series can hold. Defined here (rather than
+// in a screen header) so the storage layer can reference it without pulling in
+// display code.
+#define MEASUREMENT_SERIES_MAX_SIZE 5
+
 struct MeasuredResult
 {
   double sensor0Time; // In milliseconds

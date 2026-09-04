@@ -75,6 +75,7 @@ void setup()
 	initStorage();
 
 	storage.begin();
+	seriesStorage.begin();
 
 	SerialNumber::init();
 

@@ -4,10 +4,16 @@
 #include <vector>
 #include <string.h>
 #include "recordsManagement/StoredMeasuredResult.h"
+#include "recordsManagement/StoredMeasuredSeries.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
 
-class RecordsStorageManager
+// Generic manager over a fixed-size binary file of equally sized records.
+// It only relies on the first two fields of the record type being
+// 'recordNumber' (int32_t) and 'isDeleted' (bool), so the same implementation
+// serves both single measurements and measurement series.
+template <typename RecordT>
+class RecordsStorageManagerT
 {
 private:
   const char *filePath;
@@ -15,7 +21,7 @@ private:
 
 public:
   // Конструктор
-  RecordsStorageManager(const char *path);
+  RecordsStorageManagerT(const char *path);
 
   // Инициализация (создание мьютекса)
   void begin();
@@ -24,36 +30,43 @@ public:
   std::vector<int32_t> getAllValidRecordNumbers();
 
   // Получить конкретную запись по её номеру
-  StoredMeasuredResult getRecordByNumber(int32_t recordNumber);
+  RecordT getRecordByNumber(int32_t recordNumber);
 
   // Удалить запись по номеру
   bool deleteRecordByNumber(int32_t recordNumber);
 
   // Сохранить новую или обновить существующую запись
   // Возвращает номер сохраненной записи (или -1 в случае ошибки)
-  int32_t saveOrUpdateRecord(StoredMeasuredResult &record);
+  int32_t saveOrUpdateRecord(RecordT &record);
 
   // Получить количество свободных слотов (если файл имеет фиксированный размер/структуру)
   int16_t getFreeSlotsCount();
 };
 
-RecordsStorageManager::RecordsStorageManager(const char *path)
+// Concrete managers used across the project.
+using RecordsStorageManager = RecordsStorageManagerT<StoredMeasuredResult>;
+using SeriesStorageManager = RecordsStorageManagerT<StoredMeasuredSeries>;
+
+template <typename RecordT>
+RecordsStorageManagerT<RecordT>::RecordsStorageManagerT(const char *path)
 {
   filePath = path;
   fileMutex = NULL;
 }
 
-void RecordsStorageManager::begin()
+template <typename RecordT>
+void RecordsStorageManagerT<RecordT>::begin()
 {
   fileMutex = xSemaphoreCreateMutex();
-  
+
   if (fileMutex == NULL)
   {
     ESP_LOGE("STORAGE", "Failed to create file mutex");
   }
 }
 
-std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
+template <typename RecordT>
+std::vector<int32_t> RecordsStorageManagerT<RecordT>::getAllValidRecordNumbers()
 {
   std::vector<int32_t> records;
 
@@ -63,8 +76,8 @@ std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
 
     if (recordsFile != NULL)
     {
-      StoredMeasuredResult tempMeasRes;
-      int16_t blockSize = sizeof(StoredMeasuredResult);
+      RecordT tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
 
       while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
       {
@@ -86,10 +99,11 @@ std::vector<int32_t> RecordsStorageManager::getAllValidRecordNumbers()
   return records;
 }
 
-StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumber)
+template <typename RecordT>
+RecordT RecordsStorageManagerT<RecordT>::getRecordByNumber(int32_t recordNumber)
 {
-  StoredMeasuredResult measRes;
-  memset(&measRes, 0, sizeof(StoredMeasuredResult));
+  RecordT measRes;
+  memset(&measRes, 0, sizeof(RecordT));
   measRes.recordNumber = -1; // Признак того, что запись не найдена
 
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
@@ -97,8 +111,8 @@ StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumb
     FILE *recordsFile = fopen(filePath, "r");
     if (recordsFile != NULL)
     {
-      StoredMeasuredResult tempMeasRes;
-      int16_t blockSize = sizeof(StoredMeasuredResult);
+      RecordT tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
       while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
       {
         if (tempMeasRes.recordNumber == recordNumber && !tempMeasRes.isDeleted)
@@ -114,7 +128,8 @@ StoredMeasuredResult RecordsStorageManager::getRecordByNumber(int32_t recordNumb
   return measRes;
 }
 
-bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
+template <typename RecordT>
+bool RecordsStorageManagerT<RecordT>::deleteRecordByNumber(int32_t recordNumber)
 {
   bool success = false;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
@@ -122,8 +137,8 @@ bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
     FILE *recordsFile = fopen(filePath, "r+");
     if (recordsFile != NULL)
     {
-      StoredMeasuredResult tempMeasRes;
-      int16_t blockSize = sizeof(StoredMeasuredResult);
+      RecordT tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
       int32_t index = 0;
 
       while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
@@ -147,7 +162,8 @@ bool RecordsStorageManager::deleteRecordByNumber(int32_t recordNumber)
   return success;
 }
 
-int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
+template <typename RecordT>
+int32_t RecordsStorageManagerT<RecordT>::saveOrUpdateRecord(RecordT &record)
 {
   int32_t finalRecordNumber = -1;
 
@@ -162,8 +178,8 @@ int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
 
     if (recordsFile != NULL)
     {
-      int16_t blockSize = sizeof(StoredMeasuredResult);
-      StoredMeasuredResult tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
+      RecordT tempMeasRes;
       int32_t index = 0;
       int32_t maxRecordNumber = 0;
       int32_t targetIndex = -1;
@@ -231,7 +247,8 @@ int32_t RecordsStorageManager::saveOrUpdateRecord(StoredMeasuredResult &record)
   return finalRecordNumber;
 }
 
-int16_t RecordsStorageManager::getFreeSlotsCount()
+template <typename RecordT>
+int16_t RecordsStorageManagerT<RecordT>::getFreeSlotsCount()
 {
   int16_t freeCount = 0;
   if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
@@ -239,8 +256,8 @@ int16_t RecordsStorageManager::getFreeSlotsCount()
     FILE *recordsFile = fopen(filePath, "r");
     if (recordsFile != NULL)
     {
-      StoredMeasuredResult tempMeasRes;
-      int16_t blockSize = sizeof(StoredMeasuredResult);
+      RecordT tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
       while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
       {
         if (tempMeasRes.recordNumber == 0 || tempMeasRes.isDeleted)
@@ -254,3 +271,4 @@ int16_t RecordsStorageManager::getFreeSlotsCount()
   }
   return freeCount;
 }
+

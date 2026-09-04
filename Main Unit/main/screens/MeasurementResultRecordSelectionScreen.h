@@ -9,10 +9,11 @@
 #include <string.h>
 #include <stdio.h>
 
-int32_t drawMeasurementResultRecordSelectionScreen()
+template <typename StorageT>
+int32_t drawRecordSelectionScreen(StorageT &store)
 {
   // 1. Получаем все существующие (не удаленные) номера записей через менеджер
-  std::vector<int32_t> validIds = storage.getAllValidRecordNumbers();
+  std::vector<int32_t> validIds = store.getAllValidRecordNumbers();
 
   // 2. Размер массива = количество записей + 1 (для кнопки "Back")
   int16_t totalArraySaize = validIds.size() + 1;
@@ -191,4 +192,14 @@ int32_t drawMeasurementResultRecordSelectionScreen()
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
+}
+
+int32_t drawMeasurementResultRecordSelectionScreen()
+{
+  return drawRecordSelectionScreen(storage);
+}
+
+int32_t drawSeriesRecordSelectionScreen()
+{
+  return drawRecordSelectionScreen(seriesStorage);
 }

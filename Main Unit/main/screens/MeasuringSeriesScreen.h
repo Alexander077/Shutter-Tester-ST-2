@@ -6,6 +6,7 @@
 #include "screens/computeMeasuredResult.h"
 #include "screens/MessageScreen.h"
 #include "screens/SeriesReport.h"
+#include "screens/SeriesSaveScreen.h"
 #include "lib/serialAPI.h"
 
 MeasurementSeries measurementSeries = {};
@@ -31,6 +32,11 @@ void offerPartialSeriesReport(const char *abortTitle)
   if (abortOptionIndex == 0) // Show partial report
   {
     renderSeriesReport(measurementSeries);
+
+    if (isApiRequestReceived)
+      return;
+
+    drawSeriesSaveScreen(measurementSeries);
   }
 }
 
@@ -108,4 +114,9 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
   }
 
   renderSeriesReport(measurementSeries);
+
+  if (isApiRequestReceived)
+    return;
+
+  drawSeriesSaveScreen(measurementSeries);
 }
