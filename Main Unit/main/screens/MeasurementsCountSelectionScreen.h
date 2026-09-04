@@ -32,7 +32,7 @@ uint8_t drawMeasurementsCountSelectionScreen()
   display->fillScreen(BLACK);
   display->setFont(u8g2_font_6x13_tf);
   drawStringHCentered("Measurements count", 20);
-  display->setFont();
+  // display->setFont();
 
   for (uint8_t i = 0; i < optionsCount; i++)
   {

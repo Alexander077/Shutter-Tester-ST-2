@@ -128,7 +128,7 @@ const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
         {"Sl2 mm", "Slit width sensor 2", SeriesValueFormat::COMPACT},
 };
 
-#define MEASUREMENT_SERIES_MAX_SIZE 10
+#define MEASUREMENT_SERIES_MAX_SIZE 5
 
 // Gray color used for the series report table grid and chart gridlines.
 // Kept as a single define so it can be tuned later in one place.
@@ -138,7 +138,7 @@ const SeriesFieldDescriptor seriesFieldDescriptors[SERIES_FIELDS_COUNT] =
 #define SERIES_AXIS_COLOR WHITE
 
 // Available series sizes (1 = single measurement, current behavior)
-const uint8_t measurementSeriesOptions[] = {1, 2, 3, 5, 7, 10};
+const uint8_t measurementSeriesOptions[] = {1, 2, 3, 5};
 const uint8_t measurementSeriesOptionsCount = sizeof(measurementSeriesOptions) / sizeof(measurementSeriesOptions[0]);
 
 struct MeasurementSeries
