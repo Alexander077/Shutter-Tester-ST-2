@@ -5,10 +5,10 @@ Agfa Automatic 66
 Agfa Billy
 Agfa Billy Record
 Agfa Clack
+Agfa Isola
 Agfa Isolette
 Agfa Isolette II
 Agfa Isolette III
-Agfa Isola
 Agfa Jsolette
 Agfa Karat
 Agfa Karat 36
@@ -31,16 +31,16 @@ Agfa Super Silette
 Aires 35
 Aires 35 II
 Aires 35 III
-Aires Viscount
 Aires Penta 35
+Aires Viscount
+Alpa 10
+Alpa 11
 Alpa 4b
 Alpa 5
 Alpa 6
 Alpa 7
 Alpa 8
 Alpa 9
-Alpa 10
-Alpa 11
 Alpa Prisma
 Alpa Reflex
 Alpa Si 2000
@@ -52,6 +52,8 @@ Ansco Speedex
 Ansco Super Regent
 Ansco Titan
 Ansco Viking
+Arette
+Arette 1B
 Argus 21
 Argus A
 Argus A2
@@ -62,8 +64,6 @@ Argus C33
 Argus C4
 Argus C44
 Argus Match-Matic
-Arette
-Arette 1B
 Balda Baldamatic
 Balda Baldax
 Balda Baldessa
@@ -111,42 +111,44 @@ Canon AT-1
 Canon AV-1
 Canon Demi
 Canon Demi EE17
+Canon Demi S
 Canon Dial 35
 Canon Dial 35-2
 Canon EF
 Canon EF-M
 Canon EOS 1
+Canon EOS 10
+Canon EOS 100
+Canon EOS 1000
+Canon EOS 10s
 Canon EOS 1N
 Canon EOS 1N RS
 Canon EOS 1V
 Canon EOS 1V HS
 Canon EOS 3
-Canon EOS 5
-Canon EOS 10
-Canon EOS 10s
-Canon EOS 50
-Canon EOS 100
 Canon EOS 300
+Canon EOS 3000
+Canon EOS 3000N
+Canon EOS 5
+Canon EOS 50
 Canon EOS 500
+Canon EOS 5000
 Canon EOS 620
 Canon EOS 630
 Canon EOS 650
-Canon EOS 1000
-Canon EOS 3000
-Canon EOS 5000
 Canon EOS A2
 Canon EOS A2E
 Canon EOS Elan
-Canon EOS Elan II
 Canon EOS Elan 7
 Canon EOS Elan 7E
+Canon EOS Elan II
 Canon EOS Rebel
+Canon EOS Rebel XS
 Canon EOS RT
 Canon EX
 Canon EX Auto
 Canon F-1
 Canon F-1n
-Canon New F-1
 Canon FP
 Canon FT
 Canon FT QL
@@ -156,10 +158,12 @@ Canon FTb-N
 Canon FX
 Canon II
 Canon III
+Canon IV Sb
 Canon IV Sb2
 Canon L1
 Canon L2
 Canon L3
+Canon New F-1
 Canon P
 Canon Pellix
 Canon Pellix QL
@@ -177,9 +181,11 @@ Canon VI-T
 Canon VT
 Canonet
 Canonet 28
+Canonet Junior
 Canonet QL17
 Canonet QL17 G-III
 Canonet QL19
+Canonet QL25
 Certo Dolly
 Certo Super Sport Dolly
 Chinon 35EE
@@ -244,29 +250,21 @@ Cosina CS-1
 Cosina CS-2
 Cosina CS-3
 Cosina CT-1
+Cosina CT-10
 Cosina CT-1A
 Cosina CT-7
-Cosina CT-10
 Cosina Hi-Lite
 Cosina PM-1
 Dacora 1
 Dacora Dignette
 Dacora Royal
-Edixa Reflex
-Edixa-Mat Reflex
 Edixa Prismaflex
 Edixa Prismat
+Edixa Reflex
+Edixa-Mat Reflex
 Ensign Autorange
 Ensign Ful-Vue
 Ensign Selfix
-Exakta RTL 1000
-Exakta Varex
-Exakta Varex IIa
-Exakta Varex IIb
-Exakta VX
-Exakta VX IIa
-Exakta VX IIb
-Exakta VX 500
 Exa
 Exa 1a
 Exa 1b
@@ -275,6 +273,15 @@ Exa 500
 Exa II
 Exa IIa
 Exa IIb
+Exakta 66
+Exakta RTL 1000
+Exakta Varex
+Exakta Varex IIa
+Exakta Varex IIb
+Exakta VX
+Exakta VX 500
+Exakta VX IIa
+Exakta VX IIb
 Fed 1
 Fed 2
 Fed 3
@@ -285,15 +292,16 @@ Fed 5C
 Fed 5V
 Fed Mikron
 Fed Zarya
+Ferrania Lince
 Flexaret
+Flexaret Automat
 Flexaret II
 Flexaret III
 Flexaret IV
+Flexaret Standard
 Flexaret V
 Flexaret VI
 Flexaret VII
-Flexaret Automat
-Flexaret Standard
 Franka Rolfix
 Franka Solida
 Fuji G617
@@ -306,13 +314,13 @@ Fuji GM670
 Fuji GS645
 Fuji GS645S
 Fuji GS645W
+Fuji GSW690
+Fuji GSW690II
+Fuji GSW690III
 Fuji GW670
 Fuji GW690
 Fuji GW690II
 Fuji GW690III
-Fuji GSW690
-Fuji GSW690II
-Fuji GSW690III
 Fuji GX680
 Fuji GX680II
 Fuji GX680III
@@ -320,6 +328,7 @@ Fuji Klasse
 Fuji Klasse S
 Fuji Klasse W
 Fuji TX-1
+Fuji TX-2
 Fujica AX-1
 Fujica AX-3
 Fujica AX-5
@@ -372,6 +381,7 @@ Hasselblad H1
 Hasselblad H2
 Hasselblad H4X
 Hasselblad SWC
+Hasselblad SWC/M
 Hasselblad XPan
 Hasselblad XPan II
 Ilford Advocate
@@ -379,26 +389,26 @@ Ilford Sportsman
 Ilford Witness
 Iskra
 Iskra 2
-Kiev 2
-Kiev 2A
-Kiev 3
-Kiev 3A
-Kiev 4
-Kiev 4A
-Kiev 4AM
-Kiev 4M
-Kiev 5
-Kiev 6C
 Kiev 10
 Kiev 11
 Kiev 15
 Kiev 17
 Kiev 19
 Kiev 19M
+Kiev 2
 Kiev 20
+Kiev 2A
+Kiev 3
 Kiev 30
 Kiev 35A
+Kiev 3A
+Kiev 4
+Kiev 4A
+Kiev 4AM
+Kiev 4M
+Kiev 5
 Kiev 60
+Kiev 6C
 Kiev 80
 Kiev 88
 Kiev 88CM
@@ -438,6 +448,9 @@ Kodak Signet 40
 Kodak Signet 80
 Kodak Six-16
 Kodak Six-20
+Koni-Omega Rapid
+Koni-Omega Rapid M
+Koni-Omegaflex
 Konica Auto S
 Konica Auto S2
 Konica Auto S3
@@ -470,9 +483,6 @@ Konica Koniflex
 Konica Pop
 Konica TC
 Konica TC-X
-Koni-Omega Rapid
-Koni-Omega Rapid M
-Koni-Omegaflex
 Kowa Kallo 35
 Kowa SE
 Kowa SER
@@ -484,6 +494,9 @@ Kowa Super 66
 Kowa SW
 Leica CL
 Leica I
+Leica Ic
+Leica If
+Leica Ig
 Leica II
 Leica III
 Leica IIIa
@@ -501,6 +514,7 @@ Leica M4-P
 Leica M5
 Leica M6
 Leica M6 TTL
+Leica M6J
 Leica M7
 Leica Mini
 Leica Mini II
@@ -529,16 +543,13 @@ Lomo Smena Symbol
 Lomo Sokol
 Lomo Sokol 2
 Lubitel
-Lubitel 2
 Lubitel 166
-Lubitel 166B
 Lubitel 166 Universal
-Mamiya 6
-Mamiya 6MF
-Mamiya 7
-Mamiya 7II
+Lubitel 166B
+Lubitel 2
 Mamiya 135
 Mamiya 528
+Mamiya 6
 Mamiya 645
 Mamiya 645 1000S
 Mamiya 645 Pro
@@ -546,11 +557,15 @@ Mamiya 645 Pro TL
 Mamiya 645 Super
 Mamiya 645AF
 Mamiya 645AFD
+Mamiya 645E
+Mamiya 6MF
+Mamiya 7
+Mamiya 7II
 Mamiya C2
-Mamiya C3
 Mamiya C22
-Mamiya C33
 Mamiya C220
+Mamiya C3
+Mamiya C33
 Mamiya C330
 Mamiya C330f
 Mamiya C330s
@@ -575,26 +590,27 @@ Minolta CLE
 Minolta Dynax 5
 Minolta Dynax 7
 Minolta Dynax 9
+Minolta Hi-Matic 11
 Minolta Hi-Matic 7
 Minolta Hi-Matic 7s
 Minolta Hi-Matic 9
-Minolta Hi-Matic 11
+Minolta Hi-Matic AF
 Minolta Hi-Matic E
 Minolta Hi-Matic F
 Minolta Hi-Matic G
-Minolta Maxxum 5
-Minolta Maxxum 7
-Minolta Maxxum 9
 Minolta Maxxum 3xi
-Minolta Maxxum 5xi
-Minolta Maxxum 7xi
-Minolta Maxxum 9xi
+Minolta Maxxum 5
 Minolta Maxxum 5000
 Minolta Maxxum 5000i
+Minolta Maxxum 5xi
+Minolta Maxxum 7
 Minolta Maxxum 7000
 Minolta Maxxum 7000i
+Minolta Maxxum 7xi
 Minolta Maxxum 8000i
+Minolta Maxxum 9
 Minolta Maxxum 9000
+Minolta Maxxum 9xi
 Minolta SR-1
 Minolta SR-2
 Minolta SR-7
@@ -608,20 +624,22 @@ Minolta X-300
 Minolta X-370
 Minolta X-500
 Minolta X-570
-Minolta X-700
 Minolta X-7
+Minolta X-700
 Minolta X-9
 Minolta XD
+Minolta XD-11
 Minolta XD-5
 Minolta XD-7
-Minolta XD-11
 Minolta XE-1
 Minolta XE-5
 Minolta XE-7
 Minolta XG-1
+Minolta XG-2
 Minolta XG-7
 Minolta XG-9
 Minolta XG-A
+Minolta XG-E
 Minolta XG-M
 Miranda D
 Miranda DX-3
@@ -630,6 +648,8 @@ Miranda Fv
 Miranda G
 Miranda RE-II
 Miranda S
+Miranda Sensomat
+Miranda Sensoret
 Miranda Sensorex
 Miranda Sensorex EE
 Miranda Sensorex II
@@ -639,41 +659,48 @@ Moskva 1
 Moskva 2
 Moskva 4
 Moskva 5
+Nikon 28Ti
+Nikon 35 Ti
 Nikon EL
 Nikon EL2
 Nikon EM
 Nikon F
+Nikon F100
 Nikon F2
 Nikon F2 Photomic
+Nikon F2A
+Nikon F2AS
 Nikon F3
+Nikon F301
 Nikon F3HP
 Nikon F4
+Nikon F401
 Nikon F4s
 Nikon F5
-Nikon F6
 Nikon F50
+Nikon F501
 Nikon F55
+Nikon F6
 Nikon F60
+Nikon F601
 Nikon F65
 Nikon F70
 Nikon F75
 Nikon F80
-Nikon F90
-Nikon F100
-Nikon F301
-Nikon F401
-Nikon F501
-Nikon F601
 Nikon F801
+Nikon F90
 Nikon FA
 Nikon FE
+Nikon FE10
 Nikon FE2
 Nikon FG
 Nikon FG-20
 Nikon FM
+Nikon FM10
 Nikon FM2
 Nikon FM2n
 Nikon FM3A
+Nikon L35AF
 Nikon N2000
 Nikon N2020
 Nikon N4004
@@ -689,10 +716,12 @@ Nikon Nikkormat FT3
 Nikon S
 Nikon S2
 Nikon S3
+Nikon S4
 Nikon SP
 Norita 66
 Olympus 35 DC
 Olympus 35 EC
+Olympus 35 ECR
 Olympus 35 ED
 Olympus 35 LC
 Olympus 35 LE
@@ -703,23 +732,26 @@ Olympus 35 UC
 Olympus IS-1000
 Olympus IS-3000
 Olympus OM-1
+Olympus OM-10
+Olympus OM-101
 Olympus OM-1N
 Olympus OM-2
+Olympus OM-20
 Olympus OM-2N
+Olympus OM-2SP
 Olympus OM-3
+Olympus OM-30
 Olympus OM-3Ti
 Olympus OM-4
+Olympus OM-40
 Olympus OM-4T
 Olympus OM-4Ti
-Olympus OM-10
-Olympus OM-20
-Olympus OM-30
-Olympus OM-40
+Olympus OM-707
 Olympus OM-77AF
 Olympus OM-88
-Olympus OM-101
-Olympus OM-707
 Olympus OM2000
+Olympus Pen D
+Olympus Pen EES-2
 Olympus Pen F
 Olympus Pen FT
 Olympus Pen FV
@@ -734,20 +766,23 @@ Pentacon FM
 Pentacon Six
 Pentacon Six TL
 Pentacon Super
-Pentax 6x7
-Pentax 67
-Pentax 67II
+Pentax *ist
+Pentax 110 Auto
 Pentax 645
 Pentax 645N
 Pentax 645NII
+Pentax 67
+Pentax 67II
+Pentax 6x7
 Pentax A3
 Pentax A3000
+Pentax Auto 110 Super
 Pentax Electro Spotmatic
 Pentax ES
 Pentax ES II
 Pentax K
-Pentax K2
 Pentax K1000
+Pentax K2
 Pentax KM
 Pentax KX
 Pentax LX
@@ -758,50 +793,50 @@ Pentax MG
 Pentax MV
 Pentax MV1
 Pentax MX
+Pentax MZ-10
 Pentax MZ-3
+Pentax MZ-30
 Pentax MZ-5
+Pentax MZ-50
 Pentax MZ-5n
 Pentax MZ-6
-Pentax MZ-7
-Pentax MZ-10
-Pentax MZ-30
-Pentax MZ-50
 Pentax MZ-60
+Pentax MZ-7
 Pentax MZ-M
 Pentax MZ-S
 Pentax P3
-Pentax P3n
-Pentax P5
 Pentax P30
 Pentax P30n
 Pentax P30t
+Pentax P3n
+Pentax P5
 Pentax P50
+Pentax PC35AF
 Pentax Program A
 Pentax Program Plus
 Pentax S
 Pentax S2
 Pentax S3
 Pentax SF1
-Pentax SF7
 Pentax SF10
+Pentax SF7
 Pentax SFX
 Pentax SFXn
 Pentax SP
-Pentax SP500
 Pentax SP1000
+Pentax SP500
 Pentax Spotmatic
 Pentax Spotmatic F
 Pentax Spotmatic II
 Pentax Super A
 Pentax Super Program
 Pentax Z-1
-Pentax Z-1p
-Pentax Z-5
 Pentax Z-10
+Pentax Z-1p
 Pentax Z-20
+Pentax Z-5
 Pentax Z-50
 Pentax Z-70
-Pentax *ist
 Periflex
 Periflex 2
 Periflex 3
@@ -845,6 +880,8 @@ Praktica Super TL2
 Praktica Super TL3
 Praktica V
 Praktica VLC
+Praktiflex
+Praktisix
 Rectaflex
 Ricoh 500
 Ricoh 500G
@@ -855,30 +892,32 @@ Ricoh Diacord
 Ricoh FF-1
 Ricoh FF-9
 Ricoh GR1
+Ricoh GR10
 Ricoh GR1s
 Ricoh GR1v
-Ricoh GR10
 Ricoh GR21
-Ricoh KR-5
-Ricoh KR-5 Super
 Ricoh KR-10
 Ricoh KR-10 Super
 Ricoh KR-10x
+Ricoh KR-5
+Ricoh KR-5 Super
 Ricoh R1
 Ricoh R1s
 Ricoh Singlex
 Ricoh XR-1
+Ricoh XR-10
 Ricoh XR-2
 Ricoh XR-2s
-Ricoh XR-7
-Ricoh XR-10
 Ricoh XR-500
+Ricoh XR-7
 Ricoh XR-P
 Ricoh XR-S
 Ricoh XR-X
 Ricohflex
 Ricohmatic
+Ricohmatic 225
 Rollei 35
+Rollei 35 Classic
 Rollei 35 LED
 Rollei 35 RF
 Rollei 35 S
@@ -894,6 +933,7 @@ Rolleicord III
 Rolleicord IV
 Rolleicord V
 Rolleicord Vb
+Rolleiflex 2.8D
 Rolleiflex 2.8F
 Rolleiflex 2.8FX
 Rolleiflex 2.8GX
@@ -930,9 +970,9 @@ Seagull 4A-107
 Seagull 4B
 Seagull DF-1
 Sears 35
+Sears KS Super
 Sears KS-2
 Sears KS-500
-Sears KS Super
 Sears KSX
 Semflex
 Start
@@ -950,12 +990,12 @@ Topcon Unirex
 Topcon Unirex EE
 Topcon Wink Mirror
 Toyocaflex
+Vivitar 220/SL
+Vivitar 250/SL
 Vivitar 35
 Vivitar 35EE
 Vivitar 35EM
 Vivitar 35ES
-Vivitar 220/SL
-Vivitar 250/SL
 Vivitar 400/SL
 Vivitar 450/SLD
 Vivitar 650/SLX
@@ -964,37 +1004,43 @@ Vivitar V3000
 Vivitar V4000
 Vivitar XC-2
 Vivitar XC-3
-Voigtländer Bessamatic
-Voigtländer Bessa
-Voigtländer Bessa I
-Voigtländer Bessa II
-Voigtländer Bessa L
-Voigtländer Bessa R
-Voigtländer Bessa R2
-Voigtländer Bessa R2A
-Voigtländer Bessa R2M
-Voigtländer Bessa R3A
-Voigtländer Bessa R3M
-Voigtländer Bessa R4A
-Voigtländer Bessa R4M
-Voigtländer Bessa T
-Voigtländer Perkeo
-Voigtländer Prominent
-Voigtländer Prominent II
-Voigtländer Vitessa
-Voigtländer Vitessa L
-Voigtländer Vito B
-Voigtländer Vito C
-Voigtländer Vito CL
-Voigtländer Vito CLR
-Voigtländer Vitomatic
-Voigtländer VSL-1
-Voigtländer VSL-1 TM
-Voigtländer VSL-2
-Voigtländer VSL-3
+VoigtlГ¤nder Bessa
+VoigtlГ¤nder Bessa I
+VoigtlГ¤nder Bessa II
+VoigtlГ¤nder Bessa L
+VoigtlГ¤nder Bessa R
+VoigtlГ¤nder Bessa R2
+VoigtlГ¤nder Bessa R2A
+VoigtlГ¤nder Bessa R2M
+VoigtlГ¤nder Bessa R3A
+VoigtlГ¤nder Bessa R3M
+VoigtlГ¤nder Bessa R4A
+VoigtlГ¤nder Bessa R4M
+VoigtlГ¤nder Bessa T
+VoigtlГ¤nder Bessamatic
+VoigtlГ¤nder Brillant
+VoigtlГ¤nder Perkeo
+VoigtlГ¤nder Prominent
+VoigtlГ¤nder Prominent II
+VoigtlГ¤nder Superb
+VoigtlГ¤nder Vitessa
+VoigtlГ¤nder Vitessa L
+VoigtlГ¤nder Vito B
+VoigtlГ¤nder Vito C
+VoigtlГ¤nder Vito CL
+VoigtlГ¤nder Vito CLR
+VoigtlГ¤nder Vito II
+VoigtlГ¤nder Vito III
+VoigtlГ¤nder Vitomatic
+VoigtlГ¤nder Vitoret
+VoigtlГ¤nder VSL-1
+VoigtlГ¤nder VSL-1 TM
+VoigtlГ¤nder VSL-2
+VoigtlГ¤nder VSL-3
 Welta Penti
 Welta Reflekta
 Welta Weltax
+Welta Weltini
 Welta Weltur
 Werra
 Werra 1
@@ -1004,11 +1050,13 @@ Werra 4
 Werra 5
 Werra Mat
 Werra Matic
+Yashica 109 Multi Program
 Yashica 12
-Yashica 24
-Yashica 44
 Yashica 124
 Yashica 124G
+Yashica 230-AF
+Yashica 24
+Yashica 44
 Yashica 635
 Yashica A
 Yashica C
@@ -1016,6 +1064,7 @@ Yashica D
 Yashica Electro 35
 Yashica Electro 35 CC
 Yashica Electro 35 CCN
+Yashica Electro 35 G
 Yashica Electro 35 GL
 Yashica Electro 35 GS
 Yashica Electro 35 GSN
@@ -1025,12 +1074,13 @@ Yashica FR
 Yashica FR-I
 Yashica FR-II
 Yashica FX-1
+Yashica FX-103 Program
 Yashica FX-2
 Yashica FX-3
 Yashica FX-3 Super
+Yashica FX-3 Super 2000
 Yashica FX-7
 Yashica FX-70
-Yashica FX-103 Program
 Yashica FX-D
 Yashica J
 Yashica Lynx 14
@@ -1041,11 +1091,19 @@ Yashica Mat LM
 Yashica MG-1
 Yashica Minister
 Yashica Minister D
+Yashica T2
+Yashica T3
+Yashica T4
+Yashica T5
 Yashica TL Electro
 Yashica TL Electro X
 Zeiss Ikon Contaflex
+Zeiss Ikon Contaflex Beta
+Zeiss Ikon Contaflex I
+Zeiss Ikon Contaflex II
 Zeiss Ikon Contaflex Super
 Zeiss Ikon Contarex
+Zeiss Ikon Contarex Bullseye
 Zeiss Ikon Contessa
 Zeiss Ikon Contina
 Zeiss Ikon Ercona
@@ -1054,11 +1112,12 @@ Zeiss Ikon Icarex 35
 Zeiss Ikon Ikonta
 Zeiss Ikon Nettar
 Zeiss Ikon Super Ikonta
+Zeiss Ikon Tenax
 Zenit
-Zenit 3
-Zenit 3M
 Zenit 11
 Zenit 12
+Zenit 122
+Zenit 122K
 Zenit 12SD
 Zenit 12XP
 Zenit 15
@@ -1066,10 +1125,10 @@ Zenit 16
 Zenit 18
 Zenit 19
 Zenit 21
-Zenit 122
-Zenit 122K
 Zenit 212k
+Zenit 3
 Zenit 312m
+Zenit 3M
 Zenit 412
 Zenit 412DX
 Zenit AM
@@ -1086,16 +1145,16 @@ Zenit KM
 Zenit TTL
 Zorki
 Zorki 1
+Zorki 10
+Zorki 11
+Zorki 12
 Zorki 2
 Zorki 2C
 Zorki 3
+Zorki 35M
 Zorki 3C
 Zorki 3M
 Zorki 4
 Zorki 4K
 Zorki 5
 Zorki 6
-Zorki 10
-Zorki 11
-Zorki 12
-Zorki 35M
