@@ -23,6 +23,38 @@ const char *GetMenuItemTitle(MainMenuItems menuItem)
   return MainMenuItemsStr[(uint8_t)menuItem];
 }
 
+// Draws (or erases) the selection markers around a main-menu item.
+// color == WHITE draws "-> title <-"; color == BLACK erases only the markers.
+// Only the two 3-character markers are touched - the centered title text is
+// never re-rendered, so switching the selection no longer makes the item text
+// blink (the previous implementation erased and re-printed the whole string).
+static void drawMainMenuSelectionMarkers(
+    int8_t menuItemIndex,
+    const Rect menuItemsRects[MAIN_MENU_ITEMS_COUNT],
+    const int16_t menuItemsY[MAIN_MENU_ITEMS_COUNT],
+    uint16_t color)
+{
+  // u8g2_font_6x13_tf is monospace with a 6 px advance per character.
+  const uint8_t fontCharWidth = 6;
+
+  const Rect &r = menuItemsRects[menuItemIndex];
+  int16_t y = menuItemsY[menuItemIndex];
+  const char *title = GetMenuItemTitle((MainMenuItems)menuItemIndex);
+  int16_t titleAdvancePx = (int16_t)strlen(title) * fontCharWidth;
+
+  display->setTextColor(color);
+
+  // "-> " to the left of the centered title
+  display->setCursor(r.x - 3 * fontCharWidth, y);
+  display->print("-> ");
+
+  // " <-" to the right (the leading space keeps "<-" one cell away from the title) 
+  display->setCursor(r.x + titleAdvancePx, y);
+  display->print(" <-");
+
+  display->setTextColor(WHITE);
+}
+
 void drawMainMenu()
 {
   int16_t startEncoderVal = AlexEncoder::counter;
@@ -63,17 +95,10 @@ void drawMainMenu()
       {
         if (prevSelectedMenuItemIndex != -1)
         {
-          Rect rOld = menuItemsRects[prevSelectedMenuItemIndex];
-          display->fillRect(rOld.x, rOld.y /* - rOld.height */, rOld.width, rOld.height, BLACK);
-          menuItemsRects[prevSelectedMenuItemIndex] =
-              drawStringHCentered(GetMenuItemTitle((MainMenuItems)prevSelectedMenuItemIndex), menuItemsY[prevSelectedMenuItemIndex]);
+          drawMainMenuSelectionMarkers(prevSelectedMenuItemIndex, menuItemsRects, menuItemsY, BLACK);
         }
 
-        String newSelMenuItem = "-> " + String(GetMenuItemTitle((MainMenuItems)resultMenuItemIndex)) + " <-";
-        Rect rNew = menuItemsRects[resultMenuItemIndex];
-        display->fillRect(rNew.x, rNew.y /* - rNew.height */, rNew.width, rNew.height, BLACK);
-
-        menuItemsRects[resultMenuItemIndex] = drawStringHCentered(newSelMenuItem, menuItemsY[resultMenuItemIndex]);
+        drawMainMenuSelectionMarkers(resultMenuItemIndex, menuItemsRects, menuItemsY, WHITE);
         prevSelectedMenuItemIndex = resultMenuItemIndex;
       }
 
