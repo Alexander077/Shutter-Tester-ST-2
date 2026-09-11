@@ -5,6 +5,7 @@
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "screens/MessageScreen.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
+#include "screens/NameEditorScreen.h"
 #include "lib/serialAPI.h"
 #include <vector>
 
@@ -18,6 +19,7 @@ struct SeriesRecordSaveResult
 {
   bool isSuccess;
   int32_t newRecordNumber;
+  char newRecordName[RECORD_NAME_BUF_SIZE];
 };
 
 const char *SeriesSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
@@ -47,9 +49,9 @@ int16_t getFreeSeriesSaveSlotsCount()
   return seriesStorage.getFreeSlotsCount();
 }
 
-SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, const char *name, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-  SeriesRecordSaveResult saveRes = {false, -1};
+  SeriesRecordSaveResult saveRes = {false, -1, {0}};
 
   StoredMeasuredSeries newRes;
   memset(&newRes, 0, sizeof(StoredMeasuredSeries));
@@ -65,6 +67,12 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
 
   newRes.isDeleted = false;
   newRes.measurementCount = series.storedCount;
+
+  if (name != NULL)
+  {
+    strncpy(newRes.name, name, RECORD_NAME_MAX_LEN);
+    newRes.name[RECORD_NAME_MAX_LEN] = '\0';
+  }
 
   for (uint8_t i = 0; i < series.storedCount && i < MEASUREMENT_SERIES_MAX_SIZE; i++)
   {
@@ -107,6 +115,8 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
   {
     saveRes.isSuccess = true;
     saveRes.newRecordNumber = savedId;
+    strncpy(saveRes.newRecordName, newRes.name, RECORD_NAME_MAX_LEN);
+    saveRes.newRecordName[RECORD_NAME_MAX_LEN] = '\0';
     ESP_LOGI("", "Series saved. Rec. num.: %" PRIi32, savedId);
   }
   else
@@ -116,6 +126,80 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
 
   return saveRes;
 }
+
+// Duplicate check for the name editor: series store.
+static bool isSeriesRecordNameTaken(const char *name)
+{
+  return seriesStorage.isNameTaken(name);
+}
+
+// Duplicate check with one record excluded (rename flow).
+static int32_t s_seriesRenameExcludeNumber = -1;
+
+static bool isSeriesRecordNameTakenExcept(const char *name)
+{
+  return seriesStorage.isNameTaken(name, s_seriesRenameExcludeNumber);
+}
+
+static int32_t resolveSeriesOverwriteNumber(bool overwriteOldest, bool overwriteNewest)
+{
+  std::vector<int32_t> ids = seriesStorage.getAllValidRecordNumbers();
+
+  if (ids.empty())
+  {
+    return -1;
+  }
+
+  int32_t minId = ids[0];
+  int32_t maxId = ids[0];
+
+  for (size_t i = 0; i < ids.size(); i++)
+  {
+    if (ids[i] < minId)
+    {
+      minId = ids[i];
+    }
+    if (ids[i] > maxId)
+    {
+      maxId = ids[i];
+    }
+  }
+
+  if (overwriteOldest)
+  {
+    return minId;
+  }
+  return maxId;
+}
+
+static int32_t predictSeriesPreviewNumber()
+{
+  int32_t previewNumber = 1;
+  std::vector<int32_t> ids = seriesStorage.getAllValidRecordNumbers();
+  for (size_t i = 0; i < ids.size(); i++)
+  {
+    if (ids[i] >= previewNumber)
+    {
+      previewNumber = ids[i] + 1;
+    }
+  }
+  return previewNumber;
+}
+
+enum class SeriesSaveNameChoice
+{
+  USE_NUMBER,
+  CUSTOM,
+  BACK
+};
+
+static SeriesSaveNameChoice drawSeriesSaveNameChoiceScreen(int32_t previewNumber);
+
+static bool resolveSeriesSaveName(int32_t previewNumber, char *outName);
+
+static SeriesRecordSaveResult saveSeriesWithNumberName(const MeasurementSeries &series, int32_t targetNumber);
+
+static bool saveSeriesOverwriteWithName(const MeasurementSeries &series, int32_t targetNumber, int16_t menuIndex, bool &runLoop, int16_t &startEncoderVal, SeriesRecordSaveResult &saveRes);
 
 const char *GetSaveSeriesMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
 {
@@ -210,7 +294,8 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
 
       if (button.isClicked())
       {
-        SeriesRecordSaveResult saveRes = {false, -1};
+        SeriesRecordSaveResult saveRes = {false, -1, {0}};
+        bool saveRequested = false;
 
         if (drawMoreThanZeroRecordsMenuItems)
         {
@@ -225,8 +310,22 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           {
             if (freeSlotsCount > 0)
             {
+              char chosenName[RECORD_NAME_BUF_SIZE];
+              memset(chosenName, 0, sizeof(chosenName));
+              if (!resolveSeriesSaveName(predictSeriesPreviewNumber(), chosenName))
+              {
+                if (isApiRequestReceived)
+                {
+                  return SeriesSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - 1;
+                continue;
+              }
+
               ESP_LOGI("", "Saving series...");
-              saveRes = saveSeriesResult(measurementSeries);
+              saveRes = saveSeriesResult(measurementSeries, chosenName);
+              saveRequested = true;
             }
             else
             {
@@ -237,14 +336,38 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           }
           case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
           {
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, false, true);
+            int32_t targetNumber = resolveSeriesOverwriteNumber(false, true);
+            if (targetNumber == -1)
+            {
+              continue;
+            }
+            if (!saveSeriesOverwriteWithName(measurementSeries, targetNumber, (int16_t)resultIndex, runLoop, startEncoderVal, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              continue;
+            }
+            saveRequested = true;
             break;
           }
           case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
           {
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, true);
+            int32_t targetNumber = resolveSeriesOverwriteNumber(true, false);
+            if (targetNumber == -1)
+            {
+              continue;
+            }
+            if (!saveSeriesOverwriteWithName(measurementSeries, targetNumber, (int16_t)resultIndex, runLoop, startEncoderVal, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              continue;
+            }
+            saveRequested = true;
             break;
           }
           case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
@@ -258,8 +381,20 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
               continue;
             }
 
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, false, false, selectedSeriesRecordNumber);
+            if (isApiRequestReceived)
+            {
+              return SeriesSaveScreenResult::CANCEL;
+            }
+
+            if (!saveSeriesOverwriteWithName(measurementSeries, selectedSeriesRecordNumber, 4, runLoop, startEncoderVal, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              continue;
+            }
+            saveRequested = true;
             break;
           }
           case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
@@ -285,8 +420,22 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           {
             if (freeSlotsCount > 0)
             {
+              char chosenName[RECORD_NAME_BUF_SIZE];
+              memset(chosenName, 0, sizeof(chosenName));
+              if (!resolveSeriesSaveName(1, chosenName))
+              {
+                if (isApiRequestReceived)
+                {
+                  return SeriesSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - 1;
+                continue;
+              }
+
               ESP_LOGI("", "Saving series...");
-              saveRes = saveSeriesResult(measurementSeries);
+              saveRes = saveSeriesResult(measurementSeries, chosenName);
+              saveRequested = true;
             }
             else
             {
@@ -306,19 +455,22 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           }
         }
 
-        char resMessage[50];
+        if (!saveRequested)
+        {
+          continue;
+        }
+
+        char resMessage[RECORD_NAME_BUF_SIZE + 24];
 
         if (saveRes.isSuccess)
         {
-          char buf[30];
-          formatRecordName(saveRes.newRecordNumber, buf);
 #pragma GCC diagnostic ignored "-Wformat"
-          sprintf(resMessage, "Series saved as '%s'", buf);
+          snprintf(resMessage, sizeof(resMessage), "Series saved as '%s'", saveRes.newRecordName);
 #pragma GCC diagnostic pop
         }
         else
         {
-          sprintf(resMessage, "Failed to save series");
+          snprintf(resMessage, sizeof(resMessage), "Failed to save series");
         }
         const char *option[] = {"OK"};
         drawMessageScreen(resMessage, 1, option);
@@ -329,5 +481,95 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
+
+static SeriesSaveNameChoice drawSeriesSaveNameChoiceScreen(int32_t previewNumber)
+{
+  char numberedOption[RECORD_NAME_BUF_SIZE + 12];
+  char numBuf[30];
+  formatRecordName(previewNumber, numBuf);
+#pragma GCC diagnostic ignored "-Wformat"
+  snprintf(numberedOption, sizeof(numberedOption), "Save as '%s'", numBuf);
+#pragma GCC diagnostic pop
+  const char *customOption = "Save as...";
+
+  const char *options[] = {numberedOption, customOption};
+  int16_t choice = drawMessageScreen("Choose name", 2, options);
+
+  if (isApiRequestReceived)
+  {
+    return SeriesSaveNameChoice::BACK;
+  }
+
+  if (choice == 0)
+  {
+    return SeriesSaveNameChoice::USE_NUMBER;
+  }
+  return SeriesSaveNameChoice::CUSTOM;
+}
+
+static bool resolveSeriesSaveName(int32_t previewNumber, char *outName)
+{
+  SeriesSaveNameChoice choice = drawSeriesSaveNameChoiceScreen(previewNumber);
+
+  if (isApiRequestReceived)
+  {
+    return false;
+  }
+
+  if (choice == SeriesSaveNameChoice::USE_NUMBER)
+  {
+    formatRecordName(previewNumber, outName);
+    return true;
+  }
+
+  NameEditorResult editorRes = drawNameEditorScreen("Enter name", "", isSeriesRecordNameTaken);
+
+  if (isApiRequestReceived || !editorRes.confirmed)
+  {
+    return false;
+  }
+
+  strncpy(outName, editorRes.name, RECORD_NAME_MAX_LEN);
+  outName[RECORD_NAME_MAX_LEN] = '\0';
+  return true;
+}
+
+static SeriesRecordSaveResult saveSeriesWithNumberName(const MeasurementSeries &series, int32_t targetNumber)
+{
+  char numberedName[RECORD_NAME_BUF_SIZE];
+  memset(numberedName, 0, sizeof(numberedName));
+  formatRecordName(targetNumber, numberedName);
+  return saveSeriesResult(series, numberedName, false, false, targetNumber);
+}
+
+static bool saveSeriesOverwriteWithName(const MeasurementSeries &series, int32_t targetNumber, int16_t menuIndex, bool &runLoop, int16_t &startEncoderVal, SeriesRecordSaveResult &saveRes)
+{
+  char chosenName[RECORD_NAME_BUF_SIZE];
+  memset(chosenName, 0, sizeof(chosenName));
+  if (!resolveSeriesSaveName(targetNumber, chosenName))
+  {
+    if (!isApiRequestReceived)
+    {
+      runLoop = false;
+      startEncoderVal = AlexEncoder::counter - menuIndex;
+    }
+    return false;
+  }
+
+  ESP_LOGI("", "Saving series...");
+  char numberedCheck[RECORD_NAME_BUF_SIZE];
+  memset(numberedCheck, 0, sizeof(numberedCheck));
+  formatRecordName(targetNumber, numberedCheck);
+  if (strncmp(chosenName, numberedCheck, RECORD_NAME_BUF_SIZE) == 0)
+  {
+    saveRes = saveSeriesWithNumberName(series, targetNumber);
+  }
+  else
+  {
+    saveRes = saveSeriesResult(series, chosenName, false, false, targetNumber);
+  }
+  return true;
+}
+
 
 

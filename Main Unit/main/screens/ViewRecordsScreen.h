@@ -6,6 +6,7 @@
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "screens/MeasuredResult.h"
 #include "screens/MessageScreen.h"
+#include "screens/NameEditorScreen.h"
 #include "screens/SeriesReport.h"
 #include "lib/serialAPI.h"
 
@@ -17,6 +18,80 @@ StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
 bool deleteMeasurementStoredResultByNumber(int32_t recordNumber)
 {
   return storage.deleteRecordByNumber(recordNumber);
+}
+
+// Rename one single-measurement record. Editor is pre-filled with the current
+// name; duplicates (except the record itself) are blocked.
+static void renameSingleRecord(StoredMeasuredResult &rec)
+{
+  s_singleRenameExcludeNumber = rec.recordNumber;
+  NameEditorResult editorRes = drawNameEditorScreen("Rename record", rec.name, isSingleRecordNameTakenExcept);
+  s_singleRenameExcludeNumber = -1;
+
+  if (isApiRequestReceived || !editorRes.confirmed)
+  {
+    return;
+  }
+
+  strncpy(rec.name, editorRes.name, RECORD_NAME_MAX_LEN);
+  rec.name[RECORD_NAME_MAX_LEN] = '\0';
+
+  int32_t savedId = storage.saveOrUpdateRecord(rec);
+
+  const char *renameResOptions[] = {"OK"};
+  if (savedId == -1)
+  {
+    drawMessageScreen("Failed to rename", 1, renameResOptions);
+  }
+  else
+  {
+    // Re-read: storage may have normalized the slot.
+    rec = storage.getRecordByNumber(rec.recordNumber);
+    char okMsg[RECORD_NAME_BUF_SIZE + 16];
+    snprintf(okMsg, sizeof(okMsg), "Renamed to '%s'", rec.name);
+    drawMessageScreen(okMsg, 1, renameResOptions);
+  }
+
+  if (isApiRequestReceived)
+  {
+    return;
+  }
+}
+
+// Same for series records.
+static void renameSeriesRecord(StoredMeasuredSeries &series)
+{
+  s_seriesRenameExcludeNumber = series.recordNumber;
+  NameEditorResult editorRes = drawNameEditorScreen("Rename series", series.name, isSeriesRecordNameTakenExcept);
+  s_seriesRenameExcludeNumber = -1;
+
+  if (isApiRequestReceived || !editorRes.confirmed)
+  {
+    return;
+  }
+
+  strncpy(series.name, editorRes.name, RECORD_NAME_MAX_LEN);
+  series.name[RECORD_NAME_MAX_LEN] = '\0';
+
+  int32_t savedId = seriesStorage.saveOrUpdateRecord(series);
+
+  const char *renameResOptions[] = {"OK"};
+  if (savedId == -1)
+  {
+    drawMessageScreen("Failed to rename", 1, renameResOptions);
+  }
+  else
+  {
+    series = seriesStorage.getRecordByNumber(series.recordNumber);
+    char okMsg[RECORD_NAME_BUF_SIZE + 16];
+    snprintf(okMsg, sizeof(okMsg), "Renamed to '%s'", series.name);
+    drawMessageScreen(okMsg, 1, renameResOptions);
+  }
+
+  if (isApiRequestReceived)
+  {
+    return;
+  }
 }
 
 void drawViewSingleRecordsScreen()
@@ -67,8 +142,8 @@ void drawViewSingleRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete record"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Rename record", "Delete record"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -83,7 +158,13 @@ void drawViewSingleRecordsScreen()
       return;
     }
 
-    if (selectedOptionIndex == 2) // Delete record
+    if (selectedOptionIndex == 2) // Rename record
+    {
+      renameSingleRecord(selectedResult);
+      continue; // back to list (record object refreshed inside)
+    }
+
+    if (selectedOptionIndex == 3) // Delete record
     {
       const char *options[] = {"Yes", "No"};
       int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);
@@ -159,8 +240,8 @@ void drawViewSeriesRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete series"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Rename series", "Delete series"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -175,7 +256,13 @@ void drawViewSeriesRecordsScreen()
       return;
     }
 
-    if (selectedOptionIndex == 2) // Delete series
+    if (selectedOptionIndex == 2) // Rename series
+    {
+      renameSeriesRecord(selectedSeries);
+      continue;
+    }
+
+    if (selectedOptionIndex == 3) // Delete series
     {
       const char *options[] = {"Yes", "No"};
       int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);

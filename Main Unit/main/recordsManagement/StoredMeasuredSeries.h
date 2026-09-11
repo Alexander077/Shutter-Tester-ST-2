@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string.h>
+#include "lib/Common.h"
 #include "lib/MeasuredResult.h"
 
 // A single saved measurement series. Stored one-per-slot in seriesRecords.bin (see
@@ -13,4 +14,7 @@ struct StoredMeasuredSeries
   bool isDeleted;
   uint8_t measurementCount;
   MeasuredResult results[MEASUREMENT_SERIES_MAX_SIZE];
+
+  // User-defined record name. Same semantics as StoredMeasuredResult::name.
+  char name[RECORD_NAME_BUF_SIZE];
 };

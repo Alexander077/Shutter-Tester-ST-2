@@ -9,6 +9,7 @@
 #include "lib/ADC.h"
 #include "lib/SerialNumber.h"
 #include "recordsManagement/RecordsManagementCommon.h"
+#include "recordsManagement/RecordsMigration.h"
 #include "lib/serialAPI.h"
 
 #include "screens/MainMenu.h"
@@ -73,6 +74,7 @@ void setup()
 
   initADC();
 	initStorage();
+	migrateLegacyRecordsIfNeeded();
 
 	storage.begin();
 	seriesStorage.begin();

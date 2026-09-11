@@ -26,6 +26,11 @@ struct StoredMeasuredResult
   SensorType usedSensorType;
   CurtainMovement selectedCurtainMovement;
 
+  // User-defined record name (UTF-8, ASCII subset). Always NUL-terminated.
+  // Empty string means "no name" (legacy records are migrated to "NNNN",
+  // API-created records may stay empty until renamed).
+  char name[RECORD_NAME_BUF_SIZE];
+
   bool operator==(StoredMeasuredResult const &rhs) const
   {
     return memcmp(this, &rhs, sizeof(StoredMeasuredResult)) == 0;
