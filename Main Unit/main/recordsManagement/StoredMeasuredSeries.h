@@ -13,4 +13,8 @@ struct StoredMeasuredSeries
   bool isDeleted;
   uint8_t measurementCount;
   MeasuredResult results[MEASUREMENT_SERIES_MAX_SIZE];
+
+  // Пользовательское имя серии (до RECORD_NAME_MAX_LEN символов,
+  // пустая строка = имя не задано, показывается номер записи)
+  char name[RECORD_NAME_BUF_SIZE];
 };

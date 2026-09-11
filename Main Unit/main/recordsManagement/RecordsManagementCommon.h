@@ -3,6 +3,9 @@
 #include <Arduino.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stddef.h>
+#include <vector>
 #include <sys/stat.h>
 #include <inttypes.h>
 #include "esp_log.h"
@@ -11,6 +14,7 @@
 #include "lib/MeasuredResult.h"
 #include "recordsManagement/StoredMeasuredResult.h"
 #include "recordsManagement/StoredMeasuredSeries.h"
+#include "recordsManagement/LegacyRecordFormats.h"
 #include "recordsManagement/RecordsStorageManager.h"
 
 #define TOTAL_RECORDS_COUNT 100
@@ -34,6 +38,112 @@ int16_t getMeasurementSaveRecordSize()
 int16_t getSeriesSaveRecordSize()
 {
   return sizeof(StoredMeasuredSeries);
+}
+
+// One-time migration of a records file from a legacy (pre-'name') record layout
+// to the current one. Valid records get their 'name' field pre-filled with the
+// formatted record number (the way records were displayed before the name field
+// existed), deleted/empty slots keep an empty name. The whole file is rewritten
+// with the new fixed record size.
+template <typename OldRecordT, typename NewRecordT>
+void migrateRecordsFileFromLegacy(const char *filePath, int32_t totalCount)
+{
+  int32_t newBlockSize = sizeof(NewRecordT);
+  int32_t oldBlockSize = sizeof(OldRecordT);
+
+  FILE *recordsFile = fopen(filePath, "r");
+
+  if (recordsFile == NULL)
+  {
+    return; // migrировать нечего, initRecordsFile() создаст файл
+  }
+
+  ESP_LOGW("", "Migrating '%s' from record size %" PRIi32 " to %" PRIi32 "...", filePath, oldBlockSize, newBlockSize);
+
+  std::vector<NewRecordT> records;
+  records.reserve(totalCount);
+
+  OldRecordT old;
+  while (fread(&old, oldBlockSize, 1, recordsFile) == 1)
+  {
+    NewRecordT rec;
+    memset(&rec, 0, sizeof(rec));
+
+    // Общая область полей (все поля до 'name' совпадают в обоих форматах)
+    memcpy(&rec, &old, offsetof(NewRecordT, name));
+
+    // Легаси-записи не имели имени - заполняем его форматированным номером
+    if (old.recordNumber > 0 && !old.isDeleted)
+    {
+      formatRecordName(old.recordNumber, rec.name);
+    }
+
+    records.push_back(rec);
+  }
+
+  fclose(recordsFile);
+
+  recordsFile = fopen(filePath, "w");
+
+  if (recordsFile == NULL)
+  {
+    halt("Halted. Failed to open records file for migration");
+  }
+
+  for (size_t i = 0; i < records.size(); i++)
+  {
+    if (fwrite(&records[i], newBlockSize, 1, recordsFile) != 1)
+    {
+      halt("Halted. Failed to write migrated record");
+    }
+  }
+
+  // Дописываем пустые слоты до фиксированного общего количества записей
+  NewRecordT empty;
+  memset(&empty, 0, sizeof(empty));
+
+  for (int32_t i = (int32_t)records.size(); i < totalCount; i++)
+  {
+    if (fwrite(&empty, newBlockSize, 1, recordsFile) != 1)
+    {
+      halt("Halted. Failed to write initial data to records file");
+    }
+  }
+
+  fclose(recordsFile);
+  ESP_LOGI("", "'%s' migrated (%u records)", filePath, (unsigned)records.size());
+}
+
+// Проверяет, что файл записей существует и использует текущий формат записи.
+// Легаси-файлы (размер под старую структуру) мигрируются, файлы с неожидаемым
+// размером пересоздаются с нуля.
+template <typename OldRecordT, typename NewRecordT>
+void ensureRecordsFileUpToDate(const char *filePath, int32_t totalCount)
+{
+  struct stat st;
+
+  if (stat(filePath, &st) != 0)
+  {
+    return; // файла нет - initRecordsFile() создаст его
+  }
+
+  int32_t expectedSize = totalCount * (int32_t)sizeof(NewRecordT);
+
+  if (st.st_size == expectedSize)
+  {
+    return; // файл уже в актуальном формате
+  }
+
+  int32_t legacySize = totalCount * (int32_t)sizeof(OldRecordT);
+
+  if (st.st_size == legacySize)
+  {
+    migrateRecordsFileFromLegacy<OldRecordT, NewRecordT>(filePath, totalCount);
+    return;
+  }
+
+  ESP_LOGE("", "'%s' has unexpected size %" PRIi32 " (expected %" PRIi32 " or legacy %" PRIi32 "). Recreating.", filePath, (int32_t)st.st_size, expectedSize, legacySize);
+  remove(filePath);
 }
 
 // Creates and zero-fills a fixed-size binary records file if it does not exist,
@@ -128,6 +238,10 @@ void initStorage()
   {
     ESP_LOGI("", "Storage partition size: total: %d, used: %d", total, used);
   }
+
+  // Миграция легаси-файлов записей (если формат записи изменился)
+  ensureRecordsFileUpToDate<OldStoredMeasuredResult, StoredMeasuredResult>(RECORDS_FILE_PATH, TOTAL_RECORDS_COUNT);
+  ensureRecordsFileUpToDate<OldStoredMeasuredSeries, StoredMeasuredSeries>(SERIES_FILE_PATH, TOTAL_SERIES_COUNT);
 
   initRecordsFile(RECORDS_FILE_PATH, TOTAL_RECORDS_COUNT, getMeasurementSaveRecordSize());
   initRecordsFile(SERIES_FILE_PATH, TOTAL_SERIES_COUNT, getSeriesSaveRecordSize());

@@ -26,6 +26,10 @@
 #define SAVE_MEASUREMENT_MENU_ITEMS_COUNT 6
 #define SAVE_MEASUREMENT_MENU_ZERO_RECORDS_ITEMS_COUNT 3
 
+// Максимальная длина пользовательского имени записи (измерения/серии)
+#define RECORD_NAME_MAX_LEN 40
+#define RECORD_NAME_BUF_SIZE (RECORD_NAME_MAX_LEN + 1)
+
 #define TOO_SHORT_SENSOR_TIME 0.062 //in milliseconds
 #define SENSOR_LIGHT_IS_TOO_DIM -1
 #define SENSOR_LIGHT_IS_TOO_BRIGHT -2

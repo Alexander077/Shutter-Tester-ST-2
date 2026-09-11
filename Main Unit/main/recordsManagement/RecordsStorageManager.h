@@ -29,6 +29,9 @@ public:
   // Получить список всех ID существующих записей
   std::vector<int32_t> getAllValidRecordNumbers();
 
+  // Получить все существующие записи целиком (с именами)
+  std::vector<RecordT> getAllValidRecords();
+
   // Получить конкретную запись по её номеру
   RecordT getRecordByNumber(int32_t recordNumber);
 
@@ -92,6 +95,40 @@ std::vector<int32_t> RecordsStorageManagerT<RecordT>::getAllValidRecordNumbers()
     else
     {
       ESP_LOGE("STORAGE", "Failed to open records file for reading list");
+    }
+
+    xSemaphoreGive(fileMutex);
+  }
+  return records;
+}
+
+template <typename RecordT>
+std::vector<RecordT> RecordsStorageManagerT<RecordT>::getAllValidRecords()
+{
+  std::vector<RecordT> records;
+
+  if (fileMutex != NULL && xSemaphoreTake(fileMutex, portMAX_DELAY))
+  {
+    FILE *recordsFile = fopen(filePath, "r");
+
+    if (recordsFile != NULL)
+    {
+      RecordT tempMeasRes;
+      int16_t blockSize = sizeof(RecordT);
+
+      while (fread(&tempMeasRes, blockSize, 1, recordsFile) == 1)
+      {
+        if (tempMeasRes.recordNumber > 0 && !tempMeasRes.isDeleted)
+        {
+          records.push_back(tempMeasRes);
+        }
+      }
+
+      fclose(recordsFile);
+    }
+    else
+    {
+      ESP_LOGE("STORAGE", "Failed to open records file for reading all records");
     }
 
     xSemaphoreGive(fileMutex);

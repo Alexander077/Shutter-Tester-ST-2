@@ -5,6 +5,7 @@
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "screens/MessageScreen.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
+#include "screens/NameSelectionScreen.h"
 #include "lib/serialAPI.h"
 
 enum class MeasurementSaveScreenResult
@@ -47,7 +48,7 @@ int16_t getFreeMeasurementSaveSlotsCount()
   return storage.getFreeSlotsCount();
 }
 
-MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, const char *name, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
   MeasurementRecordSaveResult saveRes = {false, -1};
 
@@ -82,6 +83,9 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   newRes.slitWidthAverage = res.slitWidthAverage;
   newRes.usedSensorType = res.usedSensorType;
   newRes.selectedCurtainMovement = res.selectedCurtainMovement;
+
+  // Имя записи (по умолчанию формируется из номера записи)
+  snprintf(newRes.name, RECORD_NAME_BUF_SIZE, "%s", (name != NULL) ? name : "");
 
   // --- Обработка команд перезаписи самых новых или самых старых результатов ---
   if (overwriteOldest || overwriteNewest)
@@ -236,6 +240,7 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
       if (button.isClicked())
       {
         MeasurementRecordSaveResult saveRes;
+        char savedName[RECORD_NAME_BUF_SIZE] = {0};
 
         if (drawMoreThanZeroRecordsMenuItems)
         {
@@ -250,8 +255,15 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           {
             if (freeSlotsCount > 0)
             {
+              int32_t targetRecordNumber = getSaveActionTargetRecordNumber(storage, false, false, -1);
+
+              if (drawNameSelectionScreen("Record name", targetRecordNumber, savedName) < 0)
+              {
+                return MeasurementSaveScreenResult::CANCEL; // выход для API
+              }
+
               ESP_LOGI("", "Saving record...");
-              saveRes = saveMesurementResult(measurementRes);
+              saveRes = saveMesurementResult(measurementRes, savedName);
             }
             else
             {
@@ -262,14 +274,28 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           }
           case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
           {
+            int32_t targetRecordNumber = getSaveActionTargetRecordNumber(storage, false, true, -1);
+
+            if (drawNameSelectionScreen("Record name", targetRecordNumber, savedName) < 0)
+            {
+              return MeasurementSaveScreenResult::CANCEL; // выход для API
+            }
+
             ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, false, true);
+            saveRes = saveMesurementResult(measurementRes, savedName, false, true);
             break;
           }
           case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
           {
+            int32_t targetRecordNumber = getSaveActionTargetRecordNumber(storage, true, false, -1);
+
+            if (drawNameSelectionScreen("Record name", targetRecordNumber, savedName) < 0)
+            {
+              return MeasurementSaveScreenResult::CANCEL; // выход для API
+            }
+
             ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, true);
+            saveRes = saveMesurementResult(measurementRes, savedName, true);
             break;
           }
           case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
@@ -283,8 +309,15 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
               continue;
             }
 
+            int32_t targetRecordNumber = getSaveActionTargetRecordNumber(storage, false, false, selectedMesurementRecordNumber);
+
+            if (drawNameSelectionScreen("Record name", targetRecordNumber, savedName) < 0)
+            {
+              return MeasurementSaveScreenResult::CANCEL; // выход для API
+            }
+
             ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
+            saveRes = saveMesurementResult(measurementRes, savedName, false, false, selectedMesurementRecordNumber);
             break;
           }
           case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
@@ -310,8 +343,15 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           {
             if (freeSlotsCount > 0)
             {
+              int32_t targetRecordNumber = getSaveActionTargetRecordNumber(storage, false, false, -1);
+
+              if (drawNameSelectionScreen("Record name", targetRecordNumber, savedName) < 0)
+              {
+                return MeasurementSaveScreenResult::CANCEL; // выход для API
+              }
+
               ESP_LOGI("", "Saving record...");
-              saveRes = saveMesurementResult(measurementRes);
+              saveRes = saveMesurementResult(measurementRes, savedName);
             }
             else
             {
@@ -331,19 +371,17 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           }
         }
 
-        char resMessage[50];
+        char resMessage[40];
 
         if (saveRes.isSuccess)
         {
-          char buf[30];
-          formatRecordName(saveRes.newRecordNumber, buf);
-#pragma GCC diagnostic ignored "-Wformat"
-          sprintf(resMessage, "Record saved as '%s'", buf);
-#pragma GCC diagnostic pop
+          char displayBuf[20];
+          formatRecordNameForMessage(savedName, displayBuf, sizeof(displayBuf));
+          snprintf(resMessage, sizeof(resMessage), "Saved: %s", displayBuf);
         }
         else
         {
-          sprintf(resMessage, "Failed to save record");
+          snprintf(resMessage, sizeof(resMessage), "Failed to save record");
         }
         const char *option[] = {"OK"};
         drawMessageScreen(resMessage, 1, option);

@@ -294,6 +294,39 @@ uint8_t buildActiveSeriesFields(const MeasurementSeries &series, SeriesField *ac
   return activeCount;
 }
 
+// Обрезает имя записи для однострочного сообщения на экране 128 px
+// (в строку помещается максимум 21 символ шрифта 6x13). Слишком длинное
+// имя завершается троеточием.
+void formatRecordNameForMessage(const char *name, char *out, int16_t bufSize)
+{
+  const int16_t maxNameChars = 14; // "Saved: " (7) + 14 = 21 символ
+
+  int16_t len = 0;
+  while (name[len] != '\0' && len < RECORD_NAME_MAX_LEN)
+  {
+    len++;
+  }
+
+  if (len > maxNameChars)
+  {
+    int16_t keep = maxNameChars - 3;
+
+    for (int16_t i = 0; i < keep; i++)
+    {
+      out[i] = name[i];
+    }
+
+    out[keep] = '.';
+    out[keep + 1] = '.';
+    out[keep + 2] = '.';
+    out[keep + 3] = '\0';
+  }
+  else
+  {
+    snprintf(out, bufSize, "%s", name);
+  }
+}
+
 // Draws text with its right edge at rightX (uses the text bounding box width)
 void drawStringRightAligned(const char *str, int16_t rightX, int16_t y)
 {

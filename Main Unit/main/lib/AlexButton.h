@@ -6,7 +6,7 @@
 class AlexButton
 {
 private:
-	bool _isButtonPressed = false;
+	volatile bool _isButtonPressed = false;
 	volatile uint8_t _buttonClickedCount = 0;
 	volatile bool _isButtonHolded = false;
 	volatile long _buttonPressedTime = -1;
@@ -111,5 +111,13 @@ public:
 		}
 
 		return isButtonPressed;
+	}
+
+	// Дебаунс-устойчивое состояние кнопки (обновляется в tick()), в отличие от
+	// isDown() не подвержено дребезгу контактов. Используется экраном ввода
+	// имени для распознавания жестов (клик / удержание / удержание+поворот).
+	bool isDownStable() const
+	{
+		return _isButtonPressed;
 	}
 };

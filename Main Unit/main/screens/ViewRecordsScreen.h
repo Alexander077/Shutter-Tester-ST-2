@@ -7,6 +7,7 @@
 #include "screens/MeasuredResult.h"
 #include "screens/MessageScreen.h"
 #include "screens/SeriesReport.h"
+#include "screens/NameEntryScreen.h"
 #include "lib/serialAPI.h"
 
 StoredMeasuredResult getMeasurementStoredResultByNumber(int32_t recordNumber)
@@ -67,8 +68,8 @@ void drawViewSingleRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete record"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Rename record", "Delete record"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -83,7 +84,41 @@ void drawViewSingleRecordsScreen()
       return;
     }
 
-    if (selectedOptionIndex == 2) // Delete record
+    if (selectedOptionIndex == 2) // Rename record
+    {
+      char initialName[RECORD_NAME_BUF_SIZE];
+
+      if (selectedResult.name[0] != '\0')
+      {
+        snprintf(initialName, sizeof(initialName), "%s", selectedResult.name);
+      }
+      else
+      {
+        formatRecordName(selectedResult.recordNumber, initialName);
+      }
+
+      NameEditResult renameResult = drawNameEntryScreen("Rename record", initialName);
+
+      if (isApiRequestReceived)
+        return; // ВЫХОД ДЛЯ API
+
+      if (renameResult.confirmed)
+      {
+        snprintf(selectedResult.name, RECORD_NAME_BUF_SIZE, "%s", renameResult.name);
+
+        int32_t savedId = storage.saveOrUpdateRecord(selectedResult);
+        const char *msg = (savedId != -1) ? "Record renamed" : "Failed to rename record";
+        const char *msgOptions[] = {"OK"};
+        drawMessageScreen(msg, 1, msgOptions);
+
+        if (isApiRequestReceived)
+          return; // ВЫХОД ДЛЯ API
+      }
+
+      continue; // go to records list selection
+    }
+
+    if (selectedOptionIndex == 3) // Delete record
     {
       const char *options[] = {"Yes", "No"};
       int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);
@@ -159,8 +194,8 @@ void drawViewSeriesRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete series"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Rename series", "Delete series"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -175,7 +210,41 @@ void drawViewSeriesRecordsScreen()
       return;
     }
 
-    if (selectedOptionIndex == 2) // Delete series
+    if (selectedOptionIndex == 2) // Rename series
+    {
+      char initialName[RECORD_NAME_BUF_SIZE];
+
+      if (selectedSeries.name[0] != '\0')
+      {
+        snprintf(initialName, sizeof(initialName), "%s", selectedSeries.name);
+      }
+      else
+      {
+        formatRecordName(selectedSeries.recordNumber, initialName);
+      }
+
+      NameEditResult renameResult = drawNameEntryScreen("Rename series", initialName);
+
+      if (isApiRequestReceived)
+        return; // ВЫХОД ДЛЯ API
+
+      if (renameResult.confirmed)
+      {
+        snprintf(selectedSeries.name, RECORD_NAME_BUF_SIZE, "%s", renameResult.name);
+
+        int32_t savedId = seriesStorage.saveOrUpdateRecord(selectedSeries);
+        const char *msg = (savedId != -1) ? "Series renamed" : "Failed to rename series";
+        const char *msgOptions[] = {"OK"};
+        drawMessageScreen(msg, 1, msgOptions);
+
+        if (isApiRequestReceived)
+          return; // ВЫХОД ДЛЯ API
+      }
+
+      continue; // go to series list selection
+    }
+
+    if (selectedOptionIndex == 3) // Delete series
     {
       const char *options[] = {"Yes", "No"};
       int16_t deleteOptionIndex = drawMessageScreen("Really delete?", 2, options);

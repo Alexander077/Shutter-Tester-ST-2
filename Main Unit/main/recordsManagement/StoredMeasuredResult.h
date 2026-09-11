@@ -26,6 +26,10 @@ struct StoredMeasuredResult
   SensorType usedSensorType;
   CurtainMovement selectedCurtainMovement;
 
+  // Пользовательское имя записи (до RECORD_NAME_MAX_LEN символов,
+  // пустая строка = имя не задано, показывается номер записи)
+  char name[RECORD_NAME_BUF_SIZE];
+
   bool operator==(StoredMeasuredResult const &rhs) const
   {
     return memcmp(this, &rhs, sizeof(StoredMeasuredResult)) == 0;

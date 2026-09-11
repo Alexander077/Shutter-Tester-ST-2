@@ -9,26 +9,80 @@
 #include <string.h>
 #include <stdio.h>
 
-template <typename StorageT>
-int32_t drawRecordSelectionScreen(StorageT &store)
+// Элемент списка выбора записи: номер + отображаемый заголовок
+// (имя записи, либо форматированный номер, если имя не задано)
+template <typename RecordT>
+struct RecordSelectionItem
 {
-  // 1. Получаем все существующие (не удаленные) номера записей через менеджер
-  std::vector<int32_t> validIds = store.getAllValidRecordNumbers();
+  int32_t recordNumber;
+  char title[30];
+};
 
-  // 2. Размер массива = количество записей + 1 (для кнопки "Back")
-  int16_t totalArraySaize = validIds.size() + 1;
-  int32_t recordNumbers[totalArraySaize];
+// Формирует заголовок списка: имя записи (обрезанное под ширину строки),
+// либо форматированный номер, если имя пустое
+template <typename RecordT>
+void formatRecordSelectionTitle(const RecordT &rec, char *out, int16_t bufSize)
+{
+  const int16_t maxVisibleChars = 16; // (128 - xMargin 30) / 6 px на символ
 
-  recordNumbers[0] = 0; // Опция "Back" (возврат)
-
-  // 3. Заполняем массив данными из вектора
-  for (size_t i = 0; i < validIds.size(); i++)
+  int16_t len = 0;
+  while (rec.name[len] != '\0' && len < RECORD_NAME_MAX_LEN)
   {
-    recordNumbers[i + 1] = validIds[i];
+    len++;
   }
 
-  // Сортировка (оставляем вашу оригинальную логику)
-  ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
+  if (len == 0)
+  {
+    formatRecordName(rec.recordNumber, out);
+    return;
+  }
+
+  if (len > maxVisibleChars)
+  {
+    int16_t keep = maxVisibleChars - 3;
+
+    for (int16_t i = 0; i < keep; i++)
+    {
+      out[i] = rec.name[i];
+    }
+
+    out[keep] = '.';
+    out[keep + 1] = '.';
+    out[keep + 2] = '.';
+    out[keep + 3] = '\0';
+  }
+  else
+  {
+    snprintf(out, bufSize, "%s", rec.name);
+  }
+}
+
+template <typename StorageT, typename RecordT>
+int32_t drawRecordSelectionScreen(StorageT &store)
+{
+  // 1. Получаем все существующие (не удаленные) записи через менеджер
+  std::vector<RecordT> validRecords = store.getAllValidRecords();
+
+  // 2. Размер массива = количество записей + 1 (для кнопки "Back")
+  int16_t totalArraySaize = validRecords.size() + 1;
+  RecordSelectionItem<RecordT> items[totalArraySaize];
+
+  items[0].recordNumber = 0; // Опция "Back" (возврат)
+  snprintf(items[0].title, sizeof(items[0].title), "Back");
+
+  // 3. Заполняем список (имя записи либо номер, если имя не задано)
+  for (size_t i = 0; i < validRecords.size(); i++)
+  {
+    items[i + 1].recordNumber = validRecords[i].recordNumber;
+    formatRecordSelectionTitle(validRecords[i], items[i + 1].title, sizeof(items[i + 1].title));
+  }
+
+  // Сортировка по номеру записи
+  ace_sorting::shellSortKnuth(items, (uint16_t)totalArraySaize,
+      [](const RecordSelectionItem<RecordT> &a, const RecordSelectionItem<RecordT> &b)
+      {
+        return a.recordNumber < b.recordNumber;
+      });
 
   int16_t startEncoderVal = AlexEncoder::counter;
   display->fillScreen(BLACK);
@@ -42,7 +96,6 @@ int32_t drawRecordSelectionScreen(StorageT &store)
   const int16_t pageSize = 5;
   int16_t prevPage = 1;
   int16_t curPage = 1;
-  const int16_t recTitleBufSize = 30;
   int16_t totalPagesCount = ceil((double)totalArraySaize / (double)pageSize);
   drawStringHCentered("Select record", 20);
   int8_t itemsCountToPrint = min(pageSize, totalArraySaize);
@@ -51,18 +104,13 @@ int32_t drawRecordSelectionScreen(StorageT &store)
   {
     display->setCursor(xMargin, yMargin + (ySpacing * i));
 
-    // int32_t recordNumber = getInputParamsArrayInt(i + 3);
-    int32_t recordNumber = recordNumbers[i];
-
-    if (recordNumber == 0) //"Back" option
+    if (items[i].recordNumber == 0) //"Back" option
     {
       display->print("Back");
       continue;
     }
 
-    char recTitle[recTitleBufSize];
-    formatRecordName(recordNumber, recTitle);
-    display->print(recTitle);
+    display->print(items[i].title);
 
     pageLabel.clear();
     pageLabel += "Page ";
@@ -127,18 +175,14 @@ int32_t drawRecordSelectionScreen(StorageT &store)
         for (uint8_t i = pageSize * (prevPage - 1), rowCounter = 0; i < prevPageLimit; i++, rowCounter++)
         {
           display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
-          // int32_t recordNumber = getInputParamsArrayInt(i + 3);
-          int32_t recordNumber = recordNumbers[i];
-          char recTitle[recTitleBufSize];
-          formatRecordName(recordNumber, recTitle);
 
-          if (recordNumber == 0) //"Back" option
+          if (items[i].recordNumber == 0) //"Back" option
           {
             display->print("Back");
             continue;
           }
 
-          display->print(recTitle);
+          display->print(items[i].title);
         }
 
         pageLabel.clear();
@@ -157,19 +201,14 @@ int32_t drawRecordSelectionScreen(StorageT &store)
         for (int16_t i = pageSize * (curPage - 1), rowCounter = 0; i < limit; i++, rowCounter++)
         {
           display->setCursor(xMargin, yMargin + (ySpacing * rowCounter));
-          // int32_t recordNumber = getInputParamsArrayInt(i + 3);
-          int32_t recordNumber = recordNumbers[i];
 
-          if (recordNumber == 0) //"Back" option
+          if (items[i].recordNumber == 0) //"Back" option
           {
             display->print("Back");
             continue;
           }
 
-          char recTitle[recTitleBufSize];
-          formatRecordName(recordNumber, recTitle);
-          // ESP_LOGI("", "%" PRIi32, recordNumber);
-          display->print(recTitle);
+          display->print(items[i].title);
         }
 
         pageLabel.clear();
@@ -187,7 +226,7 @@ int32_t drawRecordSelectionScreen(StorageT &store)
 
     if (button.isClicked())
     {
-      return recordNumbers[curIndex];
+      return items[curIndex].recordNumber;
     }
 
     vTaskDelay(1 / portTICK_PERIOD_MS);
@@ -196,10 +235,10 @@ int32_t drawRecordSelectionScreen(StorageT &store)
 
 int32_t drawMeasurementResultRecordSelectionScreen()
 {
-  return drawRecordSelectionScreen(storage);
+  return drawRecordSelectionScreen<RecordsStorageManager, StoredMeasuredResult>(storage);
 }
 
 int32_t drawSeriesRecordSelectionScreen()
 {
-  return drawRecordSelectionScreen(seriesStorage);
+  return drawRecordSelectionScreen<SeriesStorageManager, StoredMeasuredSeries>(seriesStorage);
 }
