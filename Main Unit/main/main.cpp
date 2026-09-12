@@ -77,6 +77,11 @@ void setup()
 	storage.begin();
 	seriesStorage.begin();
 
+	// Backfill names for new-format files that still have empty names
+	// (e.g. records written through the serial API which we do not touch).
+	fillEmptyRecordNames<RecordsStorageManager, StoredMeasuredResult>(storage);
+	fillEmptyRecordNames<SeriesStorageManager, StoredMeasuredSeries>(seriesStorage);
+
 	SerialNumber::init();
 
 	// Инициализируем мьютекс для безопасного вывода в последовательный порт

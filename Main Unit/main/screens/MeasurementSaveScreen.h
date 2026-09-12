@@ -4,6 +4,7 @@
 #include "screensCommon.h"
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "screens/MessageScreen.h"
+#include "screens/RecordNameEditor.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "lib/serialAPI.h"
 
@@ -17,6 +18,7 @@ struct MeasurementRecordSaveResult
 {
   bool isSuccess;
   int32_t newRecordNumber;
+  char newRecordName[RECORD_NAME_BUF_SIZE];
 };
 
 const char *MeasurementSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
@@ -47,9 +49,9 @@ int16_t getFreeMeasurementSaveSlotsCount()
   return storage.getFreeSlotsCount();
 }
 
-MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, const char *recordName, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-  MeasurementRecordSaveResult saveRes = {false, -1};
+  MeasurementRecordSaveResult saveRes = {false, -1, {0}};
 
   // Создаем структуру для сохранения и зануляем её память
   StoredMeasuredResult newRes;
@@ -82,6 +84,7 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   newRes.slitWidthAverage = res.slitWidthAverage;
   newRes.usedSensorType = res.usedSensorType;
   newRes.selectedCurtainMovement = res.selectedCurtainMovement;
+  copyRecordName(newRes.name, recordName);
 
   // --- Обработка команд перезаписи самых новых или самых старых результатов ---
   if (overwriteOldest || overwriteNewest)
@@ -126,6 +129,7 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   {
     saveRes.isSuccess = true;
     saveRes.newRecordNumber = savedId;
+    copyRecordName(saveRes.newRecordName, newRes.name);
     ESP_LOGI("", "Meas. res. saved. Rec. num.: %" PRIi32 ", success: 1", savedId);
   }
   else
@@ -134,6 +138,100 @@ MeasurementRecordSaveResult saveMesurementResult(const MeasuredResult &res, bool
   }
 
   return saveRes;
+}
+
+// Resolves the overwrite target number first (needed for the "Save as"
+// prefill/exclude logic), then asks for the name, then saves.
+// Returns true when a save happened (saveRes filled), false when the user
+// backed out of the name screens (caller should return to the save menu).
+bool saveMeasurementWithName(MeasuredResult &measurementRes,
+                             bool overwriteOldest,
+                             bool overwriteNewest,
+                             int32_t recordNumberToOverwrite,
+                             bool isNewRecord,
+                             MeasurementRecordSaveResult &saveRes)
+{
+  saveRes.isSuccess = false;
+  saveRes.newRecordNumber = -1;
+  saveRes.newRecordName[0] = '\0';
+
+  int32_t targetNumber = recordNumberToOverwrite;
+
+  if (overwriteOldest || overwriteNewest)
+  {
+    std::vector<int32_t> ids = storage.getAllValidRecordNumbers();
+
+    if (!ids.empty())
+    {
+      int32_t minId = ids[0];
+      int32_t maxId = ids[0];
+
+      for (int32_t id : ids)
+      {
+        if (id < minId)
+        {
+          minId = id;
+        }
+        if (id > maxId)
+        {
+          maxId = id;
+        }
+      }
+
+      targetNumber = overwriteOldest ? minId : maxId;
+    }
+    else
+    {
+      targetNumber = -1; // no records: plain new save
+      isNewRecord = true;
+    }
+  }
+
+  if (isNewRecord)
+  {
+    targetNumber = getNextRecordNumber(storage);
+  }
+
+  char defaultName[RECORD_NAME_BUF_SIZE];
+  formatDefaultRecordName(targetNumber, defaultName);
+
+  // Prefill: empty for Yes/Oldest/Newest, current name for Sel. rec.
+  char prefill[RECORD_NAME_BUF_SIZE] = {0};
+
+  if (!isNewRecord && targetNumber > 0)
+  {
+    StoredMeasuredResult existing = storage.getRecordByNumber(targetNumber);
+
+    if (existing.recordNumber > 0 && !existing.isDeleted)
+    {
+      copyRecordName(prefill, existing.name);
+    }
+  }
+
+  measurementSaveExcludeRecordNumber = (!isNewRecord && targetNumber > 0) ? targetNumber : -1;
+
+  char chosenName[RECORD_NAME_BUF_SIZE] = {0};
+  bool proceed = drawRecordNameChoiceScreen(defaultName, chosenName, prefill, isMeasurementSaveNameDuplicate);
+
+  measurementSaveExcludeRecordNumber = -1;
+
+  if (!proceed || isApiRequestReceived)
+  {
+    return false;
+  }
+
+  ESP_LOGI("", "Saving record...");
+
+  if (isNewRecord)
+  {
+    saveRes = saveMesurementResult(measurementRes, chosenName);
+  }
+  else
+  {
+    saveRes = saveMesurementResult(measurementRes, chosenName, false, false, targetNumber);
+  }
+
+  return saveRes.isSuccess;
 }
 
 const char *GetSaveMasurementMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
@@ -250,8 +348,16 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           {
             if (freeSlotsCount > 0)
             {
-              ESP_LOGI("", "Saving record...");
-              saveRes = saveMesurementResult(measurementRes);
+              if (!saveMeasurementWithName(measurementRes, false, false, -1, true, saveRes))
+              {
+                if (isApiRequestReceived)
+                {
+                  return MeasurementSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::YES;
+                continue;
+              }
             }
             else
             {
@@ -262,14 +368,30 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           }
           case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
           {
-            ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, false, true);
+            if (!saveMeasurementWithName(measurementRes, false, true, -1, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return MeasurementSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::OVERWRITE_NEWEST;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
           {
-            ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, true);
+            if (!saveMeasurementWithName(measurementRes, true, false, -1, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return MeasurementSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::OVERWRITE_OLDEST;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
@@ -283,8 +405,21 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
               continue;
             }
 
-            ESP_LOGI("", "Saving record...");
-            saveRes = saveMesurementResult(measurementRes, false, false, selectedMesurementRecordNumber);
+            if (isApiRequestReceived)
+            {
+              return MeasurementSaveScreenResult::CANCEL;
+            }
+
+            if (!saveMeasurementWithName(measurementRes, false, false, selectedMesurementRecordNumber, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return MeasurementSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - 4;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
@@ -310,8 +445,16 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           {
             if (freeSlotsCount > 0)
             {
-              ESP_LOGI("", "Saving record...");
-              saveRes = saveMesurementResult(measurementRes);
+              if (!saveMeasurementWithName(measurementRes, false, false, -1, true, saveRes))
+              {
+                if (isApiRequestReceived)
+                {
+                  return MeasurementSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - (int16_t)ZeroRecordsMeasurementSaveMenuItems::YES;
+                continue;
+              }
             }
             else
             {
@@ -331,14 +474,12 @@ MeasurementSaveScreenResult drawMeasurementSaveScreen(MeasuredResult &measuremen
           }
         }
 
-        char resMessage[50];
+        char resMessage[RECORD_NAME_BUF_SIZE + 24];
 
         if (saveRes.isSuccess)
         {
-          char buf[30];
-          formatRecordName(saveRes.newRecordNumber, buf);
 #pragma GCC diagnostic ignored "-Wformat"
-          sprintf(resMessage, "Record saved as '%s'", buf);
+          snprintf(resMessage, sizeof(resMessage), "Record saved as '%s'", saveRes.newRecordName);
 #pragma GCC diagnostic pop
         }
         else

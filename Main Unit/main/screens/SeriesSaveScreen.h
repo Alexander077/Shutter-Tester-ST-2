@@ -4,6 +4,7 @@
 #include "screensCommon.h"
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "screens/MessageScreen.h"
+#include "screens/RecordNameEditor.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "lib/serialAPI.h"
 #include <vector>
@@ -18,6 +19,7 @@ struct SeriesRecordSaveResult
 {
   bool isSuccess;
   int32_t newRecordNumber;
+  char newRecordName[RECORD_NAME_BUF_SIZE];
 };
 
 const char *SeriesSaveItemsStr[SAVE_MEASUREMENT_MENU_ITEMS_COUNT] =
@@ -47,9 +49,9 @@ int16_t getFreeSeriesSaveSlotsCount()
   return seriesStorage.getFreeSlotsCount();
 }
 
-SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
+SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, const char *recordName, bool overwriteOldest = false, bool overwriteNewest = false, int32_t recordNumberToOverwrite = -1)
 {
-  SeriesRecordSaveResult saveRes = {false, -1};
+  SeriesRecordSaveResult saveRes = {false, -1, {0}};
 
   StoredMeasuredSeries newRes;
   memset(&newRes, 0, sizeof(StoredMeasuredSeries));
@@ -65,6 +67,7 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
 
   newRes.isDeleted = false;
   newRes.measurementCount = series.storedCount;
+  copyRecordName(newRes.name, recordName);
 
   for (uint8_t i = 0; i < series.storedCount && i < MEASUREMENT_SERIES_MAX_SIZE; i++)
   {
@@ -107,6 +110,7 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
   {
     saveRes.isSuccess = true;
     saveRes.newRecordNumber = savedId;
+    copyRecordName(saveRes.newRecordName, newRes.name);
     ESP_LOGI("", "Series saved. Rec. num.: %" PRIi32, savedId);
   }
   else
@@ -115,6 +119,95 @@ SeriesRecordSaveResult saveSeriesResult(const MeasurementSeries &series, bool ov
   }
 
   return saveRes;
+}
+
+bool saveSeriesWithName(MeasurementSeries &series,
+                        bool overwriteOldest,
+                        bool overwriteNewest,
+                        int32_t recordNumberToOverwrite,
+                        bool isNewRecord,
+                        SeriesRecordSaveResult &saveRes)
+{
+  saveRes.isSuccess = false;
+  saveRes.newRecordNumber = -1;
+  saveRes.newRecordName[0] = '\0';
+
+  int32_t targetNumber = recordNumberToOverwrite;
+
+  if (overwriteOldest || overwriteNewest)
+  {
+    std::vector<int32_t> ids = seriesStorage.getAllValidRecordNumbers();
+
+    if (!ids.empty())
+    {
+      int32_t minId = ids[0];
+      int32_t maxId = ids[0];
+
+      for (int32_t id : ids)
+      {
+        if (id < minId)
+        {
+          minId = id;
+        }
+        if (id > maxId)
+        {
+          maxId = id;
+        }
+      }
+
+      targetNumber = overwriteOldest ? minId : maxId;
+    }
+    else
+    {
+      targetNumber = -1;
+      isNewRecord = true;
+    }
+  }
+
+  if (isNewRecord)
+  {
+    targetNumber = getNextRecordNumber(seriesStorage);
+  }
+
+  char defaultName[RECORD_NAME_BUF_SIZE];
+  formatDefaultRecordName(targetNumber, defaultName);
+
+  char prefill[RECORD_NAME_BUF_SIZE] = {0};
+
+  if (!isNewRecord && targetNumber > 0)
+  {
+    StoredMeasuredSeries existing = seriesStorage.getRecordByNumber(targetNumber);
+
+    if (existing.recordNumber > 0 && !existing.isDeleted)
+    {
+      copyRecordName(prefill, existing.name);
+    }
+  }
+
+  seriesSaveExcludeRecordNumber = (!isNewRecord && targetNumber > 0) ? targetNumber : -1;
+
+  char chosenName[RECORD_NAME_BUF_SIZE] = {0};
+  bool proceed = drawRecordNameChoiceScreen(defaultName, chosenName, prefill, isSeriesSaveNameDuplicate);
+
+  seriesSaveExcludeRecordNumber = -1;
+
+  if (!proceed || isApiRequestReceived)
+  {
+    return false;
+  }
+
+  ESP_LOGI("", "Saving series...");
+
+  if (isNewRecord)
+  {
+    saveRes = saveSeriesResult(series, chosenName);
+  }
+  else
+  {
+    saveRes = saveSeriesResult(series, chosenName, false, false, targetNumber);
+  }
+
+  return saveRes.isSuccess;
 }
 
 const char *GetSaveSeriesMenuItemTitle(MeasurementSaveMenuItems menuItem, bool useForZeroRecords)
@@ -210,7 +303,7 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
 
       if (button.isClicked())
       {
-        SeriesRecordSaveResult saveRes = {false, -1};
+        SeriesRecordSaveResult saveRes = {false, -1, {0}};
 
         if (drawMoreThanZeroRecordsMenuItems)
         {
@@ -225,8 +318,16 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           {
             if (freeSlotsCount > 0)
             {
-              ESP_LOGI("", "Saving series...");
-              saveRes = saveSeriesResult(measurementSeries);
+              if (!saveSeriesWithName(measurementSeries, false, false, -1, true, saveRes))
+              {
+                if (isApiRequestReceived)
+                {
+                  return SeriesSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::YES;
+                continue;
+              }
             }
             else
             {
@@ -237,14 +338,30 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           }
           case MeasurementSaveMenuItems::OVERWRITE_NEWEST:
           {
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, false, true);
+            if (!saveSeriesWithName(measurementSeries, false, true, -1, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::OVERWRITE_NEWEST;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::OVERWRITE_OLDEST:
           {
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, true);
+            if (!saveSeriesWithName(measurementSeries, true, false, -1, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - (int16_t)MeasurementSaveMenuItems::OVERWRITE_OLDEST;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::CHOOSE_RECORD_TO_OVERWRITE:
@@ -258,8 +375,21 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
               continue;
             }
 
-            ESP_LOGI("", "Saving series...");
-            saveRes = saveSeriesResult(measurementSeries, false, false, selectedSeriesRecordNumber);
+            if (isApiRequestReceived)
+            {
+              return SeriesSaveScreenResult::CANCEL;
+            }
+
+            if (!saveSeriesWithName(measurementSeries, false, false, selectedSeriesRecordNumber, false, saveRes))
+            {
+              if (isApiRequestReceived)
+              {
+                return SeriesSaveScreenResult::CANCEL;
+              }
+              runLoop = false;
+              startEncoderVal = AlexEncoder::counter - 4;
+              continue;
+            }
             break;
           }
           case MeasurementSaveMenuItems::BACK_TO_MEASUREMENT_RESULT:
@@ -285,8 +415,16 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           {
             if (freeSlotsCount > 0)
             {
-              ESP_LOGI("", "Saving series...");
-              saveRes = saveSeriesResult(measurementSeries);
+              if (!saveSeriesWithName(measurementSeries, false, false, -1, true, saveRes))
+              {
+                if (isApiRequestReceived)
+                {
+                  return SeriesSaveScreenResult::CANCEL;
+                }
+                runLoop = false;
+                startEncoderVal = AlexEncoder::counter - (int16_t)ZeroRecordsMeasurementSaveMenuItems::YES;
+                continue;
+              }
             }
             else
             {
@@ -306,14 +444,12 @@ SeriesSaveScreenResult drawSeriesSaveScreen(MeasurementSeries &measurementSeries
           }
         }
 
-        char resMessage[50];
+        char resMessage[RECORD_NAME_BUF_SIZE + 24];
 
         if (saveRes.isSuccess)
         {
-          char buf[30];
-          formatRecordName(saveRes.newRecordNumber, buf);
 #pragma GCC diagnostic ignored "-Wformat"
-          sprintf(resMessage, "Series saved as '%s'", buf);
+          snprintf(resMessage, sizeof(resMessage), "Series saved as '%s'", saveRes.newRecordName);
 #pragma GCC diagnostic pop
         }
         else

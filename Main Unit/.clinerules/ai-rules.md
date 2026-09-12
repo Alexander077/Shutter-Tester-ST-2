@@ -29,12 +29,12 @@
 * `.clinerules/` — правила для ИИ (этот файл).
 
 ### main/ (корень компонента)
-* `main.cpp` — точка входа. `setup()` инициализирует дисплей, энкодер, таймер опроса кнопки, АЦП, LittleFS-хранилище (создаёт `records.bin` и `seriesRecords.bin`), серийный номер в NVS, мьютекс последовательного вывода, запускает задачу `serialApiTask` на ядре 0 и валидирует прошивку (`esp_ota_mark_app_valid_cancel_rollback`). `loop()` содержит `drawMainMenu()`.
+* `main.cpp` — точка входа. `setup()` инициализирует дисплей, энкодер, таймер опроса кнопки, АЦП, LittleFS-хранилище (создаёт `records.bin` и `seriesRecords.bin`, мигрирует старые файлы, backfill пустых имён через `fillEmptyRecordNames()`), серийный номер в NVS, мьютекс последовательного вывода, запускает задачу `serialApiTask` на ядре 0 и валидирует прошивку (`esp_ota_mark_app_valid_cancel_rollback`). `loop()` содержит `drawMainMenu()`.
 * `CMakeLists.txt` — регистрирует компонент `main` (исходник `main.cpp`, `INCLUDE_DIRS "."`).
 * `idf_component.yml` — зависимости: `espressif/arduino-esp32` (pre-release) и `joltwallet/littlefs`.
 
 ### main/lib/
-* `Common.h` — общие константы и пины (`TEST_PIN_1/2`, `ENCODER_B_PIN`, `ENCODER_A_PIN`, `BUTTON_PIN`), пороги уровней сигнала, enum'ы (`SensorType`, `MainMenuItems`, `CurtainMovement`, `MeasurementSaveMenuItems`, `ZeroRecordsMeasurementSaveMenuItems`), глобальные объекты (`button`, `curtainMovement`, `curSensorIndex`), ISR `onTimer()`, функции `formatRecordName()` и `halt()`.
+* `Common.h` — общие константы и пины (`TEST_PIN_1/2`, `ENCODER_B_PIN`, `ENCODER_A_PIN`, `BUTTON_PIN`), пороги уровней сигнала, enum'ы (`SensorType`, `MainMenuItems`, `CurtainMovement`, `MeasurementSaveMenuItems`, `ZeroRecordsMeasurementSaveMenuItems`), глобальные объекты (`button`, `curtainMovement`, `curSensorIndex`), ISR `onTimer()`, функции `formatRecordName()`/`formatDefaultRecordName()`/`copyRecordName()`/`isRecordNameEmpty()`/`getRecordNameVisibleLen()`/`recordNameStartsWithIgnoreCase()`/`recordNamesEqualIgnoreCase()` (имена записей, ai task 6: `RECORD_NAME_MAX_LEN 40`) и `halt()`.
 * `Display.h` — инициализация TFT-дисплея ST7735 128×160 через Arduino_GFX (`Arduino_HWSPI`), назначение SPI-пинов.
 * `ADC.h` — настройка ADC continuous driver (2 канала `ADC_CHANNEL_6/7`, частота 1 МГц, `READ_LEN 4096`), `initADC()`, callback `s_conv_done_cb()`.
 * `AlexButton.h` — класс кнопки с подавлением дребезга, распознаванием клика, удержания и состояния `isDown()`.
@@ -46,13 +46,14 @@
 * `SerialAPICommon.h` — enum `ApiRequestAction`, строковые константы команд и ответов API, статусы качества света, макрос отладки `SERIAL_API_DEBUG_PRINT`, `extern serialPrintMutex`.
 * `SerialNumber.h` — генерация и хранение серийного номера устройства (10 символов) в NVS.
 * `FirmwareUpdate.h` — OTA-обновление: приём base64, расшифровка AES-256-CBC, запись в OTA-раздел, переключение загрузочного раздела и перезагрузка; содержит `AesKey` и `AesIvInit`.
+* `FilmCamerasList.h` — массив `FilmCamerasList` (1160 названий плёночных камер) для автоподсказок редактора имён (ai task 6).
 * `AceSorting/` — сторонняя библиотека сортировки (используется `shellSortKnuth`).
 
 ### main/recordsManagement/
-* `RecordsManagementCommon.h` — константы LittleFS (`TOTAL_RECORDS_COUNT 100`, `TOTAL_SERIES_COUNT 100`, пути `/littlefs/records.bin` и `/littlefs/seriesRecords.bin`), глобальные объекты `storage` и `seriesStorage`, хелпер `initRecordsFile()`, `getMeasurementSaveRecordSize()`/`getSeriesSaveRecordSize()`, функция `initStorage()` (монтирование LittleFS и инициализация обоих файлов записей нулями).
+* `RecordsManagementCommon.h` — константы LittleFS (`TOTAL_RECORDS_COUNT 100`, `TOTAL_SERIES_COUNT 100`, пути `/littlefs/records.bin` и `/littlefs/seriesRecords.bin`), глобальные объекты `storage` и `seriesStorage`, хелпер `initRecordsFile()`, `getMeasurementSaveRecordSize()`/`getSeriesSaveRecordSize()`, функция `initStorage()` (монтирование LittleFS, инициализация файлов нулями, миграция старых безимённых файлов в формат с `name` через `migrateRecordsFileToNamed()`), `fillEmptyRecordNames()`, `isMeasurementRecordNameTaken()`/`isSeriesRecordNameTaken()` (проверка дубликатов имён, ai task 6), `getNextRecordNumber()`.
 * `RecordsStorageManager.h` — шаблонный класс `RecordsStorageManagerT<RecordT>` управления записями (`getAllValidRecordNumbers()`, `getRecordByNumber()`, `deleteRecordByNumber()`, `saveOrUpdateRecord()`, `getFreeSlotsCount()`; доступ к файлу через мьютекс); алиасы `RecordsStorageManager` (для `StoredMeasuredResult`) и `SeriesStorageManager` (для `StoredMeasuredSeries`).
-* `StoredMeasuredResult.h` — структура сохраняемой записи (`recordNumber`, `isDeleted` + поля `MeasuredResult`), оператор сравнения.
-* `StoredMeasuredSeries.h` — структура сохраняемой серии (`recordNumber`, `isDeleted`, `measurementCount`, массив `results[MEASUREMENT_SERIES_MAX_SIZE]`).
+* `StoredMeasuredResult.h` — структура сохраняемой записи (`recordNumber`, `isDeleted` + поля `MeasuredResult` + `name[41]`, ai task 6), оператор сравнения.
+* `StoredMeasuredSeries.h` — структура сохраняемой серии (`recordNumber`, `isDeleted`, `measurementCount`, массив `results[MEASUREMENT_SERIES_MAX_SIZE]`, `name[41]`, ai task 6).
 
 ### main/screens/
 * `screensCommon.h` — общие функции отрисовки текста (`getStringRect`, `drawStringHCentered`, `drawStringRightAligned`), `Rect`, `SeriesField` (включая скорость датчиков 1/X) и дескрипторы полей, `MeasurementSeries` (до 5 измерений), функции валидации/получения значений полей серии, `formatCompactDouble`, `formatSpeedFractionLabel`, `formatPreciseTimeValue`, `formatSeriesFieldValue`, `buildActiveSeriesFields`, `SERIES_GRID_LINE_COLOR`, `SERIES_AXIS_COLOR`, forward-декларация `drawNavBar`.
@@ -67,10 +68,11 @@
 * `computeMeasuredResult.h` — расчёт результата из сырых времён; `sensorsData` (размеры кадра и расстояния между датчиками), `CurtainTimings`, `ComputedMeasurement`.
 * `MeasuredScreen.h` — экран результата измерения (выдержка, скорость затвора, график, данные шторок), генерация JSON-ответа для API.
 * `MeasuredResult.h` — `renderMeasuredResult()`: многостраничный результат (выдержка/скорость/график, шторки, щель) и `drawNavBar()`.
-* `MeasurementSaveScreen.h` — меню сохранения результата (No / Yes / Overwrite oldest / Overwrite newest / Select record / Return).
-* `SeriesSaveScreen.h` — меню сохранения серии (`saveSeriesResult()`, `drawSeriesSaveScreen()`): сохраняет серию как одну запись `StoredMeasuredSeries` в `seriesRecords.bin`.
-* `MeasurementResultRecordSelectionScreen.h` — шаблонный `drawRecordSelectionScreen(store)` выбора существующей записи (список ID, сортировка через AceSorting); обёртки `drawMeasurementResultRecordSelectionScreen()` и `drawSeriesRecordSelectionScreen()`.
-* `ViewRecordsScreen.h` — просмотр и удаление сохранённых записей: выбор «Measurements / Series», `drawViewSingleRecordsScreen()` и `drawViewSeriesRecordsScreen()` (серия открывается через `renderSeriesReport()`).
+* `MeasurementSaveScreen.h` — меню сохранения результата (No / Yes / Overwrite oldest / Overwrite newest / Select record / Return); `saveMesurementResult()` принимает имя, `saveMeasurementWithName()` показывает `Choose name` (`Save as 'xxxx'` / `Save as...`) и редактор имени (ai task 6).
+* `SeriesSaveScreen.h` — меню сохранения серии (`saveSeriesResult()` с именем, `saveSeriesWithName()` с выбором имени, `drawSeriesSaveScreen()`): сохраняет серию как одну запись `StoredMeasuredSeries` в `seriesRecords.bin` (ai task 6).
+* `RecordNameEditor.h` — редактор имени записи (ai task 6): `editRecordName()` (посимвольный ввод энкодером, автоподсказка из `FilmCamerasList`, режимы INSERT/DELETE, удержание+поворот = курсор, удержание 700мс = переключение фокуса поле/меню в обе стороны, оба курсора всегда видны: белый = активен, серый = неактивен, позиция меню сохраняется, `Delete Mode [On]/[Off]` тогглит режим, проверки `Name is empty`/`Name already exists`, перерисовка только грязных областей) и `drawRecordNameChoiceScreen()`.
+* `MeasurementResultRecordSelectionScreen.h` — шаблонный `drawRecordSelectionScreen(store)` выбора записи по имени (мелкий шрифт, до 2 строк, тримминг хвостовых пробелов, сортировка через AceSorting); обёртки `drawMeasurementResultRecordSelectionScreen()` и `drawSeriesRecordSelectionScreen()`; exclude-id plumbing для проверки дубликатов (`measurementSaveExcludeRecordNumber`, `isMeasurementSaveNameDuplicate()` и аналоги для серий).
+* `ViewRecordsScreen.h` — просмотр, удаление и переименование сохранённых записей («Rename record» в `What's next?`, ai task 6): выбор «Measurements / Series», `drawViewSingleRecordsScreen()` и `drawViewSeriesRecordsScreen()` (серия открывается через `renderSeriesReport()`).
 * `MessageScreen.h` — универсальный экран с заголовком и списком опций, возвращает выбранный индекс.
 * `SeriesReport.h` — многостраничный отчёт серии: страницы сводки + график по каждому полю.
 * `SeriesSummaryPage.h` — сводная таблица статистики (avg / min / max / count) по полям серии; для датчиков — отдельные строки выдержки (1/X) и времени (мс), серая сетка таблицы.

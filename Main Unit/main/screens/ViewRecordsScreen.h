@@ -5,6 +5,7 @@
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "screens/MeasuredResult.h"
+#include "screens/RecordNameEditor.h"
 #include "screens/MessageScreen.h"
 #include "screens/SeriesReport.h"
 #include "lib/serialAPI.h"
@@ -67,8 +68,8 @@ void drawViewSingleRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete record"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Delete record", "Rename record"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -109,6 +110,42 @@ void drawViewSingleRecordsScreen()
         drawMessageScreen(msg, 1, deleteResOptions);
       }
       continue; // go to records list selection
+    }
+
+    if (selectedOptionIndex == 3) // Rename record
+    {
+      measurementSaveExcludeRecordNumber = selectedResult.recordNumber;
+
+      char newName[RECORD_NAME_BUF_SIZE] = {0};
+      copyRecordName(newName, selectedResult.name);
+
+      bool renamed = editRecordName("Enter name:", newName, selectedResult.name, isMeasurementSaveNameDuplicate);
+
+      measurementSaveExcludeRecordNumber = -1;
+
+      if (isApiRequestReceived)
+        return;
+
+      if (renamed)
+      {
+        copyRecordName(selectedResult.name, newName);
+        selectedResult.isDeleted = false;
+        storage.saveOrUpdateRecord(selectedResult);
+
+        const char *renameOkOptions[] = {"OK"};
+        drawMessageScreen("Record renamed", 1, renameOkOptions);
+
+        if (isApiRequestReceived)
+          return;
+      }
+
+      // Stay on the same record: re-render it so the user sees the result.
+      renderMeasuredResult(resultToDisplay);
+
+      if (isApiRequestReceived)
+        return;
+
+      continue;
     }
 
     return;
@@ -159,8 +196,8 @@ void drawViewSeriesRecordsScreen()
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
 
-    const char *options[] = {"Go back to list", "Go to main menu", "Delete series"};
-    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 3, options);
+    const char *options[] = {"Go back to list", "Go to main menu", "Delete series", "Rename record"};
+    int16_t selectedOptionIndex = drawMessageScreen("What's next?", 4, options);
 
     if (isApiRequestReceived)
       return; // ВЫХОД ДЛЯ API
@@ -201,6 +238,41 @@ void drawViewSeriesRecordsScreen()
         drawMessageScreen(msg, 1, deleteResOptions);
       }
       continue; // go to series list selection
+    }
+
+    if (selectedOptionIndex == 3) // Rename record
+    {
+      seriesSaveExcludeRecordNumber = selectedSeries.recordNumber;
+
+      char newName[RECORD_NAME_BUF_SIZE] = {0};
+      copyRecordName(newName, selectedSeries.name);
+
+      bool renamed = editRecordName("Enter name:", newName, selectedSeries.name, isSeriesSaveNameDuplicate);
+
+      seriesSaveExcludeRecordNumber = -1;
+
+      if (isApiRequestReceived)
+        return;
+
+      if (renamed)
+      {
+        copyRecordName(selectedSeries.name, newName);
+        selectedSeries.isDeleted = false;
+        seriesStorage.saveOrUpdateRecord(selectedSeries);
+
+        const char *renameOkOptions[] = {"OK"};
+        drawMessageScreen("Series renamed", 1, renameOkOptions);
+
+        if (isApiRequestReceived)
+          return;
+      }
+
+      renderSeriesReport(seriesToDisplay);
+
+      if (isApiRequestReceived)
+        return;
+
+      continue;
     }
 
     return;

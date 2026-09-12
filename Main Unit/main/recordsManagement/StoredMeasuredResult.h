@@ -26,6 +26,10 @@ struct StoredMeasuredResult
   SensorType usedSensorType;
   CurtainMovement selectedCurtainMovement;
 
+  // User-editable record name, always '\0'-terminated. Appended at the end
+  // so the layout of all previous fields is unchanged.
+  char name[RECORD_NAME_MAX_LEN + 1];
+
   bool operator==(StoredMeasuredResult const &rhs) const
   {
     return memcmp(this, &rhs, sizeof(StoredMeasuredResult)) == 0;

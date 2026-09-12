@@ -35,6 +35,11 @@
 #define NOT_AVAILABLE_FOR_LEAF_SHUTERS -5
 #define SENSOR_TIME_IS_TOO_SHORT -6
 
+// User-editable record name limits (see ai task 6). Stored as fixed char
+// array in StoredMeasuredResult / StoredMeasuredSeries, always '\0'-terminated.
+#define RECORD_NAME_MAX_LEN 40
+#define RECORD_NAME_BUF_SIZE (RECORD_NAME_MAX_LEN + 1)
+
 const uint8_t sensorsDataArraySize = 4;
 
 const char *SensorTypeStr[sensorsDataArraySize] =
@@ -120,6 +125,123 @@ void formatRecordName(int32_t recordNumber, char resultRecordName[30])
     snprintf(resultRecordName, bufSize, "%05d", recordNumber);
   }
   #pragma GCC diagnostic pop
+}
+
+// Number of visible characters in a record name (trailing spaces trimmed,
+// like the record list shows it). Embedded '\0' ends the scan.
+uint8_t getRecordNameVisibleLen(const char *name)
+{
+  uint8_t len = 0;
+
+  if (name == nullptr)
+  {
+    return 0;
+  }
+
+  for (uint8_t i = 0; i < RECORD_NAME_MAX_LEN && name[i] != '\0'; i++)
+  {
+    len = i + 1;
+  }
+
+  while (len > 0 && name[len - 1] == ' ')
+  {
+    len--;
+  }
+
+  return len;
+}
+
+// True when the name holds no visible characters (empty or spaces only).
+bool isRecordNameEmpty(const char *name)
+{
+  return getRecordNameVisibleLen(name) == 0;
+}
+
+// Copies src into dst (RECORD_NAME_BUF_SIZE), always '\0'-terminated.
+void copyRecordName(char *dst, const char *src)
+{
+  if (dst == nullptr)
+  {
+    return;
+  }
+
+  if (src == nullptr)
+  {
+    dst[0] = '\0';
+    return;
+  }
+
+  strncpy(dst, src, RECORD_NAME_MAX_LEN);
+  dst[RECORD_NAME_MAX_LEN] = '\0';
+}
+
+// Fills dst with the legacy "0002"-style name for the given record number.
+void formatDefaultRecordName(int32_t recordNumber, char *dst)
+{
+  char buf[30];
+  formatRecordName(recordNumber, buf);
+  copyRecordName(dst, buf);
+}
+
+static char recordNameToLowerChar(char c)
+{
+  if (c >= 'A' && c <= 'Z')
+  {
+    return (char)(c + ('a' - 'A'));
+  }
+
+  return c;
+}
+
+// Case-insensitive prefix check (answers Q5: "не кейс сенситив").
+bool recordNameStartsWithIgnoreCase(const char *str, const char *prefix, uint8_t prefixLen)
+{
+  if (str == nullptr || prefix == nullptr)
+  {
+    return false;
+  }
+
+  for (uint8_t i = 0; i < prefixLen; i++)
+  {
+    if (str[i] == '\0')
+    {
+      return false;
+    }
+
+    if (recordNameToLowerChar(str[i]) != recordNameToLowerChar(prefix[i]))
+    {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// Case-insensitive equality of visible (trailing-trimmed) names.
+bool recordNamesEqualIgnoreCase(const char *a, const char *b)
+{
+  uint8_t aLen = getRecordNameVisibleLen(a);
+  uint8_t bLen = getRecordNameVisibleLen(b);
+
+  if (aLen != bLen)
+  {
+    return false;
+  }
+
+  if (a == nullptr || b == nullptr)
+  {
+    return false;
+  }
+
+  for (uint8_t i = 0; i < aLen; i++)
+  {
+    if (recordNameToLowerChar(a[i]) != recordNameToLowerChar(b[i]))
+    {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 void halt(const char *message)
