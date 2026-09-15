@@ -5,7 +5,7 @@
 #include "lib/FilmCamerasList.h"
 #include "screens/MessageScreen.h"
 
-// Record name editor (ai task 6): character-by-character entry with
+// Record name editor: character-by-character entry with
 // camera-name autocomplete, delete mode and Ok/Cancel/Delete Mode menu.
 // Redraws only dirty areas (name cell, message line, menu arrow).
 // Both cursors stay visible: white = active, grey = inactive. Footer menu
@@ -114,63 +114,117 @@ bool editRecordName(const char *title,
 
   sanitizeName();
 
-  // First camera list entry whose prefix matches (case-insensitive, Q5).
-  auto findSuggestion = [&](const char *prefix, uint8_t prefixLen) -> const char *
+  // Finds the camera whose beginning best matches the END of the typed word:
+  // the longest suffix of the word (case-insensitive) that equals a prefix of
+  // the camera name. Writes that matched length to matchedLen. This lets a
+  // word typed mid-name (or with a mistyped char) still suggest the right
+  // camera: e.g. "Cc" -> "Canon ..." because the last typed "c" == "C"anon[0].
+  auto findBestMatch = [&](const char *word, uint8_t wordLen, uint8_t *matchedLen) -> const char *
   {
-    if (prefixLen == 0)
+    const char *best = nullptr;
+    uint8_t bestLen = 0;
+
+    if (wordLen == 0)
     {
       return nullptr;
     }
 
     for (int i = 0; i < FILM_CAMERAS_COUNT; i++)
     {
-      if (recordNameStartsWithIgnoreCase(FilmCamerasList[i], prefix, prefixLen))
+      const char *cam = FilmCamerasList[i];
+
+      // Only the first wordLen chars of the camera can match the word.
+      uint8_t camLen = 0;
+      while (cam[camLen] != '\0' && camLen < wordLen)
       {
-        return FilmCamerasList[i];
+        camLen++;
+      }
+
+      // Longest k (down from the longest possible) so that the last k chars
+      // of the word equal cam[0..k-1].
+      uint8_t k = 0;
+      for (uint8_t cand = camLen; cand > bestLen; cand--)
+      {
+        bool ok = true;
+        for (uint8_t j = 0; j < cand; j++)
+        {
+          if (recordNameToLowerChar(word[wordLen - cand + j]) != recordNameToLowerChar(cam[j]))
+          {
+            ok = false;
+            break;
+          }
+        }
+        if (ok)
+        {
+          k = cand;
+          break;
+        }
+      }
+
+      if (k > bestLen)
+      {
+        bestLen = k;
+        best = cam;
+      }
+      if (bestLen == wordLen)
+      {
+        break; // a whole-word match can not be improved
       }
     }
 
-    return nullptr;
+    if (matchedLen != nullptr)
+    {
+      *matchedLen = bestLen;
+    }
+
+    return best;
   };
 
-  // Suggestion state for the current cursor word:
-  // suggTail = not-yet-typed tail of the matched camera name (grey),
-  // suggTailLen = its visible length, suggWordStart = word start in name[].
-  // Rules: match from the last space before the cursor (any position);
-  // show only while everything from the cursor to nameLen is spaces
-  // ("enough room as spaces") and the tail fits into the 40-char limit
-  // (clipped when the cursor is near the end).
+  // Suggestion state for the current word being typed:
+  // suggTail = not-yet-typed tail of the best-matched camera name (grey),
+  // suggTailLen = its visible length, suggShowFrom = absolute column where
+  // the grey tail begins (right after the typed prefix).
+  // Rules: pick the camera whose beginning best matches the typed word
+  // (longest word-suffix == camera-prefix, case-insensitive), so even a
+  // mistyped word still suggests the right camera; show only while everything
+  // from the prefix to nameLen is spaces ("enough room as spaces") and the
+  // tail fits into the 40-char limit (clipped when the cursor is near the end).
   char suggTail[RECORD_NAME_BUF_SIZE] = {0};
   uint8_t suggTailLen = 0;
-  uint8_t suggWordStart = 0;
+  uint8_t suggShowFrom = 0;
 
   auto rebuildSuggestion = [&]()
   {
     suggTail[0] = '\0';
     suggTailLen = 0;
-    suggWordStart = cursor;
+    suggShowFrom = 0;
 
     if (cursor >= RECORD_NAME_MAX_LEN)
     {
       return;
     }
 
-    // Word start: char after the last space before the cursor.
+    // Word start: char after the last space before the cursor, so autocomplete
+    // works mid-name (e.g. "Second measure for C" -> "Canon ...").
     uint8_t wordStart = cursor;
     while (wordStart > 0 && name[wordStart - 1] != ' ')
     {
       wordStart--;
     }
 
-    uint8_t wordLen = (cursor > wordStart) ? (cursor - wordStart) : 0;
+    // Typed prefix spans that word up to and including the char under the
+    // cursor (or up to the end of the typed text when the cursor is past it).
+    uint8_t prefixEnd = (cursor < nameLen) ? (uint8_t)(cursor + 1) : nameLen;
+    uint8_t prefixLen = prefixEnd - wordStart;
 
-    if (wordLen == 0)
+    if (prefixLen == 0)
     {
       return; // fresh word: nothing to complete yet
     }
 
-    // Tail room check: only spaces may follow the cursor.
-    for (uint8_t i = cursor; i < nameLen; i++)
+    // Tail room check: only trailing spaces may follow the typed prefix, so
+    // the grey tail never overwrites characters the user already typed.
+    for (uint8_t i = prefixEnd; i < nameLen; i++)
     {
       if (name[i] != ' ')
       {
@@ -178,15 +232,11 @@ bool editRecordName(const char *title,
       }
     }
 
-    char word[RECORD_NAME_BUF_SIZE] = {0};
-    memcpy(word, &name[wordStart], wordLen);
-    word[wordLen] = '\0';
-
-    const char *match = findSuggestion(word, wordLen);
-
-    if (match == nullptr)
+    uint8_t matchedLen = 0;
+    const char *match = findBestMatch(&name[wordStart], prefixLen, &matchedLen);
+    if (match == nullptr || matchedLen == 0)
     {
-      return;
+      return; // nothing matches even the last typed char
     }
 
     uint8_t matchLen = 0;
@@ -195,14 +245,15 @@ bool editRecordName(const char *title,
       matchLen++;
     }
 
-    if (matchLen <= wordLen)
+    // Tail = camera name remainder after the matched part.
+    if (matchLen <= matchedLen)
     {
-      return; // word already complete
+      return; // camera name already fully typed
     }
 
-    // Clip the tail to the free room: from the cursor to the 40-char end.
-    uint8_t freeRoom = RECORD_NAME_MAX_LEN - cursor;
-    uint8_t tailLen = matchLen - wordLen;
+    // Clip the tail to the free room left before the 40-char end.
+    uint8_t freeRoom = RECORD_NAME_MAX_LEN - prefixEnd;
+    uint8_t tailLen = matchLen - matchedLen;
 
     if (tailLen > freeRoom)
     {
@@ -214,10 +265,10 @@ bool editRecordName(const char *title,
       return;
     }
 
-    memcpy(suggTail, &match[wordLen], tailLen);
+    memcpy(suggTail, &match[matchedLen], tailLen);
     suggTail[tailLen] = '\0';
     suggTailLen = tailLen;
-    suggWordStart = wordStart;
+    suggShowFrom = prefixEnd;
   };
 
   // Visible rows: committed text + current suggestion tail (grey).
@@ -244,9 +295,9 @@ bool editRecordName(const char *title,
       if (pos < nameLen)
       {
         // Suggestion tail overlays trailing spaces, never typed chars.
-        if (pos >= cursor && pos < cursor + suggTailLen && name[pos] == ' ')
+        if (pos >= suggShowFrom && pos < suggShowFrom + suggTailLen && name[pos] == ' ')
         {
-          ch = suggTail[pos - cursor];
+          ch = suggTail[pos - suggShowFrom];
           isSugg = true;
         }
         else
@@ -254,9 +305,9 @@ bool editRecordName(const char *title,
           ch = name[pos];
         }
       }
-      else if (pos >= cursor && pos < cursor + suggTailLen)
+      else if (pos >= suggShowFrom && pos < suggShowFrom + suggTailLen)
       {
-        ch = suggTail[pos - cursor];
+        ch = suggTail[pos - suggShowFrom];
         isSugg = true;
       }
 
@@ -533,6 +584,8 @@ bool editRecordName(const char *title,
         if (newCursor != cursor)
         {
           cursor = (uint8_t)newCursor;
+          rebuildRows();
+          drawNameArea();
           drawCursor();
         }
         holdEncoderSnap = AlexEncoder::counter;
@@ -600,11 +653,14 @@ bool editRecordName(const char *title,
       else
       {
         int16_t newMenu = (int16_t)menuIndex + delta;
-        while (newMenu < 0)
+        if (newMenu < 0)
         {
-          newMenu += kMenuCount;
+          newMenu = 0;
         }
-        newMenu %= kMenuCount;
+        else if (newMenu >= kMenuCount)
+        {
+          newMenu = kMenuCount - 1;
+        }
         if (newMenu != menuIndex)
         {
           menuIndex = (uint8_t)newMenu;
@@ -647,62 +703,21 @@ bool editRecordName(const char *title,
         }
         else if (cursor < RECORD_NAME_MAX_LEN)
         {
-          // Snapshot the tail char for the cell we are about to enter:
-          // suggTail was built for the pre-click cursor position. At the
-          // end (append case) it is suggTail[0]; mid-word over a blank
-          // placeholder the entered cell holds suggTail[1] (index 0 is
-          // the char under the old cursor).
-          char nextSuggChar = '\0';
-          uint8_t preClickCursor = cursor;
-
-          if (suggTailLen > 0)
+          // Click accepts the current cell and advances. When the new cursor
+          // lands past the typed text, the next char is pulled in: from the
+          // suggestion tail when active, otherwise a space (accepts an empty
+          // cell, so several spaces in a row can be entered).
+          cursor++;
+          if (cursor >= nameLen && nameLen < RECORD_NAME_MAX_LEN)
           {
-            if (preClickCursor == nameLen && nameLen < RECORD_NAME_MAX_LEN)
-            {
-              nextSuggChar = suggTail[0];
-            }
-            else if (preClickCursor < nameLen && name[preClickCursor] == ' ' &&
-                     suggTailLen > 1)
-            {
-              nextSuggChar = suggTail[1];
-            }
+            name[nameLen] = (suggTailLen > 0) ? suggTail[0] : ' ';
+            nameLen++;
+            name[nameLen] = '\0';
+            cursor = nameLen - 1;
           }
-
-          // Click on the last cell accepts the char instead of growing:
-          // at max length there is no room to auto-pull the suggestion.
-          if (cursor == nameLen && nameLen < RECORD_NAME_MAX_LEN)
-          {
-            if (name[nameLen] == '\0')
-            {
-              name[nameLen] = (nextSuggChar != '\0') ? nextSuggChar : ' ';
-              nameLen++;
-              name[nameLen] = '\0';
-              nextSuggChar = '\0'; // already consumed
-            }
-            cursor++;
-          }
-          else if (cursor < nameLen)
-          {
-            cursor++;
-          }
-          else
-          {
-            // cursor == nameLen == MAX: just redraw, nothing to advance.
-            rebuildRows();
-            drawNameArea();
-            drawCursor();
-            continue;
-          }
-          if (cursor > nameLen)
+          else if (cursor > nameLen)
           {
             cursor = nameLen;
-          }
-          // Fill the entered cell with the suggestion char when it was a
-          // blank placeholder (mid-word space room).
-          if (nextSuggChar != '\0' && cursor < nameLen && name[cursor] == ' ')
-          {
-            name[cursor] = nextSuggChar;
-            name[nameLen] = '\0';
           }
           rebuildRows();
           drawNameArea();
