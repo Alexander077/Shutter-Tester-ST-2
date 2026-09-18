@@ -12,18 +12,80 @@ struct SuggestStringSymbol
   bool isPartOfSuggest; // true = grey suggestion tail, false = user-typed symbol
 };
 
+// True when a hint is allowed to start at 'index': only at the beginning of a
+// word (string start or right after a non-alphanumeric symbol). Without this
+// rule an empty cell in the typed text lets a hint match in the middle of a
+// word (e.g. "for C" would match "Rec(taflex)").
+static bool isSuggestStartAllowed(const char *currentString, uint8_t index)
+{
+  if (index == 0)
+  {
+    return true;
+  }
+
+  char prev = currentString[index - 1];
+  bool isPrevAlnum = (prev >= 'A' && prev <= 'Z') ||
+                     (prev >= 'a' && prev <= 'z') ||
+                     (prev >= '0' && prev <= '9');
+
+  return !isPrevAlnum;
+}
+
+// Number of hint symbols that are written into the line when the hint matches
+// at 'index' (0 = the hint does not match here). A space in the typed text is
+// an empty cell that any hint symbol fills, the symbols behind the typed text
+// are the grey suggestion tail; the part of the hint that does not fit into
+// the name limit is cut off.
+static uint8_t matchHintAt(const char *hint, const char *currentString,
+                           uint8_t typedLen, uint8_t index)
+{
+  if (index >= typedLen || currentString[index] == ' ')
+  {
+    return 0; // a hint never starts on an empty cell
+  }
+
+  // Full hint length that still fits into the name limit (the tail behind the
+  // typed text is written as well, so it is not compared).
+  uint8_t room = RECORD_NAME_MAX_LEN - index;
+  uint8_t hintLen = 0;
+  while (hint[hintLen] != '\0' && hintLen < room)
+  {
+    hintLen++;
+  }
+
+  // Only the symbols covered by the typed text have to agree.
+  uint8_t typedRoom = typedLen - index;
+  uint8_t checkLen = (hintLen < typedRoom) ? hintLen : typedRoom;
+
+  for (uint8_t j = 0; j < checkLen; j++)
+  {
+    if (currentString[index + j] != ' ' &&
+        recordNameToLowerChar(currentString[index + j]) != recordNameToLowerChar(hint[j]))
+    {
+      return 0; // does not match, the caller tries the next position
+    }
+  }
+
+  return hintLen;
+}
+
 // Builds the suggested line for the currently typed string.
 //
 // currentString : the text typed so far ('\0'-terminated, <= RECORD_NAME_MAX_LEN).
-// out           : receives the resulting line: every typed symbol first
-//                 (isPartOfSuggest == false), then the grey suggestion tail
-//                 (isPartOfSuggest == true), and a terminator with symbol='\0'.
+// out           : receives the resulting line: the typed symbols (user symbols
+//                 are never replaced, empty cells filled by a hint become part
+//                 of the line as well) followed by the grey suggestion tail,
+//                 plus a terminator with symbol='\0'.
 //                 Must be at least RECORD_NAME_BUF_SIZE (41) entries.
 //
 // This is the autocomplete hook: the renderer/click handler below only rely on
 // the symbol/isPartOfSuggest contract, so the matching algorithm inside can be
-// freely changed. Default: pick the camera whose beginning best matches the
-// end of the typed text (case-insensitive), then append its remainder.
+// freely changed.
+//
+// The typed string is scanned from its first symbol. The first camera name
+// from FilmCamerasList that matches wins; the hint is written from this
+// position on (its filled empty cells and its tail are marked as suggestion)
+// and the scan continues behind it.
 void buildSuggestString(const char *currentString, SuggestStringSymbol *out)
 {
   uint8_t typedLen = 0;
@@ -32,92 +94,76 @@ void buildSuggestString(const char *currentString, SuggestStringSymbol *out)
     typedLen++;
   }
 
-  // User-typed symbols come first and are never part of the suggestion.
-  for (uint8_t i = 0; i < typedLen; i++)
+  uint8_t i = 0;
+  while (i < typedLen)
   {
-    out[i].symbol = currentString[i];
-    out[i].isPartOfSuggest = false;
-  }
+    const char *hint = nullptr;
+    uint8_t hintLen = 0;
 
-  // Match against the typed text with trailing spaces trimmed (the camera name
-  // does not continue from trailing spaces).
-  uint8_t lookLen = typedLen;
-  while (lookLen > 0 && currentString[lookLen - 1] == ' ')
-  {
-    lookLen--;
-  }
-
-  uint8_t tailLen = 0;
-  if (lookLen > 0)
-  {
-    const char *best = nullptr;
-    uint8_t bestLen = 0;
-
-    for (int i = 0; i < FILM_CAMERAS_COUNT; i++)
+    if (isSuggestStartAllowed(currentString, i))
     {
-      const char *cam = FilmCamerasList[i];
-      uint8_t camLen = 0;
-      while (cam[camLen] != '\0' && camLen < lookLen)
+      for (int camera = 0; camera < FILM_CAMERAS_COUNT; camera++)
       {
-        camLen++;
-      }
-
-      // Longest k so that the last k typed chars equal cam[0..k-1].
-      uint8_t k = 0;
-      for (uint8_t cand = camLen; cand > bestLen; cand--)
-      {
-        bool ok = true;
-        for (uint8_t j = 0; j < cand; j++)
+        uint8_t len = matchHintAt(FilmCamerasList[camera], currentString, typedLen, i);
+        if (len > 0)
         {
-          if (recordNameToLowerChar(currentString[lookLen - cand + j]) != recordNameToLowerChar(cam[j]))
-          {
-            ok = false;
-            break;
-          }
+          hint = FilmCamerasList[camera];
+          hintLen = len;
+          break; // the first matching camera wins
         }
-        if (ok)
-        {
-          k = cand;
-          break;
-        }
-      }
-
-      if (k > bestLen)
-      {
-        bestLen = k;
-        best = cam;
-      }
-      if (bestLen == lookLen)
-      {
-        break;
       }
     }
 
-    if (best != nullptr && bestLen > 0)
+    if (hint == nullptr)
     {
-      uint8_t freeRoom = RECORD_NAME_MAX_LEN - typedLen;
-      uint8_t i = 0;
-      while (best[bestLen + i] != '\0' && i < freeRoom)
-      {
-        out[typedLen + i].symbol = best[bestLen + i];
-        out[typedLen + i].isPartOfSuggest = true;
-        i++;
-      }
-      tailLen = i;
+      // No suggestion here: the typed symbol stays as it is.
+      out[i].symbol = currentString[i];
+      out[i].isPartOfSuggest = false;
+      i++;
+      continue;
     }
+
+    for (uint8_t j = 0; j < hintLen; j++)
+    {
+      uint8_t pos = i + j;
+
+      if (pos < typedLen && currentString[pos] != ' ')
+      {
+        // A symbol typed by the user is never replaced (only its case may
+        // differ from the camera name).
+        out[pos].symbol = currentString[pos];
+        out[pos].isPartOfSuggest = false;
+      }
+      else if (pos < typedLen && hint[j] == ' ')
+      {
+        // An empty cell that the hint leaves empty as well.
+        out[pos].symbol = ' ';
+        out[pos].isPartOfSuggest = false;
+      }
+      else
+      {
+        // An empty cell filled by the hint or the tail behind the typed text.
+        out[pos].symbol = hint[j];
+        out[pos].isPartOfSuggest = true;
+      }
+    }
+
+    i += hintLen;
   }
 
-  out[typedLen + tailLen].symbol = '\0';
-  out[typedLen + tailLen].isPartOfSuggest = false;
+  out[i].symbol = '\0';
+  out[i].isPartOfSuggest = false;
 }
 
-// Record name editor: character-by-character entry with
 // Record name editor: character-by-character entry with
 // camera-name autocomplete, delete mode and Ok/Cancel/Delete Mode menu.
 // Redraws only dirty areas (name cell, message line, menu arrow).
 // Both cursors stay visible: white = active, grey = inactive. Footer menu
 // position is preserved across focus switches; the long hold toggles focus
 // both ways (no "Back To Edit" item).
+// Delete mode erases on the encoder rotation (to the left - symbols left of
+// the cursor, to the right - the symbol at the cursor, one per detent); a
+// single click there leaves the mode back to INSERT.
 //
 // Returns true on "Ok" (nameOut holds the new name, '\0'-terminated),
 // false on "Cancel" or API abort. isDuplicate() is storage-specific
@@ -241,16 +287,19 @@ bool editRecordName(const char *title,
     }
   };
 
-  // Visible rows: committed text + current suggestion tail (grey).
+  // Visible rows: committed text + suggestion symbols, with a bit per column
+  // telling whether the symbol came from a hint (grey) or from the user
+  // (white). A hint may fill single empty cells inside the typed text, so the
+  // colour cannot be described by a single "grey tail starts here" column.
   char rowText[kNameRows][kNameCharsPerRow + 1];
-  uint8_t rowSuggFrom[kNameRows]; // first grey col in row, 255 = none
+  uint32_t rowSuggMask[kNameRows];
 
   auto rebuildRows = [&]()
   {
     for (uint8_t r = 0; r < kNameRows; r++)
     {
       rowText[r][0] = '\0';
-      rowSuggFrom[r] = 255;
+      rowSuggMask[r] = 0;
     }
 
     rebuildSuggestion();
@@ -268,9 +317,9 @@ bool editRecordName(const char *title,
       rowText[r][c] = suggestResult[pos].symbol;
       rowText[r][c + 1] = '\0';
 
-      if (suggestResult[pos].isPartOfSuggest && rowSuggFrom[r] == 255)
+      if (suggestResult[pos].isPartOfSuggest)
       {
-        rowSuggFrom[r] = c;
+        rowSuggMask[r] |= (1UL << c);
       }
     }
   };
@@ -290,7 +339,7 @@ bool editRecordName(const char *title,
 
   // --- Dirty-state caches ---
   char drawnRows[kNameRows][kNameCharsPerRow + 1] = {{0}};
-  uint8_t drawnSuggFrom[kNameRows] = {255, 255};
+  uint32_t drawnSuggMask[kNameRows] = {0};
   uint8_t drawnCursor = 255;
   EditorFocus drawnFocus = EditorFocus::MENU;
   EditMode drawnMode = EditMode::DELETE_MODE;
@@ -309,37 +358,24 @@ bool editRecordName(const char *title,
     {
       int16_t rowY = (r == 0) ? kNameY0 : kNameY1;
 
-      if (strcmp(drawnRows[r], rowText[r]) != 0 || drawnSuggFrom[r] != rowSuggFrom[r])
+      if (strcmp(drawnRows[r], rowText[r]) != 0 || drawnSuggMask[r] != rowSuggMask[r])
       {
         display->fillRect(kNameX, rowY - 10, kNameW, 12, BLACK);
-        display->setTextColor(WHITE);
         display->setCursor(kNameX, rowY);
 
-        uint8_t rowStart = r * kNameCharsPerRow;
-        uint8_t whiteLen = 0;
-        while (whiteLen < kNameCharsPerRow && rowText[r][whiteLen] != '\0' &&
-               (rowStart + whiteLen) < nameLen)
+        // Colour is chosen per cell: symbols the user typed (including his own
+        // spaces) are white, symbols that came from a hint - an empty cell the
+        // hint filled or the grey tail behind the typed text - are grey.
+        for (uint8_t i = 0; i < kNameCharsPerRow && rowText[r][i] != '\0'; i++)
         {
-          whiteLen++;
-        }
-        for (uint8_t i = 0; i < whiteLen; i++)
-        {
+          bool isSugg = (rowSuggMask[r] & (1UL << i)) != 0;
+          display->setTextColor(isSugg ? DARKGREY : WHITE);
           display->print(rowText[r][i]);
         }
 
-        if (rowSuggFrom[r] != 255)
-        {
-          display->setCursor(kNameX + (int16_t)rowSuggFrom[r] * 6, rowY);
-          display->setTextColor(DARKGREY);
-          for (uint8_t i = rowSuggFrom[r]; rowText[r][i] != '\0'; i++)
-          {
-            display->print(rowText[r][i]);
-          }
-          display->setTextColor(WHITE);
-        }
-
+        display->setTextColor(WHITE);
         strcpy(drawnRows[r], rowText[r]);
-        drawnSuggFrom[r] = rowSuggFrom[r];
+        drawnSuggMask[r] = rowSuggMask[r];
         drawnCursor = 255;
       }
     }
@@ -362,19 +398,23 @@ bool editRecordName(const char *title,
         int16_t rowY = (r == 0) ? kNameY0 : kNameY1;
         display->fillRect(kNameX + c * 6, rowY - 10, 6, 12, BLACK);
         display->setCursor(kNameX + c * 6, rowY);
-        // Restore the underlying cell: committed char (white) or the live
-        // suggestion tail char (grey) from the current rowText.
+        // Restore the underlying cell: the symbol actually drawn in it
+        // (rowText holds the grey suggestion symbols that fill the empty cells
+        // of the typed text as well), falling back to the committed symbol.
         char ch = ' ';
-        bool isSuggCell = true;
-        if (drawnCursor < nameLen)
-        {
-          ch = name[drawnCursor];
-          isSuggCell = false;
-        }
-        else if (r < kNameRows && c < kNameCharsPerRow && rowText[r][c] != '\0')
+        if (r < kNameRows && c < kNameCharsPerRow && rowText[r][c] != '\0')
         {
           ch = rowText[r][c];
         }
+        else if (drawnCursor < nameLen)
+        {
+          ch = name[drawnCursor];
+        }
+
+        // Grey = the tail behind the typed text and the empty cells filled by
+        // the suggestion inside it; white = everything the user typed himself.
+        bool isSuggCell = (drawnCursor >= nameLen) ||
+                          (drawnCursor < suggestResultLen && suggestResult[drawnCursor].isPartOfSuggest);
         display->setTextColor(isSuggCell ? DARKGREY : WHITE);
         display->print(ch);
         display->setTextColor(WHITE);
@@ -393,8 +433,23 @@ bool editRecordName(const char *title,
         display->setCursor(kNameX + c * 6, rowY);
         if (mode == EditMode::INSERT)
         {
-          char ch = (cursor < nameLen) ? name[cursor] : ' ';
-          display->setTextColor(cursorColor);
+          // The cell shows the symbol actually drawn in it: a suggestion symbol
+          // stays grey (it is not the user's own symbol yet, a click accepts
+          // it), symbols the user typed are drawn in the cursor colour. The
+          // cursor itself is the line under the symbol.
+          char ch = ' ';
+          bool isSuggCell = false;
+          if (r < kNameRows && c < kNameCharsPerRow && rowText[r][c] != '\0')
+          {
+            ch = rowText[r][c];
+            isSuggCell = (cursor < suggestResultLen) && suggestResult[cursor].isPartOfSuggest;
+          }
+          else if (cursor < nameLen)
+          {
+            ch = name[cursor];
+          }
+
+          display->setTextColor(isSuggCell ? DARKGREY : cursorColor);
           display->print(ch);
           display->drawLine(kNameX + c * 6, rowY + 1, kNameX + c * 6 + 5, rowY + 1, cursorColor);
         }
@@ -597,6 +652,56 @@ bool editRecordName(const char *title,
             drawMessageArea();
           }
         }
+        else
+        {
+          // DELETE mode: the encoder rotation erases symbols - to the left
+          // erases one symbol left of the cursor per detent (the cursor
+          // follows to the left), to the right - the symbol at the cursor per
+          // detent (the next symbol slides under the cursor). A click leaves
+          // the mode; moving the cursor stays on hold + rotation, which
+          // consumes the rotation before this point.
+          if (delta > 0)
+          {
+            for (int32_t k = 0; k < (int32_t)delta; k++)
+            {
+              if (cursor >= nameLen || nameLen == 0)
+              {
+                break;
+              }
+
+              memmove(&name[cursor], &name[cursor + 1], nameLen - cursor);
+              nameLen--;
+              name[nameLen] = '\0';
+            }
+          }
+          else
+          {
+            for (int32_t k = 0; k < -(int32_t)delta; k++)
+            {
+              if (cursor == 0 || nameLen == 0)
+              {
+                break;
+              }
+
+              uint8_t delPos = cursor - 1;
+              if (delPos >= nameLen)
+              {
+                break;
+              }
+
+              memmove(&name[delPos], &name[delPos + 1], nameLen - delPos);
+              nameLen--;
+              name[nameLen] = '\0';
+              cursor = delPos;
+            }
+          }
+
+          setMessage("");
+          rebuildRows();
+          drawNameArea();
+          drawCursor();
+          drawMessageArea();
+        }
       }
       else
       {
@@ -628,44 +733,55 @@ bool editRecordName(const char *title,
         holdMovedCursor = false;
         encoderSnap = AlexEncoder::counter;
       }
+      // In DELETE mode erasing is done with the encoder rotation (see above)
+      // and a single click leaves the mode back to INSERT (Delete Mode [Off]);
+      // moving the cursor stays on the long hold.
+      else if (focus == EditorFocus::EDIT && mode == EditMode::DELETE_MODE)
+      {
+        mode = EditMode::INSERT;
+        drawCursor();
+        drawDeleteFlag();
+        drawMenuArrow();
+        encoderSnap = AlexEncoder::counter;
+      }
       else if (focus == EditorFocus::EDIT)
       {
-        if (mode == EditMode::DELETE_MODE)
+        if (cursor < RECORD_NAME_MAX_LEN)
         {
-          if (cursor > 0 && nameLen > 0)
+          // Click accepts the suggestion symbol under the cursor (a grey symbol
+          // in an empty cell inside the typed text), so the saved name matches
+          // the line shown on the display. When there is nothing to accept, the
+          // cursor moves on; when it lands past the typed text, the next char
+          // is pulled in: from the suggestion tail when active, otherwise a
+          // space (accepts an empty cell, so several spaces in a row can be
+          // entered).
+          if (cursor < nameLen && suggestResult[cursor].isPartOfSuggest &&
+              suggestResult[cursor].symbol != name[cursor])
           {
-            uint8_t delPos = cursor - 1;
-            if (delPos < nameLen)
+            name[cursor] = suggestResult[cursor].symbol;
+          }
+          else
+          {
+            cursor++;
+            if (cursor >= nameLen && nameLen < RECORD_NAME_MAX_LEN)
             {
-              memmove(&name[delPos], &name[delPos + 1], nameLen - delPos);
-              nameLen--;
+              name[nameLen] = (suggestResultLen > nameLen) ? suggestResult[nameLen].symbol : ' ';
+              nameLen++;
               name[nameLen] = '\0';
+              cursor = nameLen - 1;
             }
-            cursor = delPos;
-            setMessage("");
-            rebuildRows();
-            drawNameArea();
-            drawCursor();
-            drawMessageArea();
-          }
-        }
-        else if (cursor < RECORD_NAME_MAX_LEN)
-        {
-          // Click accepts the current cell and advances. When the new cursor
-          // lands past the typed text, the next char is pulled in: from the
-          // suggestion tail when active, otherwise a space (accepts an empty
-          // cell, so several spaces in a row can be entered).
-          cursor++;
-          if (cursor >= nameLen && nameLen < RECORD_NAME_MAX_LEN)
-          {
-            name[nameLen] = (suggestResultLen > nameLen) ? suggestResult[nameLen].symbol : ' ';
-            nameLen++;
-            name[nameLen] = '\0';
-            cursor = nameLen - 1;
-          }
-          else if (cursor > nameLen)
-          {
-            cursor = nameLen;
+            else if (cursor > nameLen)
+            {
+              cursor = nameLen;
+            }
+
+            // The cell the cursor landed on may hold a suggestion symbol as
+            // well (the hint filled an empty cell inside the typed text).
+            if (cursor < nameLen && suggestResult[cursor].isPartOfSuggest &&
+                suggestResult[cursor].symbol != name[cursor])
+            {
+              name[cursor] = suggestResult[cursor].symbol;
+            }
           }
           rebuildRows();
           drawNameArea();
@@ -676,6 +792,17 @@ bool editRecordName(const char *title,
       {
         if (menuIndex == 0)
         {
+          // Empty cells inside the typed text that the suggestion filled are
+          // applied now, so the saved name matches the line the user saw (the
+          // grey tail behind the typed text stays a hint only).
+          for (uint8_t pos = 0; pos < nameLen; pos++)
+          {
+            if (suggestResult[pos].isPartOfSuggest && suggestResult[pos].symbol != name[pos])
+            {
+              name[pos] = suggestResult[pos].symbol;
+            }
+          }
+
           if (isRecordNameEmpty(name))
           {
             setMessage("Name is empty");

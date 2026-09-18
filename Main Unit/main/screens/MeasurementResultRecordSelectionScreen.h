@@ -37,7 +37,7 @@ inline bool isSeriesSaveNameDuplicate(const char *name)
   return isSeriesRecordNameTaken(name, seriesSaveExcludeRecordNumber);
 }
 
-// Record list shows user names (ai task 6): small font, up to 2 rows per
+// Record list shows user names: small font, up to 2 rows per
 // record, trailing spaces trimmed. Both record types expose .name, so one
 // template helper serves both storages.
 template <typename StorageT>

@@ -30,7 +30,7 @@ SeriesStorageManager seriesStorage(SERIES_FILE_PATH);
 // then reads it back to verify the written zeroes.
 void initRecordsFile(const char *filePath, int32_t totalCount, int16_t blockSize);
 
-// --- Migration from the nameless record layout (ai task 6) ---
+// --- Migration from the nameless record layout ---
 // Old on-flash layouts: identical to the current structs but without the
 // trailing 'name' field. Kept only to recognize and convert files written
 // by previous firmware versions.

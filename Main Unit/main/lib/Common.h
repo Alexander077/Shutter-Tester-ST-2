@@ -35,7 +35,7 @@
 #define NOT_AVAILABLE_FOR_LEAF_SHUTERS -5
 #define SENSOR_TIME_IS_TOO_SHORT -6
 
-// User-editable record name limits (see ai task 6). Stored as fixed char
+// User-editable record name limits. Stored as fixed char
 // array in StoredMeasuredResult / StoredMeasuredSeries, always '\0'-terminated.
 #define RECORD_NAME_MAX_LEN 40
 #define RECORD_NAME_BUF_SIZE (RECORD_NAME_MAX_LEN + 1)
