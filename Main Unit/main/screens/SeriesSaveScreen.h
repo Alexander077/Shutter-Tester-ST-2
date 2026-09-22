@@ -8,6 +8,7 @@
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "lib/serialAPI.h"
 #include <vector>
+#include "RecordNameChoiceScreen.h"
 
 enum class SeriesSaveScreenResult
 {

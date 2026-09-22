@@ -7,6 +7,7 @@
 #include "screens/RecordNameEditor.h"
 #include "screens/MeasurementResultRecordSelectionScreen.h"
 #include "lib/serialAPI.h"
+#include "RecordNameChoiceScreen.h"
 
 enum class MeasurementSaveScreenResult
 {

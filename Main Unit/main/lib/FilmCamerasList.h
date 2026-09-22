@@ -665,6 +665,7 @@ static const char *FilmCamerasList[FILM_CAMERAS_COUNT] =
   "Moskva 2",
   "Moskva 4",
   "Moskva 5",
+  "Nikon",
   "Nikon 28Ti",
   "Nikon 35 Ti",
   "Nikon EL",

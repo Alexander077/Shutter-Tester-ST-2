@@ -70,22 +70,6 @@ static uint8_t matchHintAt(const char *hint, const char *currentString,
 }
 
 // Builds the suggested line for the currently typed string.
-//
-// currentString : the text typed so far ('\0'-terminated, <= RECORD_NAME_MAX_LEN).
-// out           : receives the resulting line: the typed symbols (user symbols
-//                 are never replaced, empty cells filled by a hint become part
-//                 of the line as well) followed by the grey suggestion tail,
-//                 plus a terminator with symbol='\0'.
-//                 Must be at least RECORD_NAME_BUF_SIZE (41) entries.
-//
-// This is the autocomplete hook: the renderer/click handler below only rely on
-// the symbol/isPartOfSuggest contract, so the matching algorithm inside can be
-// freely changed.
-//
-// The typed string is scanned from its first symbol. The first camera name
-// from FilmCamerasList that matches wins; the hint is written from this
-// position on (its filled empty cells and its tail are marked as suggestion)
-// and the scan continues behind it.
 void buildSuggestString(const char *currentString, SuggestStringSymbol *out)
 {
   uint8_t typedLen = 0;
@@ -162,12 +146,9 @@ void buildSuggestString(const char *currentString, SuggestStringSymbol *out)
 // position is preserved across focus switches; the long hold toggles focus
 // both ways (no "Back To Edit" item).
 // Delete mode erases on the encoder rotation (to the left - symbols left of
-// the cursor, to the right - the symbol at the cursor, one per detent); a
-// single click there leaves the mode back to INSERT.
-//
-// Returns true on "Ok" (nameOut holds the new name, '\0'-terminated),
-// false on "Cancel" or API abort. isDuplicate() is storage-specific
-// (measurements vs series) and must already exclude the overwritten record.
+// the cursor, to the right - the symbol at the cursor, one per detent)
+// The cursor (hold + rotation) travels over the whole suggested line, the
+// grey suggestion tail included
 bool editRecordName(const char *title,
                     char nameOut[RECORD_NAME_BUF_SIZE],
                     const char *initialName,
@@ -321,6 +302,27 @@ bool editRecordName(const char *title,
       {
         rowSuggMask[r] |= (1UL << c);
       }
+    }
+  };
+
+  // Takes the live suggestion into the typed text up to and including the
+  // cursor: the cells behind the typed text are filled with the symbols shown
+  // in the suggestion line (a space when the suggestion is over), so a cursor
+  // placed inside the grey suggestion tail becomes an editable position of the
+  // name. The cursor is clamped when the name limit is reached.
+  auto acceptSuggestUpToCursor = [&]()
+  {
+    while (nameLen <= cursor && nameLen < RECORD_NAME_MAX_LEN)
+    {
+      name[nameLen] = (nameLen < suggestResultLen) ? suggestResult[nameLen].symbol : ' ';
+      nameLen++;
+    }
+
+    name[nameLen] = '\0';
+
+    if (cursor > nameLen)
+    {
+      cursor = nameLen;
     }
   };
 
@@ -575,14 +577,20 @@ bool editRecordName(const char *title,
       int16_t heldDelta = AlexEncoder::counter - holdEncoderSnap;
       if (heldDelta != 0)
       {
+        // The cursor travels over the whole suggested line - the typed text and
+        // the grey suggestion tail behind it - so a space inside a hint does not
+        // stop the movement. In DELETE mode only the typed text can be reached:
+        // the tail holds no symbols of the name which could be erased.
+        int16_t moveLimit = (mode == EditMode::INSERT) ? (int16_t)suggestResultLen
+                                                       : (int16_t)nameLen;
         int16_t newCursor = (int16_t)cursor + heldDelta;
         if (newCursor < 0)
         {
           newCursor = 0;
         }
-        if (newCursor > nameLen)
+        if (newCursor > moveLimit)
         {
-          newCursor = nameLen;
+          newCursor = moveLimit;
         }
         if (newCursor != cursor)
         {
@@ -625,6 +633,17 @@ bool editRecordName(const char *title,
       {
         if (mode == EditMode::INSERT)
         {
+          // A cursor moved into the grey suggestion tail (hold + rotation) is
+          // materialised first: the symbols it passed and the symbol under it
+          // become the user's own, so the cell under the cursor is cycled like
+          // any typed symbol (the charset goes on from the hint symbol).
+          bool suggestionTaken = false;
+          if (cursor > nameLen)
+          {
+            acceptSuggestUpToCursor();
+            suggestionTaken = true;
+          }
+
           if (cursor == nameLen && nameLen < RECORD_NAME_MAX_LEN)
           {
             name[nameLen] = ' ';
@@ -645,6 +664,16 @@ bool editRecordName(const char *title,
             }
             name[cursor] = kCharset[idx];
             name[nameLen] = '\0';
+            setMessage("");
+            rebuildRows();
+            drawNameArea();
+            drawCursor();
+            drawMessageArea();
+          }
+          else if (suggestionTaken)
+          {
+            // The name limit was reached while taking the suggestion: there is
+            // no cell to cycle, only the taken symbols have to be shown.
             setMessage("");
             rebuildRows();
             drawNameArea();
@@ -748,15 +777,20 @@ bool editRecordName(const char *title,
       {
         if (cursor < RECORD_NAME_MAX_LEN)
         {
-          // Click accepts the suggestion symbol under the cursor (a grey symbol
-          // in an empty cell inside the typed text), so the saved name matches
-          // the line shown on the display. When there is nothing to accept, the
-          // cursor moves on; when it lands past the typed text, the next char
-          // is pulled in: from the suggestion tail when active, otherwise a
-          // space (accepts an empty cell, so several spaces in a row can be
-          // entered).
-          if (cursor < nameLen && suggestResult[cursor].isPartOfSuggest &&
-              suggestResult[cursor].symbol != name[cursor])
+          // Click accepts the suggestion under the cursor: a grey symbol in an
+          // empty cell inside the typed text, or the whole grey tail up to the
+          // cursor when it was moved into it by hold + rotation (so the saved
+          // name matches the line shown on the display). When there is nothing
+          // to accept, the cursor moves on; when it lands past the typed text,
+          // the next char is pulled in: from the suggestion tail when active,
+          // otherwise a space (accepts an empty cell, so several spaces in a
+          // row can be entered).
+          if (cursor > nameLen)
+          {
+            acceptSuggestUpToCursor();
+          }
+          else if (cursor < nameLen && suggestResult[cursor].isPartOfSuggest &&
+                   suggestResult[cursor].symbol != name[cursor])
           {
             name[cursor] = suggestResult[cursor].symbol;
           }
@@ -833,6 +867,12 @@ bool editRecordName(const char *title,
           // from DELETE happens via the long hold (see above).
           mode = (mode == EditMode::DELETE_MODE) ? EditMode::INSERT : EditMode::DELETE_MODE;
           focus = EditorFocus::EDIT;
+          // Erasing works on the typed text only: a cursor which stood inside
+          // the grey suggestion tail steps back to the end of the name.
+          if (cursor > nameLen)
+          {
+            cursor = nameLen;
+          }
           drawCursor();
           drawDeleteFlag();
           drawMenuArrow();
@@ -847,37 +887,3 @@ bool editRecordName(const char *title,
 
   return confirmed;
 }
-
-bool drawRecordNameChoiceScreen(const char *defaultName,
-                                char chosenName[RECORD_NAME_BUF_SIZE],
-                                const char *prefillName,
-                                bool (*isDuplicate)(const char *))
-{
-  char saveAsDefault[RECORD_NAME_BUF_SIZE + 12];
-  snprintf(saveAsDefault, sizeof(saveAsDefault), "Save as '%s'", defaultName);
-
-  const char *optsAlive[2] = {saveAsDefault, "Save as..."};
-
-  int16_t choice = drawMessageScreen("Choose name", 2, optsAlive);
-
-  if (isApiRequestReceived)
-  {
-    return false;
-  }
-
-  if (choice == 0)
-  {
-    copyRecordName(chosenName, defaultName);
-    return true;
-  }
-
-  if (choice == 1)
-  {
-    return editRecordName("Enter name:", chosenName, prefillName, isDuplicate);
-  }
-
-  return false;
-}
-
-
-
