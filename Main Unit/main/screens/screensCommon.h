@@ -305,3 +305,8 @@ void drawStringRightAligned(const char *str, int16_t rightX, int16_t y)
 // Defined in screens/MeasuredResult.h; declared here so that SeriesReport.h
 // does not depend on the header include order.
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount);
+
+// Defined in screens/MeasurementResultRecordSelectionScreen.h; declared here so
+// that the camera name picker (CameraNameSelectionScreen.h) can split long
+// camera names without pulling in the records-management headers.
+void splitNameTwoLines(const char *name, char *line1, char *line2, uint8_t charsPerLine);

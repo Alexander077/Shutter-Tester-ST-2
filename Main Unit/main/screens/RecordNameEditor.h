@@ -3,6 +3,7 @@
 #include "screensCommon.h"
 #include "lib/AlexEncoder.h"
 #include "lib/FilmCamerasList.h"
+#include "screens/CameraNameSelectionScreen.h"
 #include "screens/MessageScreen.h"
 
 // One symbol of the final suggested name line.
@@ -171,8 +172,10 @@ bool editRecordName(const char *title,
     DELETE_MODE
   };
 
-  static const char *kMenuItems[] = {"Ok", "Cancel", "Delete Mode"};
-  static const uint8_t kMenuCount = 3;
+  static const char *kMenuItems[] = {"Ok", "Cancel", "Delete Mode", "Insert Camera Name"};
+  static const uint8_t kMenuCount = 4;
+  static const uint8_t kDeleteModeItem = 2;      // its On/Off flag is drawn separately
+  static const uint8_t kInsertCameraNameItem = 3;
 
   // Layout: the whole 40-symbol name is always visible as two centred rows of
   // 20 symbols (u8g2_font_6x13_tf is 6px wide -> a 120px field with 20px
@@ -336,18 +339,28 @@ bool editRecordName(const char *title,
     }
   };
 
-  // --- Static layout (drawn once) ---
-  display->fillScreen(BLACK);
-  display->setFont(u8g2_font_6x13_tf);
-  display->setTextColor(WHITE);
-  drawStringHCentered(title, kTitleY);
-  // All items except "Delete Mode" (its On/Off flag is drawn by
-  // drawDeleteFlag() below so it can be updated without a full redraw).
-  for (uint8_t i = 0; i < kMenuCount - 1; i++)
+  // --- Static layout (title + footer menu labels) ---
+  auto drawStaticLayout = [&]()
   {
-    display->setCursor(kMenuX, kMenuY + i * kMenuRowH);
-    display->print(kMenuItems[i]);
-  }
+    display->fillScreen(BLACK);
+    display->setFont(u8g2_font_6x13_tf);
+    display->setTextColor(WHITE);
+    drawStringHCentered(title, kTitleY);
+    // All items except "Delete Mode" (its On/Off flag is drawn by
+    // drawDeleteFlag() below so it can be updated without a full redraw).
+    for (uint8_t i = 0; i < kMenuCount; i++)
+    {
+      if (i == kDeleteModeItem)
+      {
+        continue;
+      }
+
+      display->setCursor(kMenuX, kMenuY + i * kMenuRowH);
+      display->print(kMenuItems[i]);
+    }
+  };
+
+  drawStaticLayout();
 
   // --- Dirty-state caches ---
   char drawnRows[kNameRows][kNameCharsPerRow + 1] = {{0}};
@@ -577,7 +590,7 @@ bool editRecordName(const char *title,
 
     if (!drawnDeleteFlagOnce || drawnDeleteFlag != isOn)
     {
-      static const uint8_t kDeleteItem = kMenuCount - 1;
+      static const uint8_t kDeleteItem = kDeleteModeItem;
       int16_t rowY = kMenuY + kDeleteItem * kMenuRowH;
       display->setFont(u8g2_font_6x13_tf);
       display->fillRect(kMenuX, rowY - 10, display->width() - kMenuX, 12, BLACK);
@@ -667,12 +680,35 @@ bool editRecordName(const char *title,
     }
   };
 
-  rebuildRows();
-  drawNameArea();
-  drawCursor();
-  drawDeleteFlag();
-  drawMenuArrow();
-  drawMessageArea();
+  // Restores the editor screen from scratch (used at startup and after the
+  // camera picker wiped the display): every dirty cache is dropped first, so
+  // all areas are repainted.
+  auto redrawAll = [&]()
+  {
+    for (uint8_t r = 0; r < kNameRows; r++)
+    {
+      drawnRows[r][0] = '\0';
+      drawnSuggMask[r] = 0;
+    }
+    drawnCursor = 255;
+    drawnFocus = EditorFocus::MENU;
+    drawnMode = EditMode::DELETE_MODE;
+    drawnMenuIndex = 255;
+    drawnMenuActive = EditorFocus::MENU;
+    drawnDeleteFlagOnce = false;
+    drawnMessage[0] = '\0';
+    drawnMessageOnce = false;
+
+    rebuildRows();
+    drawStaticLayout();
+    drawNameArea();
+    drawCursor();
+    drawDeleteFlag();
+    drawMenuArrow();
+    drawMessageArea();
+  };
+
+  redrawAll();
 
   int16_t encoderSnap = AlexEncoder::counter;
   bool holdArmed = false;
@@ -1004,6 +1040,59 @@ bool editRecordName(const char *title,
           drawDeleteFlag();
           drawMenuArrow();
           drawMessageArea();
+          encoderSnap = AlexEncoder::counter;
+        }
+        else if (menuIndex == kInsertCameraNameItem)
+        {
+          // Camera picker: brand -> model. The chosen camera name overwrites
+          // the name cells starting at the cursor (a grey suggestion cell
+          // included); the part that does not fit before the name limit is
+          // cut off.
+          char cameraName[RECORD_NAME_BUF_SIZE];
+
+          if (pickCameraName(cameraName))
+          {
+            // Cells between the typed text and the cursor (the grey suggestion
+            // tail) are materialised first, so the line keeps the symbols the
+            // user saw before the camera name overwrites them.
+            acceptSuggestUpToCursor();
+
+            uint8_t room = RECORD_NAME_MAX_LEN - cursor;
+
+            if (room > 0)
+            {
+              uint8_t insertLen = strlen(cameraName);
+
+              if (insertLen > room)
+              {
+                insertLen = room;
+              }
+
+              for (uint8_t i = 0; i < insertLen; i++)
+              {
+                name[cursor + i] = cameraName[i];
+              }
+
+              if (cursor + insertLen > nameLen)
+              {
+                nameLen = cursor + insertLen;
+              }
+
+              name[nameLen] = '\0';
+              cursor += insertLen;
+            }
+
+            setMessage("");
+            focus = EditorFocus::EDIT;
+          }
+
+          if (isApiRequestReceived)
+          {
+            return false; // ВЫХОД ДЛЯ API
+          }
+
+          // Both picker screens wipe the display: draw the editor again.
+          redrawAll();
           encoderSnap = AlexEncoder::counter;
         }
       }
