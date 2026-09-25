@@ -456,7 +456,7 @@ static const char *FilmCamerasList[FILM_CAMERAS_COUNT] =
   "Kodak Six-20",
   "Koni-Omega Rapid",
   "Koni-Omega Rapid M",
-  "Koni-Omegaflex",
+  "Koni-Omegaflex M",
   "Konica Auto S",
   "Konica Auto S2",
   "Konica Auto S3",

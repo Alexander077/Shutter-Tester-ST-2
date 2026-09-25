@@ -47,6 +47,7 @@
 * `SerialNumber.h` — генерация и хранение серийного номера устройства (10 символов) в NVS.
 * `FirmwareUpdate.h` — OTA-обновление: приём base64, расшифровка AES-256-CBC, запись в OTA-раздел, переключение загрузочного раздела и перезагрузка; содержит `AesKey` и `AesIvInit`.
 * `FilmCamerasList.h` — массив `FilmCamerasList` (1161 название плёночных камер) для автоподсказок редактора имён.
+* `FilmCameraBrandsList.h` — массив `FilmCameraBrandsList` (73 бренда плёночных камер, выделенные из `FilmCamerasList`); модельные линейки сведены к бренду (Canonet → Canon, Rolleiflex/Rolleicord → Rollei, Fujica → Fuji, Leicaflex → Leica, Ricohflex/Ricohmatic → Ricoh, Beautyflex → Beauty), составные бренды целиком (Bell & Howell, Zeiss Ikon).
 * `AceSorting/` — сторонняя библиотека сортировки (используется `shellSortKnuth`).
 
 ### main/recordsManagement/
