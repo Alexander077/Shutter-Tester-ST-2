@@ -141,20 +141,21 @@ void buildSuggestString(const char *currentString, SuggestStringSymbol *out)
 
 // Record name editor: character-by-character entry with
 // camera-name autocomplete, delete mode and Ok/Cancel/Delete Mode menu.
-// Redraws only dirty areas (name cell, message line, menu arrow).
+// Redraws only dirty areas (name rows and cells, message line, menu arrow,
+// delete-mode flag).
 // Both cursors stay visible: white = active, grey = inactive. Footer menu
 // position is preserved across focus switches; the long hold toggles focus
 // both ways (no "Back To Edit" item).
 // Delete mode erases on the encoder rotation (to the left - symbols left of
 // the cursor, to the right - the symbol at the cursor, one per detent)
-// The cursor (hold + rotation) travels over the whole suggested line, the
-// grey suggestion tail included
+// The cursor (hold + rotation) travels over the whole suggested line (the
+// grey suggestion tail included; in DELETE mode only the typed text)
 bool editRecordName(const char *title,
                     char nameOut[RECORD_NAME_BUF_SIZE],
                     const char *initialName,
                     bool (*isDuplicate)(const char *))
 {
-  // Charset in encoder order (space first = visible empty slot, Q4).
+  // Charset in encoder order (space first = visible empty slot).
   static const char kCharset[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-()+<>{}[]/#.*&";
   static const uint8_t kCharsetLen = sizeof(kCharset) - 1; // without '\0'
 
@@ -259,7 +260,9 @@ bool editRecordName(const char *title,
 
   // Resulting suggested line, rebuilt via the buildSuggestString hook on every
   // user edit. Row rendering and click handling read suggestResult directly:
-  // entries with isPartOfSuggest == true are the grey suggestion tail.
+  // entries with isPartOfSuggest == true are drawn in grey: the suggestion
+  // tail behind the typed text, as well as the single empty cells inside the
+  // typed text that a hint filled.
   SuggestStringSymbol suggestResult[RECORD_NAME_BUF_SIZE] = {};
   uint8_t suggestResultLen = 0;
 
@@ -374,7 +377,7 @@ bool editRecordName(const char *title,
         // Cursors of the edge positions live in the margins beside the field,
         // out of the row rect: wipe them as well, otherwise they would stay
         // behind. (The delete-mode bar of the first symbol sits left of the
-        // field, the end cursor of a full 40-symbol name right of it.)
+        // field, the cursor of position 40 right of it.)
         display->fillRect(kNameX - 1, rowY - 10, 1, kNameCellH, BLACK);
 
         if (r == kNameRows - 1)
@@ -399,7 +402,7 @@ bool editRecordName(const char *title,
         drawnSuggMask[r] = rowSuggMask[r];
 
         // The drawn cursor mark is wiped only when this redraw touched the row
-        // it stands in (the end cursor of a full name lives in the right margin
+        // it stands in (the cursor of position 40 lives in the right margin
         // of the last row). A redraw of the other row leaves the mark on screen,
         // so the cursor cache must stay valid: the erase step then repaints that
         // cell identically (no flicker).
@@ -416,8 +419,8 @@ bool editRecordName(const char *title,
   };
 
   // Cell geometry of a name cursor position. Positions 0..39 sit inside the two
-  // name rows; the end position of a full 40-symbol name is drawn in the right
-  // margin behind the field, so the cursor never stays invisible.
+  // name rows; position 40 (the end of the shown 40-symbol line) is drawn
+  // in the right margin behind the field, so the cursor never stays invisible.
   struct CursorPos
   {
     int16_t rowY;  // baseline of the row the cursor belongs to
@@ -753,10 +756,10 @@ bool editRecordName(const char *title,
         }
         else if (mode == EditMode::INSERT)
         {
-          // A cell which is shown as a grey suggestion symbol is materialised
-          // first: the symbols the cursor passed and the symbol under it become
-          // the user's own, so the charset goes on from the symbol he actually
-          // sees instead of jumping to the start of the charset.
+          // A grey tail cell (the cursor stands at or behind the typed text)
+          // is materialised first: the symbols the cursor passed and the symbol
+          // under it become the user's own, so the charset goes on from the
+          // symbol he actually sees instead of jumping to the charset start.
           bool suggestionTaken = false;
 
           if (cursor >= nameLen && cursor < suggestResultLen &&

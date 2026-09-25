@@ -193,7 +193,7 @@ static char recordNameToLowerChar(char c)
   return c;
 }
 
-// Case-insensitive prefix check (answers Q5: "не кейс сенситив").
+// Case-insensitive prefix check for record names.
 bool recordNameStartsWithIgnoreCase(const char *str, const char *prefix, uint8_t prefixLen)
 {
   if (str == nullptr || prefix == nullptr)

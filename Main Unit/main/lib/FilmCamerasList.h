@@ -1,6 +1,6 @@
 #pragma once
 
-static const int FILM_CAMERAS_COUNT = 1160;
+static const int FILM_CAMERAS_COUNT = 1161;
 
 static const char *FilmCamerasList[FILM_CAMERAS_COUNT] = 
 {

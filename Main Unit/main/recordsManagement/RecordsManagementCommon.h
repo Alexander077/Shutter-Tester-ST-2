@@ -184,8 +184,8 @@ void fillEmptyRecordNames(ManagerT &manager)
   }
 }
 
-// Case-insensitive duplicate check inside one storage (Q1: separately;
-// Q2: the record being overwritten is excluded via excludeRecordNumber).
+// Case-insensitive duplicate check inside one storage (the record being
+// overwritten is excluded via excludeRecordNumber).
 // Stored records with empty names never count as duplicates.
 template <typename ManagerT, typename RecordT>
 bool isRecordNameTaken(ManagerT &manager, const char *name, int32_t excludeRecordNumber = -1)
