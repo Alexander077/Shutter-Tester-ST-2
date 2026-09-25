@@ -173,9 +173,12 @@ bool saveSeriesWithName(MeasurementSeries &series,
   char defaultName[RECORD_NAME_BUF_SIZE];
   formatDefaultRecordName(targetNumber, defaultName);
 
+  // Prefill: only an explicitly chosen record to overwrite ("Sel. rec. to
+  // overwrite") starts from its current name; Yes/Oldest/Newest open with an
+  // empty field, so a fresh name can be typed right away.
   char prefill[RECORD_NAME_BUF_SIZE] = {0};
 
-  if (!isNewRecord && targetNumber > 0)
+  if (recordNumberToOverwrite > 0 && targetNumber > 0)
   {
     StoredMeasuredSeries existing = seriesStorage.getRecordByNumber(targetNumber);
 
