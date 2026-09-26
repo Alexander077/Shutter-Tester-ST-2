@@ -57,7 +57,7 @@
 * `StoredMeasuredSeries.h` — структура сохраняемой серии (`recordNumber`, `isDeleted`, `measurementCount`, массив `results[MEASUREMENT_SERIES_MAX_SIZE]`, `name[41]`).
 
 ### main/screens/
-* `screensCommon.h` — общие функции отрисовки текста (`getStringRect`, `drawStringHCentered`, `drawStringRightAligned`), `Rect`, `SeriesField` (включая скорость датчиков 1/X) и дескрипторы полей, `MeasurementSeries` (до 5 измерений), функции валидации/получения значений полей серии, `formatCompactDouble`, `formatSpeedFractionLabel`, `formatPreciseTimeValue`, `formatSeriesFieldValue`, `buildActiveSeriesFields`, `SERIES_GRID_LINE_COLOR`, `SERIES_AXIS_COLOR`, forward-декларация `drawNavBar`.
+* `screensCommon.h` — общие функции отрисовки текста (`getStringRect`, `drawStringHCentered`, `drawStringRightAligned`), `Rect`, `SeriesField` (включая скорость датчиков 1/X) и дескрипторы полей, `MeasurementSeries` (до 5 измерений), функции валидации/получения значений полей серии, `formatCompactDouble`, `formatSpeedFractionLabel`, `formatPreciseTimeValue`, `formatSeriesFieldValue`, `buildActiveSeriesFields`, `SERIES_GRID_LINE_COLOR`, `SERIES_AXIS_COLOR`, forward-декларации `drawNavBar` и `splitNameTwoLines`.
 * `MainMenu.h` — главное меню (Measure, Light Setup, Saved Measures, About); `drawMainMenu()`.
 * `SensorSelectionScreen.h` — выбор типа датчика (35mm, 6×4.5, 6×6, 6×7), затем переход к выбору движения шторки.
 * `CurtainMovementSelectionScreen.h` — выбор типа движения шторки (горизонтальный, вертикальный, лепестковый), переход к выбору количества измерений/измерению.
@@ -77,6 +77,7 @@
 * `MeasurementResultRecordSelectionScreen.h` — шаблонный `drawRecordSelectionScreen(store)` выбора записи по имени (мелкий шрифт, до 2 строк через `splitNameTwoLines()`, тримминг хвостовых пробелов, сортировка через AceSorting); exclude-id plumbing для проверки дубликатов (`measurementSaveExcludeRecordNumber`, `seriesSaveExcludeRecordNumber`, хелперы `isMeasurementSaveNameDuplicate()`/`isSeriesSaveNameDuplicate()`);
 * `ViewRecordsScreen.h` — просмотр, удаление и переименование сохранённых записей: выбор «Measurements / Series», `drawViewSingleRecordsScreen()` и `drawViewSeriesRecordsScreen()` (серия открывается через `renderSeriesReport()`).
 * `MessageScreen.h` — универсальный экран с заголовком и списком опций, возвращает выбранный индекс.
+* `SelectItemScreen.h` — универсальный постраничный экран выбора пункта (`drawSelectItemScreen(title, items, itemsCount)`): заголовок, список с переносом длинных названий на 2 строки, футер «Page N of M»; пункт «Go Back» рисуется первым, возврат -1 при его выборе или выходе по API, иначе 0-based индекс в переданном массиве; пагинация по фактической высоте пунктов (1 строка — 12 px, 2 строки — 21 px, вторая строка на +9 px), у 2-строчного пункта стрелка по центру между строками.
 * `SeriesReport.h` — многостраничный отчёт серии: страницы сводки + график по каждому полю.
 * `SeriesSummaryPage.h` — сводная таблица статистики (avg / min / max / count) по полям серии; для датчиков — отдельные строки выдержки (1/X) и времени (мс).
 * `SeriesChartPage.h` — график одного поля серии, `drawTextWithPlaque()`.

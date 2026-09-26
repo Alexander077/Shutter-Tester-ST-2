@@ -12,6 +12,7 @@
 #include "lib/serialAPI.h"
 
 #include "screens/MainMenu.h"
+#include "screens/SelectItemScreen.h"
 
 
 
@@ -218,6 +219,48 @@ void setup()
 // 	return series;
 // }
 
+// ---- Temporary mock data for testing drawSelectItemScreen() ----
+// loop() calls the new screen with this list instead of drawMainMenu() until
+// the screen is verified on hardware. The list mixes: short one-line names, a
+// name of exactly 23 chars (the one-line limit), real two-line lengths
+// (24..28, as in FilmCamerasList), a long name that wraps at a space and an
+// oversized one that is clipped to two lines. The last page stays partially
+// filled on purpose.
+// static const char *mockSelectItemNames[] =
+// 		{
+// 				"Nikon F",																					// 7 -> one line
+// 				"Hasselblad 500C/M with 80mm Planar lens 1",					// 39 -> two lines, wraps at a space
+// 				"Hasselblad 500C/M with 80mm Planar lens 2",					// 39 -> two lines, wraps at a space
+// 				"Hasselblad 500C/M with 80mm Planar lens 3",					// 39 -> two lines, wraps at a space
+// 				"Hasselblad 500C/M with 80mm Planar lens 4",					// 39 -> two lines, wraps at a space
+// 				"Hasselblad 500C/M with 80mm Planar lens 5",					// 39 -> two lines, wraps at a space
+// 				"Hasselblad 500C/M with 80mm Planar lens 6",					// 39 -> two lines, wraps at a space
+// 				"Canon AE-1",																				// 10 -> one line
+// 				"Mamiya C330 Professional",													// 24 -> two lines
+// 				"Leica M3",																					// 8 -> one line
+// 				"Fujifilm GA645 Professional",											// 27 -> two lines
+// 				"Pentax K1000",																			// 12 -> one line
+// 				"Canon Canonet QL17 GIII",													// 23 -> exactly one line
+// 				"Zenza Bronica S2A",																// 17 -> one line
+// 				"Yashica Mat-124G",																	// 16 -> one line
+// 				"Rolleiflex 3.5F TLR",															// 19 -> one line
+// 				"Olympus OM-1n",																		// 13 -> one line
+// 				"Contax T2",																				// 9 -> one line
+// 				"Kiev 88",																					// 7 -> one line
+// 				"Praktica LTL 3",																		// 14 -> one line
+// 				"Mamiya RB67 Professional SD with 90mm f/3.8 lens", // 48 -> clipped to two lines
+// 				"Nikon FM2n",																				// 10 -> one line
+// 				"Minolta X-700",																		// 13 -> one line
+// 				"Chinon CE-4s",																			// 12 -> one line
+// 				"Fujica ST801",																			// 12 -> one line
+// 				"Konica Autoreflex T3",															// 20 -> one line
+// 				"Hasselblad 503CW",																	// 16 -> one line
+// 				"Voigtlander Bessa R2",															// 20 -> one line
+// 				"Mamiya 7II with 80mm lens"													// 25 -> two lines
+// };
+
+// static const int16_t mockSelectItemNamesCount = sizeof(mockSelectItemNames) / sizeof(mockSelectItemNames[0]);
+
 void loop() 
 {
 	/* MeasuredResult r = {
@@ -279,6 +322,19 @@ void loop()
 
 	// 	mockComboIndex = (mockComboIndex + 1) % (mockShutterSpeedsCount * mockCurtainSpeedsCount);
 	// }
+
+	// // ---- Temporary: exercise drawSelectItemScreen() with mock data instead
+	// // ---- of the main menu (restore drawMainMenu() after the hardware test).
+	// int16_t selectedItemIndex = drawSelectItemScreen("Select camera", mockSelectItemNames, mockSelectItemNamesCount);
+
+	// // Show what the screen returned ("Go Back" gives -1) and open the list
+	// // again, so both outcomes can be checked one after another.
+	// display->setFont(u8g2_font_6x13_tf);
+	// display->setTextColor(WHITE);
+	// char selectedItemTitle[24];
+	// snprintf(selectedItemTitle, sizeof(selectedItemTitle), "Selected: %d", selectedItemIndex);
+	// static const char *mockResultOptions[] = {"Ok"};
+	// drawMessageScreen(selectedItemTitle, 1, mockResultOptions);
 
 	drawMainMenu();
 }
