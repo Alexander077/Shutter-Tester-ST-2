@@ -82,8 +82,8 @@ int16_t drawCameraBrandSelectionScreen()
   static const int16_t kItemsCount = FILM_CAMERA_BRANDS_COUNT + 1;
   static const int16_t kX = 20;
   static const int16_t kArrowX = 8;
-  static const int16_t kY = 30;
-  static const int16_t kItemH = 13;
+  static const int16_t kY = 25;
+  static const int16_t kItemH = 12;
   static const int16_t kPageSize = 7;
   static const int16_t kPagerY = 122;
 
@@ -99,7 +99,7 @@ int16_t drawCameraBrandSelectionScreen()
 
   auto drawPage = [&](int16_t page)
   {
-    display->fillRect(0, kY - 10, display->width(), kPageSize * kItemH + 4, BLACK);
+    display->fillRect(0, kY - 5, display->width(), kPageSize * kItemH + 4, BLACK);
     display->setFont();
     display->setTextColor(WHITE);
 
@@ -113,7 +113,7 @@ int16_t drawCameraBrandSelectionScreen()
       }
 
       display->setCursor(kX, kY + slot * kItemH);
-      display->print((idx == kBackIndex) ? "Back" : FilmCameraBrandsList[idx - 1]);
+      display->print((idx == kBackIndex) ? "Go Back" : FilmCameraBrandsList[idx - 1]);
     }
 
     display->fillRect(0, 112, display->width(), 16, BLACK);
@@ -216,9 +216,9 @@ int16_t drawCameraModelSelectionScreen(const char *brand)
   int16_t itemsCount = camerasCount + 1; // + Back
   static const int16_t kX = 20;
   static const int16_t kArrowX = 8;
-  static const int16_t kY = 30;
+  static const int16_t kY = 25;
   static const int16_t kLineH = 9;
-  static const int16_t kItemH = 17;
+  static const int16_t kItemH = 12;
   static const uint8_t kCharsPerRow = 23;
   static const int16_t kPageSize = 5;
   static const int16_t kPagerY = 122;
@@ -235,7 +235,7 @@ int16_t drawCameraModelSelectionScreen(const char *brand)
 
   auto drawPage = [&](int16_t page)
   {
-    display->fillRect(0, kY - 10, display->width(), kPageSize * kItemH + 6, BLACK);
+    display->fillRect(0, kY - 5, display->width(), kPageSize * kItemH + 6, BLACK);
     display->setFont();
     display->setTextColor(WHITE);
 
