@@ -2,6 +2,7 @@
 
 #include "lib/MeasuredResult.h"
 #include "screensCommon.h"
+#include "screens/SelectItemScreen.h"
 #include "recordsManagement/RecordsManagementCommon.h"
 #include "lib/AceSorting/src/AceSorting.h"
 #include "lib/serialAPI.h"
@@ -37,9 +38,10 @@ inline bool isSeriesSaveNameDuplicate(const char *name)
   return isSeriesRecordNameTaken(name, seriesSaveExcludeRecordNumber);
 }
 
-// Record list shows user names: small font, up to 2 rows per
-// record, trailing spaces trimmed. Both record types expose .name, so one
-// template helper serves both storages.
+// Display name of one record for the list screen: user name with trailing
+// spaces trimmed (drawSelectItemScreen() renders it with the small font, one
+// or two rows). Both record types expose .name, so one template helper serves
+// both storages.
 template <typename StorageT>
 void getRecordDisplayName(StorageT &store, int32_t recordNumber, char *out)
 {
@@ -65,207 +67,50 @@ void getRecordDisplayName(StorageT &store, int32_t recordNumber, char *out)
   out[visLen] = '\0';
 }
 
-void splitNameTwoLines(const char *name, char *line1, char *line2, uint8_t charsPerLine)
-{
-  line1[0] = '\0';
-  line2[0] = '\0';
-
-  uint8_t len = strlen(name);
-
-  if (len <= charsPerLine)
-  {
-    strcpy(line1, name);
-    return;
-  }
-
-  int split = -1;
-
-  for (int i = charsPerLine; i > 0; i--)
-  {
-    if (name[i] == ' ' || name[i] == '\0')
-    {
-      split = i;
-      break;
-    }
-  }
-
-  if (split <= 0)
-  {
-    split = charsPerLine;
-  }
-
-  uint8_t l1len = split;
-
-  while (l1len > 0 && name[l1len - 1] == ' ')
-  {
-    l1len--;
-  }
-
-  strncpy(line1, name, l1len);
-  line1[l1len] = '\0';
-
-  uint8_t start = split;
-
-  while (name[start] == ' ')
-  {
-    start++;
-  }
-
-  uint8_t l2len = 0;
-
-  while (name[start + l2len] != '\0' && l2len < charsPerLine)
-  {
-    l2len++;
-  }
-
-  strncpy(line2, &name[start], l2len);
-  line2[l2len] = '\0';
-}
-
+// Paged record list (drawSelectItemScreen with the Go Back item on top).
+// Both record types expose .name, so one template helper serves both storages.
+// Returns the selected record number, or 0 on Go Back / API abort (the
+// original contract kept for the callers).
 template <typename StorageT>
 int32_t drawRecordSelectionScreen(StorageT &store)
 {
+  // The names are shown by drawSelectItemScreen(), which keeps pointers to
+  // them during the whole interaction - hence the static buffers.
+  static const int16_t kMaxRecordsCount = TOTAL_RECORDS_COUNT > TOTAL_SERIES_COUNT ? TOTAL_RECORDS_COUNT : TOTAL_SERIES_COUNT;
+  static int32_t recordNumbers[kMaxRecordsCount];
+  static char displayNameBuffers[kMaxRecordsCount][RECORD_NAME_BUF_SIZE];
+  static const char *displayNames[kMaxRecordsCount];
+
   std::vector<int32_t> validIds = store.getAllValidRecordNumbers();
 
-  int16_t totalArraySaize = validIds.size() + 1;
-  int32_t recordNumbers[totalArraySaize];
+  int16_t recordsCount = (int16_t)validIds.size();
 
-  recordNumbers[0] = 0;
-
-  for (size_t i = 0; i < validIds.size(); i++)
+  if (recordsCount > kMaxRecordsCount)
   {
-    recordNumbers[i + 1] = validIds[i];
+    recordsCount = kMaxRecordsCount;
   }
 
-  ace_sorting::shellSortKnuth(recordNumbers, totalArraySaize);
-
-  // Small-font two-row items: default font (~6px advance) -> 23 chars/row
-  // at x=20. 40-char names always fit into exactly 2 rows.
-  static const uint8_t kX = 20;
-  static const uint8_t kArrowX = 8;
-  static const int16_t kY = 34;
-  static const int16_t kLineH = 9;
-  static const int16_t kItemH = 22;
-  static const uint8_t kCharsPerRow = 23;
-  static const int16_t kPageSize = 3;
-
-  int16_t totalPagesCount = (totalArraySaize + kPageSize - 1) / kPageSize;
-  int16_t startEncoderVal = AlexEncoder::counter;
-  display->fillScreen(BLACK);
-  display->setFont(u8g2_font_6x13_tf);
-  display->setTextColor(WHITE);
-  drawStringHCentered("Select record", 16);
-
-  auto drawPage = [&](int16_t page)
+  for (int16_t i = 0; i < recordsCount; i++)
   {
-    display->fillRect(0, kY - 8, display->width(), kPageSize * kItemH, BLACK);
-    display->setFont();
-    display->setTextColor(WHITE);
-
-    for (int16_t slot = 0; slot < kPageSize; slot++)
-    {
-      int16_t idx = (page - 1) * kPageSize + slot;
-
-      if (idx >= totalArraySaize)
-      {
-        break;
-      }
-
-      char dispName[RECORD_NAME_BUF_SIZE];
-      getRecordDisplayName(store, recordNumbers[idx], dispName);
-
-      char line1[kCharsPerRow + 1];
-      char line2[kCharsPerRow + 1];
-      splitNameTwoLines(dispName, line1, line2, kCharsPerRow);
-
-      int16_t y0 = kY + slot * kItemH;
-      display->setCursor(kX, y0);
-      display->print(line1);
-
-      if (line2[0] != '\0')
-      {
-        display->setCursor(kX, y0 + kLineH);
-        display->print(line2);
-      }
-    }
-
-    display->fillRect(0, 112, display->width(), 16, BLACK);
-    display->setFont(u8g2_font_6x13_tf);
-    display->setTextColor(WHITE);
-    char pageBuf[24];
-    snprintf(pageBuf, sizeof(pageBuf), "Page %d of %d", page, totalPagesCount);
-    drawStringHCentered(pageBuf, 122);
-    display->setFont();
-    display->setTextColor(WHITE);
-  };
-
-  auto eraseArrowAt = [&](int16_t slot)
-  {
-    display->setFont();
-    display->setTextColor(BLACK);
-    display->setCursor(kArrowX, kY + slot * kItemH);
-    display->print("->");
-    display->setTextColor(WHITE);
-  };
-
-  auto drawArrowAt = [&](int16_t slot)
-  {
-    display->setFont();
-    display->setTextColor(WHITE);
-    display->setCursor(kArrowX, kY + slot * kItemH);
-    display->print("->");
-  };
-
-  int16_t prevIndex = 0;
-  int16_t prevPage = 1;
-  drawPage(1);
-  drawArrowAt(0);
-
-  while (true)
-  {
-    if (isApiRequestReceived)
-      return 0;
-
-    int16_t curIndex = AlexEncoder::counter - startEncoderVal;
-
-    if (curIndex > totalArraySaize - 1)
-    {
-      startEncoderVal = AlexEncoder::counter - (totalArraySaize - 1);
-      curIndex = totalArraySaize - 1;
-    }
-
-    if (curIndex < 0)
-    {
-      curIndex = 0;
-      startEncoderVal = AlexEncoder::counter;
-    }
-
-    if (prevIndex != curIndex)
-    {
-      int16_t curPage = curIndex / kPageSize + 1;
-
-      if (curPage != prevPage)
-      {
-        drawPage(curPage);
-        drawArrowAt(curIndex % kPageSize);
-        prevPage = curPage;
-      }
-      else
-      {
-        eraseArrowAt(prevIndex % kPageSize);
-        drawArrowAt(curIndex % kPageSize);
-      }
-
-      prevIndex = curIndex;
-    }
-
-    if (button.isClicked())
-    {
-      return recordNumbers[curIndex];
-    }
-
-    vTaskDelay(1 / portTICK_PERIOD_MS);
+    recordNumbers[i] = validIds[i];
   }
+
+  ace_sorting::shellSortKnuth(recordNumbers, recordsCount);
+
+  for (int16_t i = 0; i < recordsCount; i++)
+  {
+    getRecordDisplayName(store, recordNumbers[i], displayNameBuffers[i]);
+    displayNames[i] = displayNameBuffers[i];
+  }
+
+  int16_t selectedIndex = drawSelectItemScreen("Select record", displayNames, recordsCount);
+
+  if (selectedIndex < 0)
+  {
+    return 0; // Go Back / API abort
+  }
+
+  return recordNumbers[selectedIndex];
 }
 
 int32_t drawMeasurementResultRecordSelectionScreen()

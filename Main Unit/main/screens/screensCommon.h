@@ -306,7 +306,63 @@ void drawStringRightAligned(const char *str, int16_t rightX, int16_t y)
 // does not depend on the header include order.
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount);
 
-// Defined in screens/MeasurementResultRecordSelectionScreen.h; declared here so
-// that the camera name picker (CameraNameSelectionScreen.h) can split long
-// camera names without pulling in the records-management headers.
-void splitNameTwoLines(const char *name, char *line1, char *line2, uint8_t charsPerLine);
+// Splits a name that does not fit into one line (charsPerLine characters) into
+// two lines at the last space inside the first line; a name that fits stays on
+// one line with line2 empty. Shared by drawSelectItemScreen() and the camera
+// name picker.
+void splitNameTwoLines(const char *name, char *line1, char *line2, uint8_t charsPerLine)
+{
+  line1[0] = '\0';
+  line2[0] = '\0';
+
+  uint8_t len = strlen(name);
+
+  if (len <= charsPerLine)
+  {
+    strcpy(line1, name);
+    return;
+  }
+
+  int split = -1;
+
+  for (int i = charsPerLine; i > 0; i--)
+  {
+    if (name[i] == ' ' || name[i] == '\0')
+    {
+      split = i;
+      break;
+    }
+  }
+
+  if (split <= 0)
+  {
+    split = charsPerLine;
+  }
+
+  uint8_t l1len = split;
+
+  while (l1len > 0 && name[l1len - 1] == ' ')
+  {
+    l1len--;
+  }
+
+  strncpy(line1, name, l1len);
+  line1[l1len] = '\0';
+
+  uint8_t start = split;
+
+  while (name[start] == ' ')
+  {
+    start++;
+  }
+
+  uint8_t l2len = 0;
+
+  while (name[start + l2len] != '\0' && l2len < charsPerLine)
+  {
+    l2len++;
+  }
+
+  strncpy(line2, &name[start], l2len);
+  line2[l2len] = '\0';
+}
