@@ -128,7 +128,7 @@ enum class SensorMesuringState
 };
 
 #define EDGE_BUFFER_SIZE 5000 
-#define NOISE_THRESHOLD 100	 // Порог начала импульса
+#define NOISE_THRESHOLD 1000	 // Порог начала импульса
 #define RESET_THRESHOLD 100	 // Порог сброса в ноль
 
 void startFirmwareUpdate();

@@ -11,6 +11,7 @@ private:
   static uint8_t  _pinA;              // CLK pin
   static uint8_t  _pinB;              // DT pin
   static uint8_t  _prevState;         // Previous 2-bit state {CLK, DT}
+  static uint8_t  _restState;         // State of the mechanical click stops (read at power-on)
   static int8_t   _quadAccumulator;   // Accumulates ±1 per valid quadrature edge
   static esp_timer_handle_t _pollTimer;
 
@@ -19,6 +20,12 @@ private:
   static const int8_t TRANSITIONS[16];
 
   static const int8_t QUAD_STEPS_PER_DETENT = 4;  // 4 quadrature edges per mechanical detent
+
+  // Minimal net movement (in quadrature steps) that still counts as a detent
+  // once the knob is back at its rest state. Bouncing (invalid transitions are
+  // dropped) can leave less than the four steps of a full cycle, the click must
+  // still be counted exactly once.
+  static const int8_t QUAD_STEPS_MIN_PER_DETENT = 2;
 
   static void onPollTimer(void *arg);
 
@@ -33,6 +40,7 @@ public:
 uint8_t  AlexEncoder::_pinA            = 0;
 uint8_t  AlexEncoder::_pinB            = 0;
 uint8_t  AlexEncoder::_prevState       = 0;
+uint8_t  AlexEncoder::_restState       = 0;
 int8_t   AlexEncoder::_quadAccumulator = 0;
 esp_timer_handle_t AlexEncoder::_pollTimer = nullptr;
 volatile bool    AlexEncoder::currentDir = true;
@@ -58,7 +66,16 @@ const int8_t AlexEncoder::TRANSITIONS[16] =
   /*                     */    0,      -1,       1,       0
 };
 
-// Polling-based quadrature decoding
+// Polling-based quadrature decoding.
+//
+// One mechanical detent is exactly one full quadrature cycle, so the knob always
+// returns to the same state at every click stop (the state read at power-on,
+// _restState). A step is committed when the sequence comes back to that state
+// with a real net movement in between. Committing on the detent itself, instead
+// of on a plain step counter, keeps the detent grid aligned with the clicks:
+// a partial turn, a direction change in the middle of a cycle or a bouncing
+// contact (its invalid transitions are dropped) can no longer leave a phase
+// behind which made the following rotation ask for a second detent.
 void AlexEncoder::onPollTimer(void *arg)
 {
   // Sample both pins: bit1 = CLK (pinA), bit0 = DT (pinB)
@@ -73,22 +90,46 @@ void AlexEncoder::onPollTimer(void *arg)
 
   _quadAccumulator += step;
 
+  int8_t detentDir = 0;
+
   if (_quadAccumulator >= QUAD_STEPS_PER_DETENT)
   {
-    counter++;
-    currentDir = true;
-    _quadAccumulator = 0;
+    detentDir = 1; // a whole cycle passed: the rest state sample was skipped
   }
   else if (_quadAccumulator <= -QUAD_STEPS_PER_DETENT)
   {
-    counter--;
-    currentDir = false;
-    _quadAccumulator = 0;
+    detentDir = -1;
+  }
+  else if (newState == _restState)
+  {
+    // Back at the click stop: the cycle is over even when the poll missed an
+    // edge. Only a real net movement counts as a detent, bounce around the stop
+    // leaves the accumulator at zero and commits nothing.
+    if (_quadAccumulator >= QUAD_STEPS_MIN_PER_DETENT)
+    {
+      detentDir = 1;
+    }
+    else if (_quadAccumulator <= -QUAD_STEPS_MIN_PER_DETENT)
+    {
+      detentDir = -1;
+    }
   }
   else
   {
     return; // Partial step — nothing committed yet
   }
+
+  // The phase is dropped at every detent, so a partial movement never survives
+  // into the next one.
+  _quadAccumulator = 0;
+
+  if (detentDir == 0)
+  {
+    return; // bounced around the click stop without a real move
+  }
+
+  counter += detentDir;
+  currentDir = (detentDir > 0);
 
   // Debug: one TEST_PIN_1 toggle per committed detent click
   static bool pinState = HIGH;
@@ -104,9 +145,12 @@ void AlexEncoder::init(uint8_t pinA, uint8_t pinB)
   pinMode(_pinA, INPUT);
   pinMode(_pinB, INPUT);
 
-  // Read initial state after pins settle
+  // Read initial state after pins settle. The knob is untouched at power-on, so
+  // this is the state of the mechanical click stops: a detent is finished each
+  // time the sequence comes back to it.
   _prevState = (gpio_get_level((gpio_num_t)_pinA) ? 2 : 0) |
                (gpio_get_level((gpio_num_t)_pinB) ? 1 : 0);
+  _restState = _prevState;
   _quadAccumulator = 0;
 
   // Poll pin levels with a 1 ms periodic timer instead of GPIO interrupts
