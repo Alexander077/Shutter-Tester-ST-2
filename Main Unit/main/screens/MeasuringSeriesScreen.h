@@ -31,12 +31,20 @@ void offerPartialSeriesReport(const char *abortTitle)
 
   if (abortOptionIndex == 0) // Show partial report
   {
-    renderSeriesReport(measurementSeries);
+    SeriesSaveScreenResult saveScreenRes;
 
-    if (isApiRequestReceived)
-      return;
+    do
+    {
+      renderSeriesReport(measurementSeries);
 
-    drawSeriesSaveScreen(measurementSeries);
+      if (isApiRequestReceived)
+        return;
+
+      saveScreenRes = drawSeriesSaveScreen(measurementSeries);
+
+      if (isApiRequestReceived)
+        return;
+    } while (saveScreenRes == SeriesSaveScreenResult::CANCEL);
   }
 }
 
@@ -113,10 +121,18 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
     }
   }
 
-  renderSeriesReport(measurementSeries);
+  SeriesSaveScreenResult saveScreenRes;
 
-  if (isApiRequestReceived)
-    return;
+  do
+  {
+    renderSeriesReport(measurementSeries);
 
-  drawSeriesSaveScreen(measurementSeries);
+    if (isApiRequestReceived)
+      return;
+
+    saveScreenRes = drawSeriesSaveScreen(measurementSeries);
+
+    if (isApiRequestReceived)
+      return;
+  } while (saveScreenRes == SeriesSaveScreenResult::CANCEL);
 }
