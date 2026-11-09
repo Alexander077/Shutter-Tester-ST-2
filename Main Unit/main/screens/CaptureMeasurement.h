@@ -90,8 +90,6 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
   // waveformRecordbufferIndex = 0;
   // memset(waveformRecordbuffer, 0, sizeof(waveformRecordbuffer));
 
-  bool valWasZero = false;
-
   while (true)
   {
     if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
@@ -123,12 +121,7 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
           // Реализация конечного автомата для ADC_CHANNEL_6
           if (sensor0State == SensorMesuringState::Idle)
           {
-            if (val == 0)
-            {
-              valWasZero = true;
-            }
-
-            if (valWasZero && val > NOISE_THRESHOLD)
+            if (val > NOISE_THRESHOLD)
             {
               // Начало импульса
               sensor0State = SensorMesuringState::PulseActive;
