@@ -140,7 +140,7 @@ void startFirmwareUpdate()
         // Данных нет: проверяем таймаут окончания передачи здесь,
         // иначе при молчании клиента этот цикл никогда не завершится
         // и устройство "зависнет" в ожидании следующей строки
-        if (totalReceived > 0 && (millis() - lastDataTime > 5000))
+        if (millis() - lastDataTime > 5000)
         {
           transferFinished = true;
           break;
@@ -242,7 +242,7 @@ void startFirmwareUpdate()
     }
 
     // Завершаем процесс, если данные не приходили более 5 секунд
-    if (totalReceived > 0 && (millis() - lastDataTime > 5000))
+    if (millis() - lastDataTime > 5000)
     {
       break;
     }
