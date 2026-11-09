@@ -14,7 +14,7 @@ private:
 	int8_t _buttonPinNum = -1;
 	uint16_t _holdTimeOutMs = 500;
 	uint8_t _debounceTimeOutMs = 150;
-	uint16_t _lastStateChangeTime = 0;
+	uint32_t _lastStateChangeTime = 0;
 
 public:
 	AlexButton(uint8_t buttonPinNumber, bool inputPullUp = true)
