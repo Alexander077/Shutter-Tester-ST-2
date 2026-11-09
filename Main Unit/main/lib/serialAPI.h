@@ -10,6 +10,7 @@
 #include "lib/FirmwareUpdate.h"
 #include "lib/SerialAPICommon.h"
 #include "lib/About.h"
+#include "lib/SerialNumber.h"
 
 
 // Глобальный флаг для запроса API
@@ -417,6 +418,7 @@ void serialApiTask(void *pvParameters)
               cJSON_AddStringToObject(response, "deviceName", About::DEVICE_NAME);
               cJSON_AddStringToObject(response, "hwVersion", About::HW_VERSION);
               cJSON_AddStringToObject(response, "swVersion", About::SW_VERSION);
+              cJSON_AddStringToObject(response, "deviceSerialNumber", SerialNumber::get());
               cJSON_AddStringToObject(response, "deviceStatus", "Device is ready to accept instructions");
 
               char *json_str = cJSON_PrintUnformatted(response);
