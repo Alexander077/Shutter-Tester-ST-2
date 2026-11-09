@@ -73,7 +73,7 @@ void drawMeasuringSeriesScreen(uint8_t seriesCount)
 
       RawMeasurementCapture capture = captureMeasurement("MEASURING", measuringTitle, "Release camera shutter");
 
-      if (isApiRequestReceived)
+      if (isApiRequestReceived || isFirmwareUpdateInProgress)
       {
         return;
       }

@@ -11,6 +11,7 @@ enum class ApiRequestAction
 };
 
 volatile ApiRequestAction apiRequestAction = ApiRequestAction::NO_ACTION;
+volatile bool isFirmwareUpdateInProgress = false;
 
 class SerialAPILightStatus
 {

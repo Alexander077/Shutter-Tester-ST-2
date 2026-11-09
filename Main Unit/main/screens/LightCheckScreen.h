@@ -128,6 +128,11 @@ void drawLightCheckScreen()
 
   while (true)
   {
+    if (isFirmwareUpdateInProgress)
+    {
+      return;
+    }
+
     if (isApiRequestReceived)
     {
       if (apiRequestAction == ApiRequestAction::GO_TO_LIGHT_SETUP)
@@ -150,6 +155,12 @@ void drawLightCheckScreen()
 
     while (sensor1TotalADCSamplesCounter < displayUpdateSamplesCount)
     {
+      if (isFirmwareUpdateInProgress)
+      {
+        ESP_ERROR_CHECK(adc_continuous_stop(handle));
+        return;
+      }
+
       if (isApiRequestReceived && apiRequestAction != ApiRequestAction::GO_TO_LIGHT_SETUP)
       {
         ESP_ERROR_CHECK(adc_continuous_stop(handle));

@@ -10,7 +10,7 @@ void drawMeasuringScreen()
 {
   RawMeasurementCapture capture = captureMeasurement("MEASURING", "Release camera shutter");
 
-  if (capture.isCancelled || isApiRequestReceived)
+  if (capture.isCancelled || isApiRequestReceived || isFirmwareUpdateInProgress)
   {
     return;
   }

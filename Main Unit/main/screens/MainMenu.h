@@ -7,6 +7,7 @@
 #include "screens/AboutScreen.h"
 #include "screens/ViewRecordsScreen.h"
 #include "screens/MeasuringScreen.h"
+#include "screens/FirmwareUpdateScreen.h"
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
 
@@ -100,6 +101,14 @@ void drawMainMenu()
 
         drawMainMenuSelectionMarkers(resultMenuItemIndex, menuItemsRects, menuItemsY, WHITE);
         prevSelectedMenuItemIndex = resultMenuItemIndex;
+      }
+
+      // Keep the UI on the update screen while OTA is running.
+      if (isFirmwareUpdateInProgress)
+      {
+        drawFirmwareUpdateScreen();
+        startEncoderVal = AlexEncoder::counter;
+        break;
       }
 
       // === ПЕРЕХВАТЧИК API ===

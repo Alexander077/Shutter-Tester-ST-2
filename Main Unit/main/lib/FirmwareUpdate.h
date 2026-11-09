@@ -20,6 +20,13 @@ const unsigned char AesIvInit[16] = {
     0x2c, 0x9f, 0x5b, 0x11, 0xd8, 0x4a, 0x73, 0xe6,
     0x04, 0x8c, 0x39, 0xf2, 0x1d, 0x6e, 0xa5, 0x77};
 
+// Keeps the device UI on the firmware update screen for the whole transfer.
+struct FirmwareUpdateFlagGuard
+{
+  FirmwareUpdateFlagGuard() { isFirmwareUpdateInProgress = true; }
+  ~FirmwareUpdateFlagGuard() { isFirmwareUpdateInProgress = false; }
+};
+
 // Вспомогательная функция для унифицированной отправки JSON
 static void sendOtaJsonResponse(const char *status, const char *message, int bytesReceived)
 {
@@ -73,6 +80,8 @@ void startFirmwareUpdate()
     sendOtaJsonResponse(SerialAPIResponse::API_RESPONSE_STATUS_ERROR, "esp_ota_begin failed", -1);
     return;
   }
+
+  FirmwareUpdateFlagGuard updateFlagGuard;
 
   // 3. Инициализация AES контекста
   mbedtls_aes_context aesCtx;

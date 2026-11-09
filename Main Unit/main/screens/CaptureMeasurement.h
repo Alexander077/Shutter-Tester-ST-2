@@ -92,7 +92,7 @@ RawMeasurementCapture captureMeasurement(const char *title, const char *subtitle
 
   while (true)
   {
-    if (isApiRequestReceived) // ВЫХОД ДЛЯ API с остановкой АЦП
+    if (isApiRequestReceived || isFirmwareUpdateInProgress) // ВЫХОД ДЛЯ API/OTA с остановкой АЦП
     {
       ESP_ERROR_CHECK(adc_continuous_stop(handle));
       captureRes.isCancelled = true;
