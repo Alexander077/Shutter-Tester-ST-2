@@ -6,8 +6,10 @@
 #include "lib/SerialNumber.h"
 #include "lib/AlexEncoder.h"
 #include "lib/serialAPI.h"
+#include "screens/MessageScreen.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 
 void drawAboutScreen()
 {
@@ -162,19 +164,21 @@ void drawAboutScreen()
               display->fillScreen(BLACK);
               drawStringHCentered("Rolling back...", 60);
 
-              if (update_partition != NULL)
+              esp_err_t rollbackErr = esp_ota_set_boot_partition(update_partition);
+
+              if (rollbackErr == ESP_OK)
               {
-                esp_ota_set_boot_partition(update_partition);
+                display->fillScreen(BLACK);
+                drawStringHCentered("Restarting...", 60);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                esp_restart();
               }
 
-              display->fillScreen(BLACK);
-              drawStringHCentered("Restart the device", 60);
-              drawStringHCentered("to finish rollback", 80);
+              const char *errorOptions[] = {"OK"};
+              drawMessageScreen("Rollback failed", 1, errorOptions);
 
-              while (true)
-              {
-                vTaskDelay(100 / portTICK_PERIOD_MS);
-              }
+              returnToAbout = true;
+              break;
             }
           }
         }
