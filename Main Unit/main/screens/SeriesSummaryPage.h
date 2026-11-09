@@ -18,6 +18,8 @@ struct SeriesFieldStats
 void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field, SeriesFieldStats &stats)
 {
   double sum = 0;
+  double sumTime = 0;
+  const bool isSpeedField = field == SeriesField::SENSOR0_SPEED || field == SeriesField::SENSOR1_SPEED;
   stats.avg = 0;
   stats.min = 0;
   stats.max = 0;
@@ -52,11 +54,26 @@ void computeSeriesFieldStats(const MeasurementSeries &series, SeriesField field,
 
     sum += value;
     stats.validCount++;
+
+    if (isSpeedField)
+    {
+      sumTime += (field == SeriesField::SENSOR0_SPEED)
+                     ? series.results[i].sensor0Time
+                     : series.results[i].sensor1Time;
+    }
   }
 
   if (stats.validCount > 0)
   {
-    stats.avg = sum / stats.validCount;
+    // Speed is derived from the average time, not from the average of speeds.
+    if (isSpeedField && sumTime > 0)
+    {
+      stats.avg = 1000.0 / (sumTime / stats.validCount);
+    }
+    else
+    {
+      stats.avg = sum / stats.validCount;
+    }
   }
 }
 
