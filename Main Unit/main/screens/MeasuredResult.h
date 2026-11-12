@@ -7,13 +7,13 @@
 #include "lib/serialAPI.h"
 #include <mString.h>
 
-#define SHUTTR_SPEEDS_COUNT 15
+#define SHUTTR_SPEEDS_COUNT 16
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 
 extern const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTIONS_COUNT];
 
-const uint16_t shutterSpeeds[] = {16000, 8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
+const uint16_t shutterSpeeds[] = {32000, 16000, 8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
@@ -119,7 +119,7 @@ void renderMeasuredResult(MeasuredResult &res)
             String speedLabelValue = "1/" + String(shutterSpeed, 2) + " s";
             display->print(speedLabel + speedLabelValue);
 
-            // Speeds faster than 1/16000 have no bracket on the graph.
+            // Speeds faster than 1/32000 have no bracket on the graph.
             if (shutterSpeed <= shutterSpeeds[0])
             {
               uint16_t speedA;
@@ -127,7 +127,7 @@ void renderMeasuredResult(MeasuredResult &res)
 
               if (shutterSpeed >= shutterSpeeds[0])
               {
-                // Exactly 1/16000: show the point at the left end of the graph.
+                // Exactly 1/32000: show the point at the left end of the graph.
                 speedA = shutterSpeeds[0];
                 speedB = shutterSpeeds[1];
               }
