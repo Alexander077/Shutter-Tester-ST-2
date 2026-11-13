@@ -31,6 +31,18 @@ const double shutterSpeedsThirdStops[] =
     3, 2.5, 2, 1.6667, 1.25, 1,
 };
 
+// Short label of a nominal 1/3-stop speed as cameras mark it: 1/X while the
+// speed is 1/3 s or faster, decimal seconds below that (0.4s, 0.6s, 0.8s).
+String formatThirdStopLabel(double speed)
+{
+  if (speed >= 3.0)
+  {
+    return "1/" + String((int)(speed + 0.5));
+  }
+
+  return String(1.0 / speed, 1) + "s";
+}
+
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
   if (itemsCount < 2)
@@ -169,13 +181,22 @@ void renderMeasuredResult(MeasuredResult &res)
 
               // 1/3-stop ticks on the nominal speeds of the current bracket,
               // placed with the same logarithmic scale as the measurement point.
+              display->setFont(u8g2_font_5x7_tf);
+
               for (uint8_t t = 1; t <= 2; t++)
               {
                 double tickSpeed = shutterSpeedsThirdStops[bracketIndex * 3 + t];
                 double tickPercents = 1.0 - log2(tickSpeed / (double)speedB) / log2((double)speedA / (double)speedB);
                 int16_t tickX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)(SPEEDS_GRAPH_BAR_WIDTH_PX * tickPercents);
                 display->drawLine(tickX, 81, tickX, 85, WHITE);
+
+                String tickLabel = formatThirdStopLabel(tickSpeed);
+                Rect tickLabelRect = getStringRect(tickLabel.c_str(), 0, 0);
+                display->setCursor(tickX - tickLabelRect.width / 2, 93);
+                display->print(tickLabel);
               }
+
+              display->setFont(u8g2_font_6x13_tf);
 
               display->setCursor(5, 105);
               display->printf("1/%d", speedA);
