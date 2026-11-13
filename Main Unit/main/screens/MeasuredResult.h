@@ -15,6 +15,22 @@ extern const char *CurtainMovementItemsStr[CURTAN_MOVEMENT_SELECTION_SCREEN_OPTI
 
 const uint16_t shutterSpeeds[] = {32000, 16000, 8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
 
+// Nominal 1/3-stop shutter speeds (camera markings). Every full stop spans
+// exactly three third-stops, so the ticks of bracket i are entries 3*i+1 and
+// 3*i+2. The ticks must use the marked speeds, not geometric thirds: on
+// brackets with rounded markings (250/200/160/125, 60/50/40/30, ...) the
+// geometric points visibly drift, and from 1/4 s down the markings switch to
+// decimal seconds (1/4, 1/3, 0.4, 1/2, 0.6, 0.8, 1), i.e. in speed units
+// 4, 3, 2.5, 2, 1.667, 1.25, 1 - not geometric 4, 3.2, 2.5, 2, 1.6, 1.3, 1.
+const double shutterSpeedsThirdStops[] =
+{
+    32000, 25000, 20000, 16000, 12500, 10000, 8000, 6400, 5000, 4000,
+    3200, 2500, 2000, 1600, 1250, 1000, 800, 640, 500, 400,
+    320, 250, 200, 160, 125, 100, 80, 60, 50, 40,
+    30, 25, 20, 15, 13, 10, 8, 6, 5, 4,
+    3, 2.5, 2, 1.6667, 1.25, 1,
+};
+
 void drawNavBar(int16_t activePageIndex, int16_t itemsCount)
 {
   if (itemsCount < 2)
@@ -124,6 +140,7 @@ void renderMeasuredResult(MeasuredResult &res)
             {
               uint16_t speedA;
               uint16_t speedB;
+              uint8_t bracketIndex = 0;
 
               if (shutterSpeed >= shutterSpeeds[0])
               {
@@ -142,12 +159,24 @@ void renderMeasuredResult(MeasuredResult &res)
                   {
                     speedA = shutterSpeeds[i - 1];
                     speedB = shutterSpeeds[i];
+                    bracketIndex = i - 1;
                     break;
                   }
                 }
               }
 
               display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
+
+              // 1/3-stop ticks on the nominal speeds of the current bracket,
+              // placed with the same logarithmic scale as the measurement point.
+              for (uint8_t t = 1; t <= 2; t++)
+              {
+                double tickSpeed = shutterSpeedsThirdStops[bracketIndex * 3 + t];
+                double tickPercents = 1.0 - log2(tickSpeed / (double)speedB) / log2((double)speedA / (double)speedB);
+                int16_t tickX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)(SPEEDS_GRAPH_BAR_WIDTH_PX * tickPercents);
+                display->drawLine(tickX, 81, tickX, 85, WHITE);
+              }
+
               display->setCursor(5, 105);
               display->printf("1/%d", speedA);
               String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
@@ -155,10 +184,9 @@ void renderMeasuredResult(MeasuredResult &res)
               display->setCursor(160 - speedBRect.width - 5, 105);
               display->printf(speedBstr.c_str());
 
-              double range = speedA - speedB;
-              double sensorSpeedOnRange = shutterSpeed - speedB;
-
-              double resultPercents = 1.0 - sensorSpeedOnRange / range;
+              // Stops are logarithmic in time, so interpolate by log2 of the
+              // speed; nominal 1/3-stop readings then land on the ticks above.
+              double resultPercents = 1.0 - log2(shutterSpeed / (double)speedB) / log2((double)speedA / speedB);
               double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
 
               int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
