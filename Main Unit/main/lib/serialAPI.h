@@ -138,46 +138,97 @@ void serialApiTask(void *pvParameters)
                   curSensorIndex = sensorItem->valueint;
                   curtainMovement = (CurtainMovement)curtainItem->valueint;
 
-                  // vTaskDelay(pdMS_TO_TICKS(700));
+                  //mock code start
 
-                  // cJSON *json = cJSON_CreateObject();
-                  // cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_MEASURE);
+                  // Эмуляция измерений: клиент делает по 3 запроса на каждую скорость и
+                  // усредняет их. Значения в каждой тройке колеблются вокруг номинала из
+                  // mockShutterSpeedsMs с разбросом devEV (в ступенях EV); после 3-х
+                  // запросов переход к следующей скорости, после последней - снова к первой.
+                  // "1", "1/2", "1/4", "1/8", "1/15", "1/30", "1/60", "1/125", "1/250", "1/500", "1/1000"
+                  static const uint16_t mockShutterSpeedsMs[] = {1000, 500, 250, 125, 66, 33, 16, 8, 4, 2, 1};
+                  static const uint8_t mockShutterSpeedsCount = sizeof(mockShutterSpeedsMs) / sizeof(mockShutterSpeedsMs[0]);
+                  static const uint8_t MOCK_SAMPLES_PER_SPEED = 3;
 
-                  // // if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
-                  // // {
-                  //   cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
+                  static uint8_t mockSpeedIndex = 0;  // Индекс текущей скорости в mockShutterSpeedsMs
+                  static uint8_t mockSampleInSet = 0; // Какой из 3-х запросов текущей скорости (0..2)
 
-                  //   // Записываем данные сенсоров
-                  //   cJSON_AddNumberToObject(json, "sensor0Time", (float)random(100,  1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "sensor1Time", (float)random(100,  1000) / 100.0f);
+                  const double devEV = 0.5;                    // Разброс в EV для имитации вариаций
+                  const double MOCK_SENSOR_DISTANCE_MM = 16.0; // 35mm, горизонтальные шторки
+                  const double MOCK_CURTAIN_SPEED_MS = 3.0;    // Номинальная скорость шторки, м/с
 
-                  //   // Записываем данные по шторкам (скорости и время)
-                  //   cJSON_AddNumberToObject(json, "curtain1spanAtime", (float)random(100, 1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "curtain1spanAspeed", (float)random(100, 1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "curtain2spanAtime", (float)random(100, 1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "curtain2spanAspeed", (float)random(100, 1000) / 100.0f);
+                  // Номиналы для текущей скорости. Каждое "сырое" время получает
+                  // независимое отклонение: множитель 2^(-devEV..+devEV).
+                  const double nominalShutterMs = mockShutterSpeedsMs[mockSpeedIndex];
+                  const double nominalCurtainSpanMs = MOCK_SENSOR_DISTANCE_MM / MOCK_CURTAIN_SPEED_MS;
 
-                  //   // Записываем данные ширины щели
-                  //   cJSON_AddNumberToObject(json, "slitWidthSensor0", (float)random(100, 1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "slitWidthSensor1", (float)random(100, 1000) / 100.0f);
-                  //   cJSON_AddNumberToObject(json, "slitWidthAverage", (float)random(100, 1000) / 100.0f);
-                  // // }
-                  // // else
-                  // // {
-                  // //   cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
-                  // //   cJSON_AddStringToObject(json, "error", "Invalid measurement data");
-                  // // }
+                  auto mockEvFactor = [&]()
+                  {
+                    const double unit = random(0, 10001) / 10000.0; // 0..1
+                    return pow(2.0, (unit * 2.0 - 1.0) * devEV);
+                  };
 
-                  // char *json_str = cJSON_PrintUnformatted(json);
+                  const double sensor0TimeMs = nominalShutterMs * mockEvFactor();
+                  const double sensor1TimeMs = nominalShutterMs * mockEvFactor();
+                  const double curtain1SpanTimeMs = nominalCurtainSpanMs * mockEvFactor();
+                  const double curtain2SpanTimeMs = nominalCurtainSpanMs * mockEvFactor();
 
-                  // if (json_str != NULL)
+                  // Скорости шторок и ширина щели выводятся так же, как в computeMeasuredResult()
+                  const double curtain1SpanSpeedMs = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs; // mm/ms = m/s
+                  const double curtain2SpanSpeedMs = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs;
+                  const double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm/ms
+                  const double slitWidthSensor0 = estSlitSpeed * sensor0TimeMs; // mm
+                  const double slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;
+                  const double slitWidthAverage = (slitWidthSensor0 + slitWidthSensor1) / 2.0;
+
+                  vTaskDelay(pdMS_TO_TICKS(700));
+
+                  cJSON *json = cJSON_CreateObject();
+                  cJSON_AddStringToObject(json, "cmd", SerialAPIRequestAction::API_REQUEST_MEASURE);
+
+                  // if (res.sensor0Time != MEASUREMENTS_IS_INVALID_VAL || res.sensor1Time != MEASUREMENTS_IS_INVALID_VAL)
                   // {
-                  //   printf("%s\n", json_str);
-                  //   doubleFlush();
-                  //   free(json_str);
+                    cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_OK);
+
+                    // Записываем данные сенсоров
+                    cJSON_AddNumberToObject(json, "sensor0Time", sensor0TimeMs);
+                    cJSON_AddNumberToObject(json, "sensor1Time", sensor1TimeMs);
+
+                    // Записываем данные по шторкам (скорости и время)
+                    cJSON_AddNumberToObject(json, "curtain1spanAtime", curtain1SpanTimeMs);
+                    cJSON_AddNumberToObject(json, "curtain1spanAspeed", curtain1SpanSpeedMs);
+                    cJSON_AddNumberToObject(json, "curtain2spanAtime", curtain2SpanTimeMs);
+                    cJSON_AddNumberToObject(json, "curtain2spanAspeed", curtain2SpanSpeedMs);
+
+                    // Записываем данные ширины щели
+                    cJSON_AddNumberToObject(json, "slitWidthSensor0", slitWidthSensor0);
+                    cJSON_AddNumberToObject(json, "slitWidthSensor1", slitWidthSensor1);
+                    cJSON_AddNumberToObject(json, "slitWidthAverage", slitWidthAverage);
+                  // }
+                  // else
+                  // {
+                  //   cJSON_AddStringToObject(json, "status", SerialAPIResponse::API_RESPONSE_STATUS_ERROR);
+                  //   cJSON_AddStringToObject(json, "error", "Invalid measurement data");
                   // }
 
-                  // cJSON_Delete(json);
+                  char *json_str = cJSON_PrintUnformatted(json);
+
+                  if (json_str != NULL)
+                  {
+                    printf("%s\n", json_str);
+                    doubleFlush();
+                    free(json_str);
+                  }
+
+                  cJSON_Delete(json);
+
+                  // Переход к следующей скорости после 3-х запросов (по кругу).
+                  // Счётчик растёт только при успешно сформированном ответе.
+                  if (++mockSampleInSet >= MOCK_SAMPLES_PER_SPEED)
+                  {
+                    mockSampleInSet = 0;
+                    mockSpeedIndex = (mockSpeedIndex + 1) % mockShutterSpeedsCount;
+                  }
+                  // mock code end
 
                   isApiRequestReceived = true;
                   apiRequestAction = ApiRequestAction::GO_TO_MEASURE;

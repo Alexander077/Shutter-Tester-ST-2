@@ -13,6 +13,7 @@
 
 #include "screens/MainMenu.h"
 #include "screens/SelectItemScreen.h"
+#include "screens/MeasuredResult.h"
 
 
 
@@ -261,6 +262,129 @@ void setup()
 
 // static const int16_t mockSelectItemNamesCount = sizeof(mockSelectItemNames) / sizeof(mockSelectItemNames[0]);
 
+// ---- Temporary mock data for testing the single-measurement result screen ----
+// Nominal shutter speeds from 1/32000 s to 5 s in 1/3-stop steps, in
+// milliseconds. loop() feeds them to renderMeasuredResult() one by one; an
+// encoder button click closes the current result and opens the next speed
+// (the sweep wraps around after 5 s).
+static const double mockShutterSpeedsMs[] =
+{
+	0.03125,  // 1/32000
+	0.04,     // 1/25000
+	0.05,     // 1/20000
+	0.0625,   // 1/16000
+	0.08,     // 1/12500
+	0.1,      // 1/10000
+	0.125,    // 1/8000
+	0.15625,  // 1/6400
+	0.2,      // 1/5000
+	0.25,     // 1/4000
+	0.3125,   // 1/3200
+	0.4,      // 1/2500
+	0.5,      // 1/2000
+	0.625,    // 1/1600
+	0.8,      // 1/1250
+	1.0,      // 1/1000
+	1.25,     // 1/800
+	1.5625,   // 1/640
+	2.0,      // 1/500
+	2.5,      // 1/400
+	3.125,    // 1/320
+	4.0,      // 1/250
+	5.0,      // 1/200
+	6.25,     // 1/160
+	8.0,      // 1/125
+	10.0,     // 1/100
+	12.5,     // 1/80
+	16.6667,  // 1/60
+	20.0,     // 1/50
+	25.0,     // 1/40
+	33.3333,  // 1/30
+	40.0,     // 1/25
+	50.0,     // 1/20
+	66.6667,  // 1/15
+	76.9231,  // 1/13
+	100.0,    // 1/10
+	125.0,    // 1/8
+	166.6667, // 1/6
+	200.0,    // 1/5
+	250.0,    // 1/4
+	333.3333, // 1/3
+	400.0,    // 0.4 s
+	500.0,    // 0.5 s
+	600.0,    // 0.6 s
+	800.0,    // 0.8 s
+	1000.0,   // 1 s
+	1300.0,   // 1.3 s
+	1600.0,   // 1.6 s
+	2000.0,   // 2 s
+	2500.0,   // 2.5 s
+	3200.0,   // 3.2 s
+	4000.0,   // 4 s
+	5000.0,   // 5 s
+};
+
+static const uint8_t mockShutterSpeedsCount = sizeof(mockShutterSpeedsMs) / sizeof(mockShutterSpeedsMs[0]);
+
+// 35mm camera with a horizontal focal-plane shutter (see sensorsData[Frame35mm]).
+#define MOCK_SENSOR_DISTANCE_MM 16.0
+#define MOCK_FRAME_WIDTH_MM 36.0
+#define MOCK_CURTAIN_SPEED_MS 2.5
+
+// Spread applied to the raw mock inputs, in percent. 0 keeps every result
+// exactly at its nominal speed (easier to check the result screen); raise it
+// (e.g. 2) to get a natural shot-to-shot deviation.
+#define MOCK_VARIATION_PERCENT 0
+
+// Deterministic PRNG (LCG, Numerical Recipes constants) so the mock spread is
+// identical after every boot.
+static uint32_t mockRandomState = 0x1234ABCD;
+
+static double nextMockVariationFactor()
+{
+	mockRandomState = mockRandomState * 1664525u + 1013904223u;
+
+	const double unit = (double)(mockRandomState >> 8) / 16777216.0; // 0..1 from 24 bits
+	const double spread = MOCK_VARIATION_PERCENT * 2.0 / 100.0;      // 0.04 for +/-2%
+	return 1.0 - spread / 2.0 + unit * spread;                       // 0.98 .. 1.02
+}
+
+// Builds one mock result the same way computeMeasuredResult() does for a focal
+// plane shutter: curtain span times come from a typical curtain speed, curtain
+// speeds, total travel times and slit widths are derived from those inputs.
+static MeasuredResult createMockSingleResult(double nominalShutterSpeedMs)
+{
+	const double nominalCurtainSpanTimeMs = MOCK_SENSOR_DISTANCE_MM / MOCK_CURTAIN_SPEED_MS; // mm/(mm/ms) = ms
+
+	const double sensor0TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+	const double sensor1TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+	const double curtain1SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+	const double curtain2SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+
+	MeasuredResult r = {};
+
+	r.sensor0Time = sensor0TimeMs;
+	r.sensor1Time = sensor1TimeMs;
+
+	r.curtain1spanAtime = curtain1SpanTimeMs;
+	r.curtain1spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs; // m/s
+	r.curtain1TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain1spanAspeed;    // ms
+
+	r.curtain2spanAtime = curtain2SpanTimeMs;
+	r.curtain2spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs; // m/s
+	r.curtain2TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain2spanAspeed;    // ms
+
+	const double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm/ms
+	r.slitWidthSensor0 = estSlitSpeed * sensor0TimeMs;                                                       // mm
+	r.slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;                                                       // mm
+	r.slitWidthAverage = (r.slitWidthSensor0 + r.slitWidthSensor1) / 2.0;                                    // mm
+
+	r.usedSensorType = SensorType::Frame35mm;
+	r.selectedCurtainMovement = CurtainMovement::HORISONTAL;
+
+	return r;
+}
+
 void loop() 
 {
 	/* MeasuredResult r = {
@@ -336,5 +460,19 @@ void loop()
 	// static const char *mockResultOptions[] = {"Ok"};
 	// drawMessageScreen(selectedItemTitle, 1, mockResultOptions);
 
-	drawMainMenu();
+	// ---- Temporary: single-measurement result viewer with mock data ----
+	// Every encoder button click closes the current result and opens the next
+	// shutter speed of the 1/3-stop sweep 1/32000 s .. 5 s (wraps around).
+	// drawMainMenu() is disabled here on purpose - it never returns.
+	static uint8_t mockResultIndex = 0;
+
+	while (true)
+	{
+		MeasuredResult mockResult = createMockSingleResult(mockShutterSpeedsMs[mockResultIndex]);
+		renderMeasuredResult(mockResult);
+
+		mockResultIndex = (mockResultIndex + 1) % mockShutterSpeedsCount;
+	}
+
+	// drawMainMenu();
 }
