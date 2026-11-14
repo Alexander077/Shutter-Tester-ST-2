@@ -106,8 +106,36 @@ double timeCorrectionVals[INTRPOLATION_POINTS_COUNT] = {40, 40, 30, 20, 15};
 #define SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX 5
 #define SPEEDS_GRAPH_BAR_WIDTH_PX 146
 
-#define SHUTTR_SPEEDS_COUNT 14
-const uint16_t shutterSpeeds[] = {8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
+#define SHUTTR_SPEEDS_COUNT 16
+const uint16_t shutterSpeeds[] = {32000, 16000, 8000, 4000, 2000, 1000, 500, 250, 125, 60, 30, 15, 8, 4, 2, 1};
+
+// Nominal 1/3-stop shutter speeds (camera markings). Every full stop spans
+// exactly three third-stops, so the ticks of bracket i are entries 3*i+1 and
+// 3*i+2. The ticks must use the marked speeds, not geometric thirds: on
+// brackets with rounded markings (250/200/160/125, 60/50/40/30, ...) the
+// geometric points visibly drift, and from 1/4 s down the markings switch to
+// decimal seconds (1/4, 1/3, 0.4, 1/2, 0.6, 0.8, 1), i.e. in speed units
+// 4, 3, 2.5, 2, 1.667, 1.25, 1 - not geometric 4, 3.2, 2.5, 2, 1.6, 1.3, 1.
+const double shutterSpeedsThirdStops[] =
+{
+	32000, 25000, 20000, 16000, 12500, 10000, 8000, 6400, 5000, 4000,
+	3200, 2500, 2000, 1600, 1250, 1000, 800, 640, 500, 400,
+	320, 250, 200, 160, 125, 100, 80, 60, 50, 40,
+	30, 25, 20, 15, 13, 10, 8, 6, 5, 4,
+	3, 2.5, 2, 1.6667, 1.25, 1,
+};
+
+// Short label of a nominal 1/3-stop speed as cameras mark it: 1/X while the
+// speed is 1/3 s or faster, decimal seconds below that (0.4s, 0.6s, 0.8s).
+String formatThirdStopLabel(double speed)
+{
+	if (speed >= 3.0)
+	{
+		return "1/" + String((int)(speed + 0.5));
+	}
+
+	return String(1.0 / speed, 1) + "s";
+}
 
 static adc_channel_t channel[2] = {ADC_CHANNEL_6, ADC_CHANNEL_7};
 adc_continuous_handle_t handle = NULL;
@@ -1051,40 +1079,77 @@ void renderMeasuredResult(MeasuredResult &res)
 						String speedLabelValue = "1/" + String(shutterSpeed, 2) + " s";
 						display->print(speedLabel + speedLabelValue);
 
-						uint16_t speedA = -1;
-						uint16_t speedB = -1;
-
-						for (size_t i = 0; i < SHUTTR_SPEEDS_COUNT; i++)
+						// Speeds faster than 1/32000 have no bracket on the graph.
+						if (shutterSpeed <= shutterSpeeds[0])
 						{
-							if (shutterSpeeds[i] <= shutterSpeed)
+							uint16_t speedA;
+							uint16_t speedB;
+							uint8_t bracketIndex = 0;
+
+							if (shutterSpeed >= shutterSpeeds[0])
 							{
-								speedA = shutterSpeeds[i - 1];
-								speedB = shutterSpeeds[i];
-								break;
+								// Exactly 1/32000: show the point at the left end of the graph.
+								speedA = shutterSpeeds[0];
+								speedB = shutterSpeeds[1];
 							}
+							else
+							{
+								speedA = shutterSpeeds[1];
+								speedB = shutterSpeeds[0];
+
+								for (size_t i = 1; i < SHUTTR_SPEEDS_COUNT; i++)
+								{
+									if (shutterSpeeds[i] <= shutterSpeed)
+									{
+										speedA = shutterSpeeds[i - 1];
+										speedB = shutterSpeeds[i];
+										bracketIndex = i - 1;
+										break;
+									}
+								}
+							}
+
+							display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
+
+							// 1/3-stop ticks on the nominal speeds of the current bracket,
+							// placed with the same logarithmic scale as the measurement point.
+							display->setFont(u8g2_font_5x7_tf);
+
+							for (uint8_t t = 1; t <= 2; t++)
+							{
+								double tickSpeed = shutterSpeedsThirdStops[bracketIndex * 3 + t];
+								double tickPercents = 1.0 - log2(tickSpeed / (double)speedB) / log2((double)speedA / (double)speedB);
+								int16_t tickX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)(SPEEDS_GRAPH_BAR_WIDTH_PX * tickPercents);
+								display->drawLine(tickX, 81, tickX, 85, WHITE);
+
+								String tickLabel = formatThirdStopLabel(tickSpeed);
+								Rect tickLabelRect = getStringRect(tickLabel.c_str(), 0, 0);
+								display->setCursor(tickX - tickLabelRect.width / 2, 93);
+								display->print(tickLabel);
+							}
+
+							display->setFont(u8g2_font_6x13_tf);
+
+							display->setCursor(5, 105);
+							display->printf("1/%d", speedA);
+							String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
+							Rect speedBRect = getStringRect(speedBstr.c_str(), 0, 0);
+							display->setCursor(160 - speedBRect.width - 5, 105);
+							display->printf(speedBstr.c_str());
+
+							// Stops are logarithmic in time, so interpolate by log2 of the
+							// speed; nominal 1/3-stop readings then land on the ticks above.
+							double resultPercents = 1.0 - log2(shutterSpeed / (double)speedB) / log2((double)speedA / speedB);
+							double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
+
+							int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
+							int16_t circleY = 83;
+							display->fillCircle(circleX, circleY, 3, GREEN);
+
+							Rect speedLabelRect = getStringRect(speedLabelValue.c_str(), 0, 0);
+							display->drawLine(circleX, circleY, 5 + speedLabelRect.width + 40, 52, GREEN);
+							display->drawLine(5 + speedLabelRect.width + 40, 52, 45, 52, GREEN);
 						}
-
-						display->drawXBitmap(SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX, 80, SensorResultGraphImagBits, SENSOR_RESULT_GRAPH_IMAGE_WIDTH, SENSOR_RESULT_GRAPH_IMAGE_HEIGHT, WHITE);
-						display->setCursor(5, 105);
-						display->printf("1/%d", speedA);
-						String speedBstr = speedB == 1 ? String(speedB) : "1/" + String(speedB);
-						Rect speedBRect = getStringRect(speedBstr.c_str(), 0, 0);
-						display->setCursor(160 - speedBRect.width - 5, 105);
-						display->printf(speedBstr.c_str());
-
-						double range = speedA - speedB;
-						double sensorSpeedOnRange = shutterSpeed - speedB;
-
-						double resultPercents = 1.0 - sensorSpeedOnRange / range;
-						double speedPointLeftMargin = SPEEDS_GRAPH_BAR_WIDTH_PX * resultPercents;
-
-						int16_t circleX = SPEEDS_GRAPH_BAR_LEFT_MARGIN_PX + 2 + (int16_t)speedPointLeftMargin;
-						int16_t circleY = 83;
-						display->fillCircle(circleX, circleY, 3, GREEN);
-
-						Rect speedLabelRect = getStringRect(speedLabelValue.c_str(), 0, 0);
-						display->drawLine(circleX, circleY, 5 + speedLabelRect.width + 40, 52, GREEN);
-						display->drawLine(5 + speedLabelRect.width + 40, 52, 45, 52, GREEN);
 					}
 				}
 				else
@@ -2779,6 +2844,129 @@ void setup()
 	}
 }
 
+// ---- Temporary mock data for testing the single-measurement result screen ----
+// Nominal shutter speeds from 1/32000 s to 5 s in 1/3-stop steps, in
+// milliseconds. loop() feeds them to renderMeasuredResult() one by one; an
+// encoder button click closes the current result and opens the next speed
+// (the sweep wraps around after 5 s).
+static const double mockShutterSpeedsMs[] =
+		{
+				0.03125,	// 1/32000
+				0.04,			// 1/25000
+				0.05,			// 1/20000
+				0.0625,		// 1/16000
+				0.08,			// 1/12500
+				0.1,			// 1/10000
+				0.125,		// 1/8000
+				0.15625,	// 1/6400
+				0.2,			// 1/5000
+				0.25,			// 1/4000
+				0.3125,		// 1/3200
+				0.4,			// 1/2500
+				0.5,			// 1/2000
+				0.625,		// 1/1600
+				0.8,			// 1/1250
+				1.0,			// 1/1000
+				1.25,			// 1/800
+				1.5625,		// 1/640
+				2.0,			// 1/500
+				2.5,			// 1/400
+				3.125,		// 1/320
+				4.0,			// 1/250
+				5.0,			// 1/200
+				6.25,			// 1/160
+				8.0,			// 1/125
+				10.0,			// 1/100
+				12.5,			// 1/80
+				16.6667,	// 1/60
+				20.0,			// 1/50
+				25.0,			// 1/40
+				33.3333,	// 1/30
+				40.0,			// 1/25
+				50.0,			// 1/20
+				66.6667,	// 1/15
+				76.9231,	// 1/13
+				100.0,		// 1/10
+				125.0,		// 1/8
+				166.6667, // 1/6
+				200.0,		// 1/5
+				250.0,		// 1/4
+				333.3333, // 1/3
+				400.0,		// 0.4 s
+				500.0,		// 0.5 s
+				600.0,		// 0.6 s
+				800.0,		// 0.8 s
+				1000.0,		// 1 s
+				1300.0,		// 1.3 s
+				1600.0,		// 1.6 s
+				2000.0,		// 2 s
+				2500.0,		// 2.5 s
+				3200.0,		// 3.2 s
+				4000.0,		// 4 s
+				5000.0,		// 5 s
+};
+
+static const uint8_t mockShutterSpeedsCount = sizeof(mockShutterSpeedsMs) / sizeof(mockShutterSpeedsMs[0]);
+
+// 35mm camera with a horizontal focal-plane shutter (see sensorsData[Frame35mm]).
+#define MOCK_SENSOR_DISTANCE_MM 16.0
+#define MOCK_FRAME_WIDTH_MM 36.0
+#define MOCK_CURTAIN_SPEED_MS 2.5
+
+// Spread applied to the raw mock inputs, in percent. 0 keeps every result
+// exactly at its nominal speed (easier to check the result screen); raise it
+// (e.g. 2) to get a natural shot-to-shot deviation.
+#define MOCK_VARIATION_PERCENT 0
+
+// Deterministic PRNG (LCG, Numerical Recipes constants) so the mock spread is
+// identical after every boot.
+static uint32_t mockRandomState = 0x1234ABCD;
+
+static double nextMockVariationFactor()
+{
+	mockRandomState = mockRandomState * 1664525u + 1013904223u;
+
+	const double unit = (double)(mockRandomState >> 8) / 16777216.0; // 0..1 from 24 bits
+	const double spread = MOCK_VARIATION_PERCENT * 2.0 / 100.0;			 // 0.04 for +/-2%
+	return 1.0 - spread / 2.0 + unit * spread;											 // 0.98 .. 1.02
+}
+
+// Builds one mock result the same way computeMeasuredResult() does for a focal
+// plane shutter: curtain span times come from a typical curtain speed, curtain
+// speeds, total travel times and slit widths are derived from those inputs.
+static MeasuredResult createMockSingleResult(double nominalShutterSpeedMs)
+{
+	const double nominalCurtainSpanTimeMs = MOCK_SENSOR_DISTANCE_MM / MOCK_CURTAIN_SPEED_MS; // mm/(mm/ms) = ms
+
+	const double sensor0TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+	const double sensor1TimeMs = nominalShutterSpeedMs * nextMockVariationFactor();
+	const double curtain1SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+	const double curtain2SpanTimeMs = nominalCurtainSpanTimeMs * nextMockVariationFactor();
+
+	MeasuredResult r = {};
+
+	r.sensor0Time = sensor0TimeMs;
+	r.sensor1Time = sensor1TimeMs;
+
+	r.curtain1spanAtime = curtain1SpanTimeMs;
+	r.curtain1spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain1SpanTimeMs; // m/s
+	r.curtain1TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain1spanAspeed;		 // ms
+
+	r.curtain2spanAtime = curtain2SpanTimeMs;
+	r.curtain2spanAspeed = MOCK_SENSOR_DISTANCE_MM / curtain2SpanTimeMs; // m/s
+	r.curtain2TotalTime = MOCK_FRAME_WIDTH_MM / r.curtain2spanAspeed;		 // ms
+
+	const double estSlitSpeed = MOCK_SENSOR_DISTANCE_MM / ((curtain1SpanTimeMs + curtain2SpanTimeMs) / 2.0); // mm/ms
+	r.slitWidthSensor0 = estSlitSpeed * sensor0TimeMs;																											 // mm
+	r.slitWidthSensor1 = estSlitSpeed * sensor1TimeMs;																											 // mm
+	r.slitWidthAverage = (r.slitWidthSensor0 + r.slitWidthSensor1) / 2.0;																		 // mm
+
+	r.usedSensorType = SensorType::Frame35mm;
+	r.selectedCurtainMovement = CurtainMovement::HORISONTAL;
+
+	return r;
+}
+
 void loop() 
 {
 	/* MeasuredResult r = {
@@ -2821,6 +3009,20 @@ void loop()
 	// 	}
 
 	// 	vTaskDelay(1 / portTICK_PERIOD_MS);
+	// }
+
+	// // ---- Temporary: single-measurement result viewer with mock data ----
+	// // Every encoder button click closes the current result and opens the next
+	// // shutter speed of the 1/3-stop sweep 1/32000 s .. 5 s (wraps around).
+	// // drawMainMenu() is disabled here on purpose - it never returns.
+	// static uint8_t mockResultIndex = 0;
+
+	// while (true)
+	// {
+	// 	MeasuredResult mockResult = createMockSingleResult(mockShutterSpeedsMs[mockResultIndex]);
+	// 	renderMeasuredResult(mockResult);
+
+	// 	mockResultIndex = (mockResultIndex + 1) % mockShutterSpeedsCount;
 	// }
 
 	drawMainMenu();
